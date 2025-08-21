@@ -7,7 +7,22 @@ import { userAPI, postsAPI, connectionAPI } from '../components/utils/api';
 import { toast } from 'react-toastify';
 import { getAvatarUrl } from '../utils/helpers';
 import './ProfilePage.css';
-import { FaUserCheck, FaUserFriends, FaUserPlus } from 'react-icons/fa';
+import { 
+  FaUserCheck, 
+  FaUserFriends, 
+  FaUserPlus, 
+  FaEdit, 
+  FaLinkedin, 
+  FaTwitter, 
+  FaGithub, 
+  FaGlobe, 
+  FaBriefcase, 
+  FaGraduationCap, 
+  FaStar,
+  FaMapMarkerAlt,
+  FaBuilding,
+  FaCalendarAlt
+} from 'react-icons/fa';
 
 const ProfilePage = () => {
   const { username } = useParams();
@@ -17,6 +32,7 @@ const ProfilePage = () => {
   const [userPosts, setUserPosts] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [avatar, setAvatar] = useState(null);
+  const [coverPhoto, setCoverPhoto] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
@@ -25,6 +41,7 @@ const ProfilePage = () => {
     college: '',
     specialization: '',
     graduationYear: '',
+    location: '',
     isPrivate: false,
     skills: '',
     linkedin: '',
@@ -34,9 +51,6 @@ const ProfilePage = () => {
   });
   const [connectionStatus, setConnectionStatus] = useState('not_connected');
   const [pendingRequestFromUser, setPendingRequestFromUser] = useState(false);
-
-  // Add backend URL constant
-  const BACKEND_URL = 'http://localhost:5000';
 
   // Determine if this is the current user's profile
   const isOwnProfile = !username || (currentUser && currentUser.username === username);
@@ -48,17 +62,14 @@ const ProfilePage = () => {
         let userData;
 
         if (isOwnProfile) {
-          // If own profile, get from context or fetch current user
           userData = currentUser || (await userAPI.getProfile()).data;
         } else {
-          // If other user's profile, fetch by username
           const response = await userAPI.getUserByUsername(username);
           userData = response.data;
         }
 
         setUser(userData);
 
-        // Initialize form data if own profile
         if (isOwnProfile) {
           setFormData({
             name: userData.name || '',
@@ -68,6 +79,7 @@ const ProfilePage = () => {
             college: userData.college || '',
             specialization: userData.specialization || '',
             graduationYear: userData.graduationYear || '',
+            location: userData.location || '',
             isPrivate: userData.isPrivate || false,
             skills: userData.skills ? userData.skills.join(', ') : '',
             linkedin: userData.socials?.linkedin || '',
@@ -77,11 +89,9 @@ const ProfilePage = () => {
           });
         }
 
-        // Fetch user posts
         const posts = await postsAPI.getUserPosts(userData._id);
         setUserPosts(posts.data);
 
-        // Fetch connection status
         if (!isOwnProfile && userData) {
           const res = await connectionAPI.getConnectionStatus(userData._id);
           setConnectionStatus(res.status);
@@ -99,7 +109,6 @@ const ProfilePage = () => {
 
   useEffect(() => {
     if (!isOwnProfile && user) {
-      // Fetch pending requests for the current user
       const fetchPending = async () => {
         try {
           const res = await connectionAPI.getPendingRequests();
@@ -120,6 +129,12 @@ const ProfilePage = () => {
   const handleAvatarChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setAvatar(e.target.files[0]);
+    }
+  };
+
+  const handleCoverPhotoChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setCoverPhoto(e.target.files[0]);
     }
   };
 
@@ -192,155 +207,403 @@ const ProfilePage = () => {
   }
 
   return (
-    <div className="profile-container">
-      <div className="profile-card">
-        <div className="profile-header">
-          <div className="profile-avatar-section">
+    <div className="profile-page">
+      {/* Cover Photo Section */}
+      <div className="cover-photo-section">
+        <div className="cover-photo">
+          <div className="cover-photo-overlay">
+            {isEditing && (
+              <div className="cover-photo-edit">
+                <label htmlFor="cover-photo-input" className="cover-photo-edit-btn">
+                  <FaEdit /> Change Cover Photo
+                </label>
+                <input
+                  id="cover-photo-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverPhotoChange}
+                  style={{ display: 'none' }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Profile Header */}
+      <div className="profile-header-section">
+        <div className="profile-header-content">
+          <div className="profile-avatar-container">
             <img
               src={avatar ? URL.createObjectURL(avatar) : getAvatarUrl(user.avatarUrl)}
               alt={user.name}
               className="profile-avatar"
             />
             {isEditing && (
-              <input type="file" accept="image/*" onChange={handleAvatarChange} />
+              <div className="avatar-edit-overlay">
+                <label htmlFor="avatar-input" className="avatar-edit-btn">
+                  <FaEdit />
+                </label>
+                <input
+                  id="avatar-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  style={{ display: 'none' }}
+                />
+              </div>
             )}
           </div>
-          <div className="profile-info">
-            <h2>{user.name}</h2>
-            <p>@{user.username} • {user.role}</p>
-            <p>{user.bio}</p>
+          
+          <div className="profile-header-info">
+            <h1 className="profile-name">{user.name}</h1>
+            <p className="profile-headline">{user.position} at {user.company}</p>
+            <p className="profile-location">
+              <FaMapMarkerAlt className="inline mr-2" />
+              {user.location || 'Location not specified'}
+            </p>
+            <p className="profile-username">@{user.username}</p>
+            
             {!isEditing && (
-              <button className="profile-edit-btn" onClick={() => setIsEditing(true)}>
-                Edit Profile
-              </button>
-            )}
-            {/* Add connection button for other users' profiles */}
-            {!isOwnProfile && user && (
-              <>
-                <button
-                  onClick={() => handleConnect(user._id)}
-                  className={`btn w-full mt-4 ${
-                    connectionStatus === 'pending'
-                      ? 'btn-secondary'
-                      : connectionStatus === 'connected'
-                      ? 'btn-success'
-                      : 'btn-primary'
-                  }`}
-                  disabled={connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser}
-                >
-                  {connectionStatus === 'pending' ? (
-                    <>
-                      <FaUserCheck className="mr-2" />
-                      Requested
-                    </>
-                  ) : connectionStatus === 'connected' ? (
-                    <>
-                      <FaUserFriends className="mr-2" />
-                      Connected
-                    </>
-                  ) : (
-                    <>
-                      <FaUserPlus className="mr-2" />
-                      Connect
-                    </>
-                  )}
-                </button>
-                {pendingRequestFromUser && (
-                  <div className="flex gap-2 mt-2">
-                    <button className="btn btn-primary" onClick={handleAcceptRequest}>Accept</button>
-                    <button className="btn btn-secondary" onClick={handleRejectRequest}>Remove</button>
+              <div className="profile-actions">
+                {isOwnProfile ? (
+                  <button className="btn btn-primary" onClick={() => setIsEditing(true)}>
+                    <FaEdit className="mr-2" />
+                    Edit Profile
+                  </button>
+                ) : (
+                  <div className="connection-actions">
+                    <button
+                      onClick={() => handleConnect(user._id)}
+                      className={`btn ${
+                        connectionStatus === 'pending'
+                          ? 'btn-secondary'
+                          : connectionStatus === 'connected'
+                          ? 'btn-success'
+                          : 'btn-primary'
+                      }`}
+                      disabled={connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser}
+                    >
+                      {connectionStatus === 'pending' ? (
+                        <>
+                          <FaUserCheck className="mr-2" />
+                          Requested
+                        </>
+                      ) : connectionStatus === 'connected' ? (
+                        <>
+                          <FaUserFriends className="mr-2" />
+                          Connected
+                        </>
+                      ) : (
+                        <>
+                          <FaUserPlus className="mr-2" />
+                          Connect
+                        </>
+                      )}
+                    </button>
+                    {pendingRequestFromUser && (
+                      <div className="pending-actions">
+                        <button className="btn btn-primary" onClick={handleAcceptRequest}>
+                          Accept
+                        </button>
+                        <button className="btn btn-outline" onClick={handleRejectRequest}>
+                          Remove
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>
-        {isEditing ? (
-          <form className="profile-form" onSubmit={handleSubmit}>
-            <div className="profile-form-row">
-              <label>Name</label>
-              <input name="name" value={formData.name} onChange={handleChange} required />
-            </div>
-            <div className="profile-form-row">
-              <label>Bio</label>
-              <textarea name="bio" value={formData.bio} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>Company</label>
-              <input name="company" value={formData.company} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>Position</label>
-              <input name="position" value={formData.position} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>College/University</label>
-              <input name="college" value={formData.college} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>Specialization</label>
-              <input name="specialization" value={formData.specialization} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>Graduation Year</label>
-              <input name="graduationYear" value={formData.graduationYear} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>Skills (comma separated)</label>
-              <input name="skills" value={formData.skills} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>LinkedIn</label>
-              <input name="linkedin" value={formData.linkedin} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>Twitter</label>
-              <input name="twitter" value={formData.twitter} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>GitHub</label>
-              <input name="github" value={formData.github} onChange={handleChange} />
-            </div>
-            <div className="profile-form-row">
-              <label>Website</label>
-              <input name="website" value={formData.website} onChange={handleChange} />
-            </div>
-            <div className="profile-form-actions">
-              <button type="button" onClick={() => setIsEditing(false)} className="btn btn-outline">Cancel</button>
-              <button type="submit" className="btn btn-primary">Save Changes</button>
-            </div>
-          </form>
-        ) : (
-          <div className="profile-details">
-            <div><strong>Company:</strong> {user.company}</div>
-            <div><strong>Position:</strong> {user.position}</div>
-            <div><strong>College:</strong> {user.college}</div>
-            <div><strong>Specialization:</strong> {user.specialization}</div>
-            <div><strong>Graduation Year:</strong> {user.graduationYear}</div>
-            <div><strong>Skills:</strong> {user.skills && user.skills.join(', ')}</div>
-            <div><strong>LinkedIn:</strong> <a href={user.socials?.linkedin} target="_blank" rel="noopener noreferrer">{user.socials?.linkedin}</a></div>
-            <div><strong>Twitter:</strong> <a href={user.socials?.twitter} target="_blank" rel="noopener noreferrer">{user.socials?.twitter}</a></div>
-            <div><strong>GitHub:</strong> <a href={user.socials?.github} target="_blank" rel="noopener noreferrer">{user.socials?.github}</a></div>
-            <div><strong>Website:</strong> <a href={user.socials?.website} target="_blank" rel="noopener noreferrer">{user.socials?.website}</a></div>
-          </div>
-        )}
       </div>
-      
-      {/* User posts section - add this when you implement posts */}
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold text-gray-900">Posts</h2>
-        {userPosts.length === 0 ? (
-          <p className="mt-4 text-gray-600">No posts yet.</p>
-        ) : (
-          <div className="mt-4 grid grid-cols-1 gap-6">
-            {/* Map through userPosts and render them */}
-            {userPosts.map((post) => (
-              <div key={post._id} className="bg-white p-6 rounded-lg shadow-md">
-                <p>{post.content}</p>
+
+      {/* Main Content */}
+      <div className="profile-content">
+        <div className="profile-main">
+          {/* About Section */}
+          <div className="profile-section">
+            <h2 className="section-title">About</h2>
+            {isEditing ? (
+              <div className="form-group">
+                <textarea
+                  name="bio"
+                  value={formData.bio}
+                  onChange={handleChange}
+                  placeholder="Tell us about yourself..."
+                  className="form-textarea"
+                  rows="4"
+                />
               </div>
-            ))}
+            ) : (
+              <p className="section-content">{user.bio || 'No bio available.'}</p>
+            )}
           </div>
-        )}
+
+          {/* Experience Section */}
+          <div className="profile-section">
+            <h2 className="section-title">
+              <FaBriefcase className="inline mr-3" />
+              Experience
+            </h2>
+            {isEditing ? (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Company</label>
+                  <input
+                    name="company"
+                    value={formData.company}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Company name"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Position</label>
+                  <input
+                    name="position"
+                    value={formData.position}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Job title"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="experience-item">
+                <div className="experience-icon">
+                  <FaBuilding />
+                </div>
+                <div className="experience-content">
+                  <h3 className="experience-title">{user.position || 'Position not specified'}</h3>
+                  <p className="experience-company">{user.company || 'Company not specified'}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Education Section */}
+          <div className="profile-section">
+            <h2 className="section-title">
+              <FaGraduationCap className="inline mr-3" />
+              Education
+            </h2>
+            {isEditing ? (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>College/University</label>
+                  <input
+                    name="college"
+                    value={formData.college}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Institution name"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Specialization</label>
+                  <input
+                    name="specialization"
+                    value={formData.specialization}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Field of study"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Graduation Year</label>
+                  <input
+                    name="graduationYear"
+                    value={formData.graduationYear}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Year"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="education-item">
+                <div className="education-icon">
+                  <FaGraduationCap />
+                </div>
+                <div className="education-content">
+                  <h3 className="education-title">{user.specialization || 'Field not specified'}</h3>
+                  <p className="education-institution">{user.college || 'Institution not specified'}</p>
+                  {user.graduationYear && (
+                    <p className="education-year">
+                      <FaCalendarAlt className="inline mr-2" />
+                      {user.graduationYear}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Skills Section */}
+          <div className="profile-section">
+            <h2 className="section-title">
+              <FaStar className="inline mr-3" />
+              Skills
+            </h2>
+            {isEditing ? (
+              <div className="form-group">
+                <input
+                  name="skills"
+                  value={formData.skills}
+                  onChange={handleChange}
+                  className="form-input"
+                  placeholder="Skills (comma separated)"
+                />
+              </div>
+            ) : (
+              <div className="skills-container">
+                {user.skills && user.skills.length > 0 ? (
+                  user.skills.map((skill, index) => (
+                    <span key={index} className="skill-tag">
+                      {skill.trim()}
+                    </span>
+                  ))
+                ) : (
+                  <p className="section-content">No skills listed.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Social Links Section */}
+          <div className="profile-section">
+            <h2 className="section-title">Social Links</h2>
+            {isEditing ? (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>LinkedIn</label>
+                  <input
+                    name="linkedin"
+                    value={formData.linkedin}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="LinkedIn profile URL"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Twitter</label>
+                  <input
+                    name="twitter"
+                    value={formData.twitter}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Twitter profile URL"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>GitHub</label>
+                  <input
+                    name="github"
+                    value={formData.github}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="GitHub profile URL"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Website</label>
+                  <input
+                    name="website"
+                    value={formData.website}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Personal website URL"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="social-links">
+                {user.socials?.linkedin && (
+                  <a href={user.socials.linkedin} target="_blank" rel="noopener noreferrer" className="social-link linkedin">
+                    <FaLinkedin />
+                    <span>LinkedIn</span>
+                  </a>
+                )}
+                {user.socials?.twitter && (
+                  <a href={user.socials.twitter} target="_blank" rel="noopener noreferrer" className="social-link twitter">
+                    <FaTwitter />
+                    <span>Twitter</span>
+                  </a>
+                )}
+                {user.socials?.github && (
+                  <a href={user.socials.github} target="_blank" rel="noopener noreferrer" className="social-link github">
+                    <FaGithub />
+                    <span>GitHub</span>
+                  </a>
+                )}
+                {user.socials?.website && (
+                  <a href={user.socials.website} target="_blank" rel="noopener noreferrer" className="social-link website">
+                    <FaGlobe />
+                    <span>Website</span>
+                  </a>
+                )}
+                {!user.socials?.linkedin && !user.socials?.twitter && !user.socials?.github && !user.socials?.website && (
+                  <p className="section-content">No social links available.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Form Actions */}
+          {isEditing && (
+            <div className="form-actions">
+              <button type="button" onClick={() => setIsEditing(false)} className="btn btn-outline">
+                Cancel
+              </button>
+              <button type="submit" onClick={handleSubmit} className="btn btn-primary">
+                Save Changes
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="profile-sidebar">
+          {/* Connection Stats */}
+          <div className="sidebar-card">
+            <h3 className="sidebar-title">Profile Info</h3>
+            <div className="sidebar-content">
+              <div className="info-item">
+                <span className="info-label">Role:</span>
+                <span className="info-value">{user.role}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-label">Member since:</span>
+                <span className="info-value">
+                  {new Date(user.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Posts */}
+          <div className="sidebar-card">
+            <h3 className="sidebar-title">Recent Posts</h3>
+            <div className="sidebar-content">
+              {userPosts.length === 0 ? (
+                <p className="text-gray-500 text-sm">No posts yet.</p>
+              ) : (
+                <div className="recent-posts">
+                  {userPosts.slice(0, 3).map((post) => (
+                    <div key={post._id} className="recent-post">
+                      <p className="post-preview">{post.content.substring(0, 100)}...</p>
+                      <span className="post-date">
+                        {new Date(post.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

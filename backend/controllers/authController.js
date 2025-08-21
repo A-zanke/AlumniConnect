@@ -158,6 +158,7 @@ const updateUserProfile = async (req, res) => {
       user.name = req.body.name || user.name;
       user.email = req.body.email || user.email;
       user.bio = req.body.bio || user.bio;
+      user.location = req.body.location || user.location;
       user.college = req.body.college || user.college;
       user.specialization = req.body.specialization || user.specialization;
       user.graduationYear = req.body.graduationYear || user.graduationYear;
@@ -191,6 +192,7 @@ const updateUserProfile = async (req, res) => {
         role: updatedUser.role,
         bio: updatedUser.bio,
         avatarUrl: updatedUser.avatarUrl,
+        location: updatedUser.location,
         college: updatedUser.college,
         specialization: updatedUser.specialization,
         graduationYear: updatedUser.graduationYear,
