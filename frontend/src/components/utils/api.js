@@ -287,4 +287,15 @@ export const userAPI = {
 //   }
 // };
 
+// Messages API
+export const fetchMessages = async (userId) => {
+  try {
+    const response = await axios.get(`/api/messages/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    throw error;
+  }
+};
+
 export default axios;
