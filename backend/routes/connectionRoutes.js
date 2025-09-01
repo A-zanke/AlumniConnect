@@ -1,133 +1,107 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
-const {
-  getConnections,
-  getFollowers,
-  getFollowing,
-  getPendingRequests,
-  getSuggestedConnections,
-  sendRequest,
-  acceptRequest,
-  rejectRequest,
-  removeConnection
-} = require('../controllers/connectionController');
 const User = require('../models/User');
-const NotificationService = require('../services/notificationService');
 
-// All routes are protected
-router.use(protect);
-
-// Get all connections, followers, following, and suggestions
-router.get('/', getConnections);
-router.get('/followers', getFollowers);
-router.get('/following', getFollowing);
-router.get('/requests', getPendingRequests);
-router.get('/suggested', getSuggestedConnections);
-
-// Connection management
-router.post('/', sendRequest);
-router.put('/:connectionId/accept', acceptRequest);
-router.delete('/:connectionId/reject', rejectRequest);
-router.delete('/:userId', removeConnection);
-
-// Send a connection request
-router.post('/request', async (req, res) => {
-    const fromUserId = req.user._id; // Get from authenticated user
-    const { toUserId } = req.body;
-    
-    if (!toUserId) return res.status(400).json({ message: 'Missing recipient user ID' });
-    if (fromUserId.toString() === toUserId) return res.status(400).json({ message: 'Cannot connect to yourself' });
+// Send connection request
+router.post('/', protect, async (req, res) => {
+    const { userId } = req.body;
+    const fromUserId = req.user._id;
     
     try {
+        if (!userId) return res.status(400).json({ message: 'Missing recipient user ID' });
+        if (fromUserId.toString() === userId) return res.status(400).json({ message: 'Cannot connect to yourself' });
+
         const fromUser = await User.findById(fromUserId);
-        const toUser = await User.findById(toUserId);
-        
-        if (!fromUser || !toUser) return res.status(404).json({ message: 'User not found' });
-        
-        // Check if already connected or requested
+        const toUser = await User.findById(userId);
+
+        if (!fromUser || !toUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Check if already connected or request already sent
+        if (fromUser.connections.includes(userId)) {
+            return res.status(400).json({ message: 'Already connected' });
+        }
         if (toUser.connectionRequests.includes(fromUserId)) {
             return res.status(400).json({ message: 'Connection request already sent' });
         }
-        if (toUser.connections.includes(fromUserId)) {
-            return res.status(400).json({ message: 'Already connected' });
-        }
-        
-        // Add request
+
+        // Add to connection requests
         toUser.connectionRequests.push(fromUserId);
         await toUser.save();
 
-        // Create notification
-        await NotificationService.createNotification({
-          recipientId: toUserId,
-          senderId: fromUserId,
-          type: 'connection_request',
-          content: `${fromUser.name} sent you a connection request`
-        });
-        
-        res.json({ message: 'Connection request sent successfully' });
+        res.status(200).json({ message: 'Connection request sent successfully' });
     } catch (error) {
         console.error('Error sending connection request:', error);
         res.status(500).json({ message: 'Error sending connection request' });
     }
 });
 
-// Accept a connection request
-router.post('/accept', async (req, res) => {
-    const { fromUserId, toUserId } = req.body;
-    if (!fromUserId || !toUserId) return res.status(400).json({ message: 'Missing user IDs' });
+// Accept connection request
+router.put('/:requestId/accept', protect, async (req, res) => {
+    const { requestId } = req.params;
+    const currentUserId = req.user._id;
+    
     try {
-        const fromUser = await User.findById(fromUserId);
-        const toUser = await User.findById(toUserId);
-        if (!fromUser || !toUser) return res.status(404).json({ message: 'User not found' });
-        // Remove from requests
-        toUser.connectionRequests = toUser.connectionRequests.filter(id => id.toString() !== fromUserId);
-        // Add to connections
-        toUser.connections.push(fromUserId);
-        fromUser.connections.push(toUserId);
-        await toUser.save();
-        await fromUser.save();
+        const currentUser = await User.findById(currentUserId);
+        const requesterUser = await User.findById(requestId);
 
-        // Create notification for the sender
-        await NotificationService.createNotification({
-          recipientId: fromUserId,
-          senderId: toUserId,
-          type: 'connection_accepted',
-          content: `${toUser.name} accepted your connection request`
-        });
+        if (!currentUser || !requesterUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
 
-        res.json({ message: 'Connection accepted' });
+        // Remove from connection requests
+        currentUser.connectionRequests = currentUser.connectionRequests.filter(
+            id => id.toString() !== requestId
+        );
+
+        // Add to connections (both ways)
+        if (!currentUser.connections.includes(requestId)) {
+            currentUser.connections.push(requestId);
+        }
+        if (!requesterUser.connections.includes(currentUserId)) {
+            requesterUser.connections.push(currentUserId);
+        }
+
+        await currentUser.save();
+        await requesterUser.save();
+
+        res.status(200).json({ message: 'Connection request accepted' });
     } catch (error) {
-        res.status(500).json({ message: 'Error accepting request' });
+        console.error('Error accepting connection request:', error);
+        res.status(500).json({ message: 'Error accepting connection request' });
     }
 });
 
-// Reject a connection request
-router.post('/reject', async (req, res) => {
-    const { fromUserId, toUserId } = req.body;
-    if (!fromUserId || !toUserId) return res.status(400).json({ message: 'Missing user IDs' });
+// Reject connection request
+router.delete('/:requestId/reject', protect, async (req, res) => {
+    const { requestId } = req.params;
+    const currentUserId = req.user._id;
+    
     try {
-        const toUser = await User.findById(toUserId);
-        if (!toUser) return res.status(404).json({ message: 'User not found' });
-        toUser.connectionRequests = toUser.connectionRequests.filter(id => id.toString() !== fromUserId);
-        await toUser.save();
+        const currentUser = await User.findById(currentUserId);
 
-        // Create notification for the sender
-        await NotificationService.createNotification({
-          recipientId: fromUserId,
-          senderId: toUserId,
-          type: 'connection_rejected',
-          content: `${toUser.name} declined your connection request`
-        });
+        if (!currentUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
 
-        res.json({ message: 'Connection request rejected' });
+        // Remove from connection requests
+        currentUser.connectionRequests = currentUser.connectionRequests.filter(
+            id => id.toString() !== requestId
+        );
+
+        await currentUser.save();
+
+        res.status(200).json({ message: 'Connection request rejected' });
     } catch (error) {
-        res.status(500).json({ message: 'Error rejecting request' });
+        console.error('Error rejecting connection request:', error);
+        res.status(500).json({ message: 'Error rejecting connection request' });
     }
 });
 
 // Get connection status between current user and another user
-router.get('/status/:userId', async (req, res) => {
+router.get('/status/:userId', protect, async (req, res) => {
     const { userId } = req.params;
     const currentUserId = req.user._id;
     
@@ -161,18 +135,63 @@ router.get('/status/:userId', async (req, res) => {
     }
 });
 
-// Get connection status (legacy endpoint)
-router.get('/status/:fromUserId/:toUserId', async (req, res) => {
-    const { fromUserId, toUserId } = req.params;
+// Get pending requests
+router.get('/requests', protect, async (req, res) => {
     try {
-        const fromUser = await User.findById(fromUserId);
-        const toUser = await User.findById(toUserId);
-        if (!fromUser || !toUser) return res.status(404).json({ message: 'User not found' });
-        if (fromUser.connections.includes(toUserId)) return res.json({ status: 'connected' });
-        if (toUser.connectionRequests.includes(fromUserId)) return res.json({ status: 'requested' });
-        return res.json({ status: 'none' });
+        const user = await User.findById(req.user._id)
+            .populate('connectionRequests', 'name username avatarUrl role');
+        
+        res.json({ data: user.connectionRequests || [] });
     } catch (error) {
-        res.status(500).json({ message: 'Error getting status' });
+        console.error('Error fetching pending requests:', error);
+        res.status(500).json({ message: 'Error fetching pending requests' });
+    }
+});
+
+// Get followers
+router.get('/followers', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .populate('connections', 'name username avatarUrl role');
+        
+        res.json({ data: user.connections || [] });
+    } catch (error) {
+        console.error('Error fetching followers:', error);
+        res.status(500).json({ message: 'Error fetching followers' });
+    }
+});
+
+// Get following
+router.get('/following', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .populate('connections', 'name username avatarUrl role');
+        
+        res.json({ data: user.connections || [] });
+    } catch (error) {
+        console.error('Error fetching following:', error);
+        res.status(500).json({ message: 'Error fetching following' });
+    }
+});
+
+// Get suggested connections
+router.get('/suggested', protect, async (req, res) => {
+    try {
+        const currentUser = await User.findById(req.user._id);
+        const allUsers = await User.find({
+            _id: { 
+                $nin: [
+                    req.user._id,
+                    ...currentUser.connections,
+                    ...currentUser.connectionRequests
+                ]
+            }
+        }).select('name username avatarUrl role department year').limit(10);
+        
+        res.json({ data: allUsers });
+    } catch (error) {
+        console.error('Error fetching suggested connections:', error);
+        res.status(500).json({ message: 'Error fetching suggested connections' });
     }
 });
 

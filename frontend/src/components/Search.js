@@ -57,8 +57,13 @@ const Search = () => {
             if (results.length > 0) {
                 const statuses = {};
                 await Promise.all(results.map(async (user) => {
-                    const res = await connectionAPI.getConnectionStatus(user._id);
-                    statuses[user._id] = res.status;
+                    try {
+                        const res = await connectionAPI.getConnectionStatus(user._id);
+                        statuses[user._id] = res.data?.status || res.status || 'none';
+                    } catch (error) {
+                        console.error('Error fetching status for user:', user._id, error);
+                        statuses[user._id] = 'none';
+                    }
                 }));
                 setConnectionStatuses(statuses);
             }
@@ -91,10 +96,11 @@ const Search = () => {
                 toast.error('Invalid user or cannot connect to yourself.');
                 return;
             }
-            await connectionAPI.sendRequest(userId);
+            await connectionAPI.followUser(userId);
             toast.success('Connection request sent!');
-            setConnectionStatuses(prev => ({ ...prev, [userId]: 'pending' }));
+            setConnectionStatuses(prev => ({ ...prev, [userId]: 'requested' }));
         } catch (error) {
+            console.error('Connection error:', error);
             toast.error('Failed to send connection request');
         }
     };

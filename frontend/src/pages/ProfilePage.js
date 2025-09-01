@@ -146,10 +146,11 @@ const ProfilePage = () => {
 
   const handleConnect = async (userId) => {
     try {
-      await connectionAPI.sendRequest(userId);
+      await connectionAPI.followUser(userId);
       toast.success('Connection request sent!');
-      setConnectionStatus('pending');
-    } catch {
+      setConnectionStatus('requested');
+    } catch (error) {
+      console.error('Connection error:', error);
       toast.error('Failed to send connection request');
     }
   };
@@ -160,7 +161,8 @@ const ProfilePage = () => {
       toast.success('Connection request accepted!');
       setPendingRequestFromUser(false);
       setConnectionStatus('connected');
-    } catch {
+    } catch (error) {
+      console.error('Accept error:', error);
       toast.error('Failed to accept request');
     }
   };
@@ -170,8 +172,9 @@ const ProfilePage = () => {
       await connectionAPI.rejectFollowRequest(user._id);
       toast.info('Connection request removed.');
       setPendingRequestFromUser(false);
-      setConnectionStatus('not_connected');
-    } catch {
+      setConnectionStatus('none');
+    } catch (error) {
+      console.error('Reject error:', error);
       toast.error('Failed to remove request');
     }
   };
