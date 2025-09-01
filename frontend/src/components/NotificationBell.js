@@ -3,8 +3,7 @@ import { FiBell } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import Avatar from './ui/Avatar';
 import { useAuth } from '../context/AuthContext';
-import { connectionAPI } from './utils/api';
-import axios from 'axios';
+import { connectionAPI, notificationsAPI } from './utils/api';
 
 const NotificationBell = () => {
   const { user } = useAuth();
@@ -16,8 +15,8 @@ const NotificationBell = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await axios.get('/api/notifications'); // adjust to your endpoint if different
-        setItems(res.data || []);
+        const res = await notificationsAPI.getNotifications();
+        setItems(res.data?.data || []);
       } catch {
         setItems([]);
       }
@@ -39,19 +38,19 @@ const NotificationBell = () => {
     setOpen(false);
   };
 
-  const accept = async (notificationId) => {
+  const accept = async (notification) => {
     try {
-      await connectionAPI.acceptFollowRequest(notificationId);
-      setItems(prev => prev.filter(n => n._id !== notificationId));
+      await connectionAPI.acceptFollowRequest(notification.sender._id);
+      setItems(prev => prev.filter(n => n._id !== notification._id));
     } catch (error) {
       console.error('Error accepting connection request:', error);
     }
   };
 
-  const reject = async (notificationId) => {
+  const reject = async (notification) => {
     try {
-      await connectionAPI.rejectFollowRequest(notificationId);
-      setItems(prev => prev.filter(n => n._id !== notificationId));
+      await connectionAPI.rejectFollowRequest(notification.sender._id);
+      setItems(prev => prev.filter(n => n._id !== notification._id));
     } catch (error) {
       console.error('Error rejecting connection request:', error);
     }
@@ -97,13 +96,13 @@ const NotificationBell = () => {
                       <div className="mt-2 flex gap-2">
                         <button 
                           className="px-3 py-1 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700" 
-                          onClick={() => accept(n._id)}
+                          onClick={() => accept(n)}
                         >
                           Accept
                         </button>
                         <button 
                           className="px-3 py-1 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" 
-                          onClick={() => reject(n._id)}
+                          onClick={() => reject(n)}
                         >
                           Reject
                         </button>

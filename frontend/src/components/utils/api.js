@@ -296,6 +296,18 @@ export const userAPI = {
 //   }
 // };
 
+// Notifications API
+export const notificationsAPI = {
+  // Get all notifications
+  getNotifications: () => axios.get('/api/notifications'),
+  
+  // Mark notification as read
+  markAsRead: (notificationId) => axios.put(`/api/notifications/${notificationId}/read`),
+  
+  // Mark all notifications as read
+  markAllAsRead: () => axios.put('/api/notifications/read-all'),
+};
+
 // Messages API
 export const fetchMessages = async (userId) => {
   try {

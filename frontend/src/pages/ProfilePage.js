@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
@@ -8,7 +8,8 @@ import { toast } from 'react-toastify';
 import { getAvatarUrl } from '../components/utils/helpers';
 import {
   FaUserCheck, FaUserFriends, FaUserPlus, FaEdit, FaLinkedin, FaTwitter, FaGithub,
-  FaGlobe, FaBriefcase, FaGraduationCap, FaStar, FaMapMarkerAlt, FaBuilding, FaCalendarAlt, FaComments
+  FaGlobe, FaBriefcase, FaGraduationCap, FaStar, FaMapMarkerAlt, FaBuilding, FaCalendarAlt, FaComments,
+  FaEllipsisH, FaUserMinus
 } from 'react-icons/fa';
 
 const PlaceholderAvatar = ({ name = '', size = 96, fontSize = 36 }) => {
@@ -48,6 +49,8 @@ const ProfilePage = () => {
 
   const [connectionStatus, setConnectionStatus] = useState('not_connected');
   const [pendingRequestFromUser, setPendingRequestFromUser] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const moreButtonRef = useRef(null);
 
   const isOwnProfile = useMemo(
     () => (!username && !userId) || (authUser && (authUser.username === username || authUser._id === userId)),
@@ -99,10 +102,16 @@ const ProfilePage = () => {
         }
 
         if (!isOwnProfile && u?._id) {
-          const statusRes = await connectionAPI.getConnectionStatus(u._id);
-          setConnectionStatus(statusRes.status || 'not_connected');
-          const pending = await connectionAPI.getPendingRequests();
-          setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          try {
+            const statusRes = await connectionAPI.getConnectionStatus(u._id);
+            setConnectionStatus(statusRes.data?.status || 'not_connected');
+            const pending = await connectionAPI.getPendingRequests();
+            setPendingRequestFromUser(pending.data?.some(req => req._id === u._id) || false);
+          } catch (error) {
+            console.error('Error loading connection status:', error);
+            setConnectionStatus('not_connected');
+            setPendingRequestFromUser(false);
+          }
         }
       } catch {
         toast.error('Failed to load profile');
@@ -112,6 +121,20 @@ const ProfilePage = () => {
     };
     load();
   }, [authUser, isOwnProfile, username, userId]);
+
+  // Close more options dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (moreButtonRef.current && !moreButtonRef.current.contains(event.target)) {
+        setShowMoreOptions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -156,11 +179,12 @@ const ProfilePage = () => {
 
   const handleConnect = async (userId) => {
     try {
+      setConnectionStatus('requested'); // Optimistically update UI
       await connectionAPI.followUser(userId);
       toast.success('Connection request sent!');
-      setConnectionStatus('requested');
     } catch (error) {
       console.error('Connection error:', error);
+      setConnectionStatus('not_connected'); // Revert on error
       toast.error('Failed to send connection request');
     }
   };
@@ -182,10 +206,22 @@ const ProfilePage = () => {
       await connectionAPI.rejectFollowRequest(user._id);
       toast.info('Connection request removed.');
       setPendingRequestFromUser(false);
-      setConnectionStatus('none');
+      setConnectionStatus('not_connected');
     } catch (error) {
       console.error('Reject error:', error);
       toast.error('Failed to remove request');
+    }
+  };
+
+  const handleUnfollow = async () => {
+    try {
+      await connectionAPI.unfollowUser(user._id);
+      toast.info('Connection removed.');
+      setConnectionStatus('not_connected');
+      setShowMoreOptions(false);
+    } catch (error) {
+      console.error('Unfollow error:', error);
+      toast.error('Failed to remove connection');
     }
   };
 
@@ -334,61 +370,99 @@ const ProfilePage = () => {
                     Message
                   </button>
                 )}
-                <button
-                  onClick={() => handleConnect(user._id)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: '24px',
-                    border: connectionStatus === 'connected' ? '1px solid #666666' : '1px solid #0a66c2',
-                    backgroundColor: connectionStatus === 'connected' ? 'white' : '#0a66c2',
-                    color: connectionStatus === 'connected' ? '#666666' : 'white',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 0.6 : 1
-                  }}
-                  disabled={
-                    connectionStatus === 'pending' ||
-                    connectionStatus === 'connected' ||
-                    pendingRequestFromUser
-                  }
-                  onMouseOver={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
-                      e.target.style.backgroundColor = '#004182';
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
-                      e.target.style.backgroundColor = '#0a66c2';
-                    }
-                  }}
-                >
-                  {connectionStatus === 'pending' ? (
-                    <>
-                      <FaUserCheck size={14} />
-                      Pending
-                    </>
-                  ) : connectionStatus === 'requested' ? (
-                    <>
-                      <FaUserCheck size={14} />
-                      Requested
-                    </>
-                  ) : connectionStatus === 'connected' ? (
-                    <>
-                      <FaUserFriends size={14} />
-                      Connected
-                    </>
-                  ) : (
-                    <>
-                      <FaUserPlus size={14} />
-                      Connect
-                    </>
-                  )}
-                </button>
+                {connectionStatus !== 'connected' && !pendingRequestFromUser && (
+                  <>
+                    <button
+                      onClick={() => handleConnect(user._id)}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '24px',
+                        border: connectionStatus === 'requested' ? '1px solid #666666' : '1px solid #0a66c2',
+                        backgroundColor: connectionStatus === 'requested' ? 'white' : '#0a66c2',
+                        color: connectionStatus === 'requested' ? '#666666' : 'white',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        cursor: connectionStatus === 'requested' ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        opacity: connectionStatus === 'requested' ? 0.6 : 1
+                      }}
+                      disabled={connectionStatus === 'requested'}
+                      onMouseOver={(e) => {
+                        if (connectionStatus !== 'requested') {
+                          e.target.style.backgroundColor = '#004182';
+                        }
+                      }}
+                      onMouseOut={(e) => {
+                        if (connectionStatus !== 'requested') {
+                          e.target.style.backgroundColor = '#0a66c2';
+                        }
+                      }}
+                    >
+                      {connectionStatus === 'requested' ? (
+                        <>
+                          <FaUserCheck size={14} />
+                          Requested
+                        </>
+                      ) : (
+                        <>
+                          <FaUserPlus size={14} />
+                          Connect
+                        </>
+                      )}
+                    </button>
+                    
+                    {/* More button for non-connected users */}
+                    <button
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '24px',
+                        border: '1px solid #666666',
+                        backgroundColor: 'white',
+                        color: '#666666',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      onMouseOver={(e) => {
+                        e.target.style.backgroundColor = '#f3f2ef';
+                      }}
+                      onMouseOut={(e) => {
+                        e.target.style.backgroundColor = 'white';
+                      }}
+                    >
+                      <FaEllipsisH size={14} />
+                    </button>
+                  </>
+                )}
+
+                {connectionStatus === 'connected' && (
+                  <button
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '24px',
+                      border: '1px solid #666666',
+                      backgroundColor: 'white',
+                      color: '#666666',
+                      fontWeight: '600',
+                      fontSize: '14px',
+                      cursor: 'default',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                    disabled
+                  >
+                    <FaUserFriends size={14} />
+                    Connected
+                  </button>
+                )}
 
                 {pendingRequestFromUser && (
                   <>
@@ -443,6 +517,79 @@ const ProfilePage = () => {
                       Remove
                     </button>
                   </>
+                )}
+
+                {/* More button for connected users */}
+                {connectionStatus === 'connected' && (
+                  <div ref={moreButtonRef} style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowMoreOptions(!showMoreOptions)}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '24px',
+                        border: '1px solid #666666',
+                        backgroundColor: 'white',
+                        color: '#666666',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      onMouseOver={(e) => {
+                        e.target.style.backgroundColor = '#f3f2ef';
+                      }}
+                      onMouseOut={(e) => {
+                        e.target.style.backgroundColor = 'white';
+                      }}
+                    >
+                      <FaEllipsisH size={14} />
+                    </button>
+
+                    {showMoreOptions && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: '8px',
+                        backgroundColor: 'white',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        zIndex: 1000,
+                        minWidth: '200px'
+                      }}>
+                        <button
+                          onClick={handleUnfollow}
+                          style={{
+                            width: '100%',
+                            padding: '12px 16px',
+                            border: 'none',
+                            backgroundColor: 'transparent',
+                            color: '#d32f2f',
+                            fontWeight: '600',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            borderBottom: '1px solid #f0f0f0'
+                          }}
+                          onMouseOver={(e) => {
+                            e.target.style.backgroundColor = '#f5f5f5';
+                          }}
+                          onMouseOut={(e) => {
+                            e.target.style.backgroundColor = 'transparent';
+                          }}
+                        >
+                          <FaUserMinus size={14} />
+                          Remove connection
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </>
             )}
