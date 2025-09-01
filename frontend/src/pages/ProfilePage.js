@@ -99,10 +99,19 @@ const ProfilePage = () => {
         }
 
         if (!isOwnProfile && u?._id) {
-          const statusRes = await connectionAPI.getConnectionStatus(u._id);
-          setConnectionStatus(statusRes.status || 'not_connected');
-          const pending = await connectionAPI.getPendingRequests();
-          setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          try {
+            const statusRes = await connectionAPI.getConnectionStatus(u._id);
+            const status = statusRes.data?.status || 'none';
+            setConnectionStatus(status);
+            
+            // Check if this user has sent a request to current user
+            const pending = await connectionAPI.getPendingRequests();
+            setPendingRequestFromUser(pending.data?.some(req => req._id === u._id) || false);
+          } catch (error) {
+            console.error('Error checking connection status:', error);
+            setConnectionStatus('none');
+            setPendingRequestFromUser(false);
+          }
         }
       } catch {
         toast.error('Failed to load profile');
@@ -156,11 +165,12 @@ const ProfilePage = () => {
 
   const handleConnect = async (userId) => {
     try {
+      setConnectionStatus('requested'); // Optimistically update UI
       await connectionAPI.followUser(userId);
       toast.success('Connection request sent!');
-      setConnectionStatus('requested');
     } catch (error) {
       console.error('Connection error:', error);
+      setConnectionStatus('none'); // Revert on error
       toast.error('Failed to send connection request');
     }
   };
@@ -189,6 +199,17 @@ const ProfilePage = () => {
     }
   };
 
+  const handleCancelRequest = async () => {
+    try {
+      await connectionAPI.unfollowUser(user._id);
+      toast.info('Connection request cancelled.');
+      setConnectionStatus('none');
+    } catch (error) {
+      console.error('Cancel error:', error);
+      toast.error('Failed to cancel request');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -213,21 +234,44 @@ const ProfilePage = () => {
   return (
     <div style={{ backgroundColor: '#f3f2ef', minHeight: '100vh' }}>
       <div className="container mx-auto px-4 py-8">
-        {/* LinkedIn-style header */}
+        {/* Cover Photo Section */}
         <div
           style={{
             backgroundColor: 'white',
             borderRadius: '8px',
-            padding: '24px',
             marginBottom: '16px',
             boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
-            position: 'relative'
+            position: 'relative',
+            overflow: 'hidden'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {/* Avatar */}
-            <div>
-              {user.avatarUrl ? (
+          {/* Cover Photo */}
+          <div
+            style={{
+              height: '200px',
+              background: 'linear-gradient(135deg, #0a66c2 0%, #004182 100%)',
+              position: 'relative'
+            }}
+          >
+            {isOwnProfile && isEditing && (
+              <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
+                <FileInput 
+                  accept="image/*" 
+                  onChange={(file) => {
+                    // Handle cover photo upload
+                    console.log('Cover photo:', file);
+                  }}
+                  label="Edit cover photo"
+                />
+              </div>
+            )}
+          </div>
+          
+          {/* Profile Header */}
+          <div style={{ padding: '24px', position: 'relative' }}>
+            {/* Avatar positioned over cover photo */}
+            <div style={{ position: 'absolute', top: '-60px', left: '24px' }}>
+              {user.avatarUrl && user.avatarUrl !== 'default' ? (
                 <img
                   src={getAvatarUrl(user.avatarUrl)}
                   alt={user.name}
@@ -238,15 +282,15 @@ const ProfilePage = () => {
                   }}
                 />
               ) : (
-                <div style={{
-                  width: 120, height: 120, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #0a66c2, #004182)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'white', fontWeight: 'bold', fontSize: '48px',
-                  border: '4px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
-                }}>
-                  {(user.name || '?').charAt(0).toUpperCase()}
-                </div>
+                <PlaceholderAvatar 
+                  name={user.name} 
+                  size={120} 
+                  fontSize={48}
+                  style={{
+                    border: '4px solid white',
+                    boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
+                  }}
+                />
               )}
               {isOwnProfile && isEditing && (
                 <div style={{ marginTop: 8 }}>
@@ -254,65 +298,34 @@ const ProfilePage = () => {
                 </div>
               )}
             </div>
+            
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginTop: '60px' }}>
+              {/* Identity */}
+              <div style={{ flex: 1 }}>
+                <h1 style={{ fontWeight: '400', fontSize: '32px', color: '#000000', margin: '0 0 4px 0' }}>{user.name}</h1>
+                <div style={{ color: '#666666', fontSize: '16px', marginBottom: '8px' }}>
+                  {user.position && user.company ? `${user.position} at ${user.company}` : user.position || user.company || user.role}
+                </div>
+                <div style={{ color: '#666666', fontSize: '14px', marginBottom: '4px' }}>
+                  <FaMapMarkerAlt style={{ marginRight: '4px' }} />
+                  {user.location || 'Location not specified'}
+                </div>
+                <div style={{ color: '#666666', fontSize: '14px' }}>
+                  {user.connections?.length || 0} connections
+                </div>
+              </div>
 
-            {/* Identity */}
-            <div style={{ flex: 1 }}>
-              <h1 style={{ fontWeight: '400', fontSize: '32px', color: '#000000', margin: '0 0 4px 0' }}>{user.name}</h1>
-              <div style={{ color: '#666666', fontSize: '16px', marginBottom: '8px' }}>
-                {user.position && user.company ? `${user.position} at ${user.company}` : user.position || user.company || user.role}
-              </div>
-              <div style={{ color: '#666666', fontSize: '14px', marginBottom: '4px' }}>
-                <FaMapMarkerAlt style={{ marginRight: '4px' }} />
-                {user.location || 'Location not specified'}
-              </div>
-              <div style={{ color: '#666666', fontSize: '14px' }}>
-                {user.connections?.length || 0} connections
-              </div>
-            </div>
-
-          {/* Actions */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
-            {isOwnProfile ? (
-              <button
-                onClick={() => setIsEditing(prev => !prev)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '24px',
-                  border: '1px solid #0a66c2',
-                  backgroundColor: isEditing ? '#f3f2ef' : '#0a66c2',
-                  color: isEditing ? '#0a66c2' : 'white',
-                  fontWeight: '600',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-                onMouseOver={(e) => {
-                  if (!isEditing) {
-                    e.target.style.backgroundColor = '#004182';
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (!isEditing) {
-                    e.target.style.backgroundColor = '#0a66c2';
-                  }
-                }}
-              >
-                <FaEdit size={14} />
-                {isEditing ? 'Cancel' : 'Edit Profile'}
-              </button>
-            ) : (
-              <>
-                {showChat && (
+              {/* Actions */}
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+                {isOwnProfile ? (
                   <button
+                    onClick={() => setIsEditing(prev => !prev)}
                     style={{
                       padding: '8px 16px',
                       borderRadius: '24px',
                       border: '1px solid #0a66c2',
-                      backgroundColor: 'white',
-                      color: '#0a66c2',
+                      backgroundColor: isEditing ? '#f3f2ef' : '#0a66c2',
+                      color: isEditing ? '#0a66c2' : 'white',
                       fontWeight: '600',
                       fontSize: '14px',
                       cursor: 'pointer',
@@ -321,134 +334,191 @@ const ProfilePage = () => {
                       alignItems: 'center',
                       gap: '6px'
                     }}
-                    onClick={() => navigate('/messages')}
-                    title="Open chat"
                     onMouseOver={(e) => {
-                      e.target.style.backgroundColor = '#f3f2ef';
+                      if (!isEditing) {
+                        e.target.style.backgroundColor = '#004182';
+                      }
                     }}
                     onMouseOut={(e) => {
-                      e.target.style.backgroundColor = 'white';
+                      if (!isEditing) {
+                        e.target.style.backgroundColor = '#0a66c2';
+                      }
                     }}
                   >
-                    <FaComments size={14} />
-                    Message
+                    <FaEdit size={14} />
+                    {isEditing ? 'Cancel' : 'Edit Profile'}
                   </button>
-                )}
-                <button
-                  onClick={() => handleConnect(user._id)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: '24px',
-                    border: connectionStatus === 'connected' ? '1px solid #666666' : '1px solid #0a66c2',
-                    backgroundColor: connectionStatus === 'connected' ? 'white' : '#0a66c2',
-                    color: connectionStatus === 'connected' ? '#666666' : 'white',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 0.6 : 1
-                  }}
-                  disabled={
-                    connectionStatus === 'pending' ||
-                    connectionStatus === 'connected' ||
-                    pendingRequestFromUser
-                  }
-                  onMouseOver={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
-                      e.target.style.backgroundColor = '#004182';
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
-                      e.target.style.backgroundColor = '#0a66c2';
-                    }
-                  }}
-                >
-                  {connectionStatus === 'pending' ? (
-                    <>
-                      <FaUserCheck size={14} />
-                      Pending
-                    </>
-                  ) : connectionStatus === 'requested' ? (
-                    <>
-                      <FaUserCheck size={14} />
-                      Requested
-                    </>
-                  ) : connectionStatus === 'connected' ? (
-                    <>
-                      <FaUserFriends size={14} />
-                      Connected
-                    </>
-                  ) : (
-                    <>
-                      <FaUserPlus size={14} />
-                      Connect
-                    </>
-                  )}
-                </button>
-
-                {pendingRequestFromUser && (
+                ) : (
                   <>
-                    <button 
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '24px',
-                        border: '1px solid #0a66c2',
-                        backgroundColor: '#0a66c2',
-                        color: 'white',
-                        fontWeight: '600',
-                        fontSize: '14px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                      onClick={handleAcceptRequest}
-                      onMouseOver={(e) => {
-                        e.target.style.backgroundColor = '#004182';
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.backgroundColor = '#0a66c2';
-                      }}
-                    >
-                      Accept
-                    </button>
-                    <button 
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '24px',
-                        border: '1px solid #666666',
-                        backgroundColor: 'white',
-                        color: '#666666',
-                        fontWeight: '600',
-                        fontSize: '14px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px'
-                      }}
-                      onClick={handleRejectRequest}
-                      onMouseOver={(e) => {
-                        e.target.style.backgroundColor = '#f3f2ef';
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.backgroundColor = 'white';
-                      }}
-                    >
-                      Remove
-                    </button>
+                    {showChat && (
+                      <button
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '24px',
+                          border: '1px solid #0a66c2',
+                          backgroundColor: 'white',
+                          color: '#0a66c2',
+                          fontWeight: '600',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                        onClick={() => navigate('/messages')}
+                        title="Open chat"
+                        onMouseOver={(e) => {
+                          e.target.style.backgroundColor = '#f3f2ef';
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.backgroundColor = 'white';
+                        }}
+                      >
+                        <FaComments size={14} />
+                        Message
+                      </button>
+                    )}
+                    {connectionStatus === 'requested' ? (
+                      <button
+                        onClick={handleCancelRequest}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '24px',
+                          border: '1px solid #666666',
+                          backgroundColor: 'white',
+                          color: '#666666',
+                          fontWeight: '600',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                        onMouseOver={(e) => {
+                          e.target.style.backgroundColor = '#f3f2ef';
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.backgroundColor = 'white';
+                        }}
+                      >
+                        <FaUserCheck size={14} />
+                        Cancel Request
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleConnect(user._id)}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '24px',
+                          border: connectionStatus === 'connected' ? '1px solid #666666' : '1px solid #0a66c2',
+                          backgroundColor: connectionStatus === 'connected' ? 'white' : '#0a66c2',
+                          color: connectionStatus === 'connected' ? '#666666' : 'white',
+                          fontWeight: '600',
+                          fontSize: '14px',
+                          cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 0.6 : 1
+                        }}
+                        disabled={
+                          connectionStatus === 'pending' ||
+                          connectionStatus === 'connected' ||
+                          pendingRequestFromUser
+                        }
+                        onMouseOver={(e) => {
+                          if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                            e.target.style.backgroundColor = '#004182';
+                          }
+                        }}
+                        onMouseOut={(e) => {
+                          if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                            e.target.style.backgroundColor = '#0a66c2';
+                          }
+                        }}
+                      >
+                        {connectionStatus === 'pending' ? (
+                          <>
+                            <FaUserCheck size={14} />
+                            Pending
+                          </>
+                        ) : connectionStatus === 'connected' ? (
+                          <>
+                            <FaUserFriends size={14} />
+                            Connected
+                          </>
+                        ) : (
+                          <>
+                            <FaUserPlus size={14} />
+                            Connect
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {pendingRequestFromUser && (
+                      <>
+                        <button 
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '24px',
+                            border: '1px solid #0a66c2',
+                            backgroundColor: '#0a66c2',
+                            color: 'white',
+                            fontWeight: '600',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                          onClick={handleAcceptRequest}
+                          onMouseOver={(e) => {
+                            e.target.style.backgroundColor = '#004182';
+                          }}
+                          onMouseOut={(e) => {
+                            e.target.style.backgroundColor = '#0a66c2';
+                          }}
+                        >
+                          Accept
+                        </button>
+                        <button 
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '24px',
+                            border: '1px solid #666666',
+                            backgroundColor: 'white',
+                            color: '#666666',
+                            fontWeight: '600',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                          onClick={handleRejectRequest}
+                          onMouseOver={(e) => {
+                            e.target.style.backgroundColor = '#f3f2ef';
+                          }}
+                          onMouseOut={(e) => {
+                            e.target.style.backgroundColor = 'white';
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
-              </>
-            )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
         {/* Main content */}
         <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
