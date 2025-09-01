@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, roleMiddleware } = require('../middleware/authMiddleware');
 const { getAnalytics, listUsers, setUserRole, deleteUser, exportUsersCsv, exportPostsCsv, exportEventsCsv, listDepartments, createDepartment, deleteDepartment } = require('../controllers/adminController');
+const { listPending } = require('../controllers/eventsController');
 
 router.use(protect, roleMiddleware('admin'));
 
@@ -13,6 +14,9 @@ router.delete('/users/:id', deleteUser);
 router.get('/export/users.csv', exportUsersCsv);
 router.get('/export/posts.csv', exportPostsCsv);
 router.get('/export/events.csv', exportEventsCsv);
+
+// Pending events list
+router.get('/events/pending', listPending);
 
 // Branches (Departments)
 router.get('/departments', listDepartments);

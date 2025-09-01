@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Spinner from './ui/Spinner';
 
-const PrivateRoute = ({ children }) => {
+const PrivateRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -16,6 +16,12 @@ const PrivateRoute = ({ children }) => {
 
   if (!user) {
     return <Navigate to="/login" />;
+  }
+
+  if (roles && roles.length > 0) {
+    const userRole = (user.role || '').toLowerCase();
+    const ok = roles.map(r => r.toLowerCase()).includes(userRole);
+    if (!ok) return <Navigate to="/" />;
   }
 
   return children;

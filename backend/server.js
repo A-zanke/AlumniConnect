@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorHandler');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +26,8 @@ app.use(cors({
   origin: 'http://localhost:3000',
   credentials: true
 }));
+app.use(helmet());
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }));
 
 // Logging in development
 if (process.env.NODE_ENV !== 'production') {

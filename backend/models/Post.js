@@ -25,6 +25,9 @@ const PostSchema = new mongoose.Schema({
     enum: ['public', 'connections', 'private'],
     default: 'public'
   },
+  departmentScope: [{ type: String }],
+  yearScope: [{ type: Number }],
+  roleScope: [{ type: String }],
   location: {
     type: String,
     default: null

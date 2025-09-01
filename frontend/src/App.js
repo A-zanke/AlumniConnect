@@ -6,6 +6,7 @@ import PrivateRoute from './components/PrivateRoute';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import HomePage from './pages/HomePage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import EventsPage from './pages/EventsPage';
@@ -72,6 +73,14 @@ function App() {
                   }
                 />
                 <Route path="/search" element={<SearchPage />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminDashboardPage />
+                    </PrivateRoute>
+                  }
+                />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </main>
