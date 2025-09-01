@@ -99,10 +99,18 @@ const ProfilePage = () => {
         }
 
         if (!isOwnProfile && u?._id) {
-          const statusRes = await connectionAPI.getConnectionStatus(u._id);
-          setConnectionStatus(statusRes.status || 'not_connected');
-          const pending = await connectionAPI.getPendingRequests();
-          setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          try {
+            const statusRes = await connectionAPI.getConnectionStatus(u._id);
+            setConnectionStatus(statusRes.data?.status || 'none');
+            
+            // Check if there's a pending request from this user
+            const pending = await connectionAPI.getPendingRequests();
+            setPendingRequestFromUser(pending.data?.some(req => req._id === u._id) || false);
+          } catch (error) {
+            console.error('Error fetching connection status:', error);
+            setConnectionStatus('none');
+            setPendingRequestFromUser(false);
+          }
         }
       } catch {
         toast.error('Failed to load profile');
@@ -156,11 +164,12 @@ const ProfilePage = () => {
 
   const handleConnect = async (userId) => {
     try {
+      setConnectionStatus('requested'); // Optimistic update
       await connectionAPI.followUser(userId);
       toast.success('Connection request sent!');
-      setConnectionStatus('requested');
     } catch (error) {
       console.error('Connection error:', error);
+      setConnectionStatus('none'); // Revert on error
       toast.error('Failed to send connection request');
     }
   };
@@ -236,18 +245,25 @@ const ProfilePage = () => {
                     objectFit: 'cover', border: '4px solid white',
                     boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
                   }}
+                  onError={(e) => {
+                    // If image fails to load, show default avatar
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
                 />
-              ) : (
-                <div style={{
+              ) : null}
+              <div 
+                style={{
                   width: 120, height: 120, borderRadius: '50%',
                   background: 'linear-gradient(135deg, #0a66c2, #004182)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  display: user.avatarUrl ? 'none' : 'flex', 
+                  alignItems: 'center', justifyContent: 'center',
                   color: 'white', fontWeight: 'bold', fontSize: '48px',
                   border: '4px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
-                }}>
-                  {(user.name || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
+                }}
+              >
+                {(user.name || '?').charAt(0).toUpperCase()}
+              </div>
               {isOwnProfile && isEditing && (
                 <div style={{ marginTop: 8 }}>
                   <FileInput accept="image/*" onChange={handleAvatarChange} />
@@ -268,6 +284,12 @@ const ProfilePage = () => {
               <div style={{ color: '#666666', fontSize: '14px' }}>
                 {user.connections?.length || 0} connections
               </div>
+              {user.college && (
+                <div style={{ color: '#666666', fontSize: '14px', marginTop: '4px' }}>
+                  <FaGraduationCap style={{ marginRight: '4px' }} />
+                  {user.college}
+                </div>
+              )}
             </div>
 
           {/* Actions */}
@@ -344,25 +366,25 @@ const ProfilePage = () => {
                     color: connectionStatus === 'connected' ? '#666666' : 'white',
                     fontWeight: '600',
                     fontSize: '14px',
-                    cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 'not-allowed' : 'pointer',
+                    cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || connectionStatus === 'requested' ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 0.6 : 1
+                    opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || connectionStatus === 'requested' ? 0.6 : 1
                   }}
                   disabled={
                     connectionStatus === 'pending' ||
                     connectionStatus === 'connected' ||
-                    pendingRequestFromUser
+                    connectionStatus === 'requested'
                   }
                   onMouseOver={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && connectionStatus !== 'requested') {
                       e.target.style.backgroundColor = '#004182';
                     }
                   }}
                   onMouseOut={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && connectionStatus !== 'requested') {
                       e.target.style.backgroundColor = '#0a66c2';
                     }
                   }}
@@ -444,6 +466,30 @@ const ProfilePage = () => {
                     </button>
                   </>
                 )}
+                <button
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '24px',
+                    border: '1px solid #666666',
+                    backgroundColor: 'white',
+                    color: '#666666',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  onMouseOver={(e) => {
+                    e.target.style.backgroundColor = '#f3f2ef';
+                  }}
+                  onMouseOut={(e) => {
+                    e.target.style.backgroundColor = 'white';
+                  }}
+                >
+                  More
+                </button>
               </>
             )}
           </div>
@@ -595,6 +641,16 @@ const ProfilePage = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
                 <span style={{ color: '#64748b' }}>Member since</span><span style={{ fontWeight: 700 }}>{new Date(user.createdAt).toLocaleDateString()}</span>
               </div>
+              {user.department && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+                  <span style={{ color: '#64748b' }}>Department</span><span style={{ fontWeight: 700 }}>{user.department}</span>
+                </div>
+              )}
+              {user.year && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+                  <span style={{ color: '#64748b' }}>Year</span><span style={{ fontWeight: 700 }}>{user.year}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -604,15 +660,39 @@ const ProfilePage = () => {
               padding: '24px', 
               boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
             }}>
-              <h3 style={{ fontWeight: '600', fontSize: '18px', marginBottom: '16px', color: '#000000' }}>Recent Posts</h3>
+              <h3 style={{ fontWeight: '600', fontSize: '18px', marginBottom: '16px', color: '#000000' }}>Recent Activity</h3>
             {userPosts.length === 0 ? (
-              <p style={{ color: '#64748b' }}>No posts yet.</p>
+              <p style={{ color: '#64748b' }}>No recent activity.</p>
             ) : (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {userPosts.slice(0, 4).map((post) => (
-                  <div key={post._id} className="hover-tilt" style={{ background: 'white', borderRadius: 12, padding: 12, border: '1px solid rgba(6,182,212,.12)' }}>
-                    <div style={{ fontWeight: 700, color: '#334155' }}>{post.content.substring(0, 100)}{post.content.length > 100 ? '…' : ''}</div>
-                    <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 6 }}>{new Date(post.createdAt).toLocaleDateString()}</div>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {userPosts.slice(0, 3).map((post) => (
+                  <div key={post._id} style={{ 
+                    padding: '12px', 
+                    border: '1px solid #e1e5e9', 
+                    borderRadius: '8px',
+                    backgroundColor: '#fafafa'
+                  }}>
+                    <div style={{ 
+                      fontWeight: 600, 
+                      color: '#334155', 
+                      fontSize: '14px',
+                      marginBottom: '4px'
+                    }}>
+                      {post.content.substring(0, 80)}{post.content.length > 80 ? '…' : ''}
+                    </div>
+                    <div style={{ 
+                      color: '#64748b', 
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <span>{new Date(post.createdAt).toLocaleDateString()}</span>
+                      <span>•</span>
+                      <span>{post.likes?.length || 0} likes</span>
+                      <span>•</span>
+                      <span>{post.comments?.length || 0} comments</span>
+                    </div>
                   </div>
                 ))}
               </div>
