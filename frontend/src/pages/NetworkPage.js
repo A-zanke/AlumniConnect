@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { connectionAPI } from '../utils/api';
+import { connectionAPI } from '../components/utils/api';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import { toast } from 'react-toastify';
 import NetworkGraph from '../components/network/NetworkGraph';
 import { motion } from 'framer-motion';
 import { FaUserPlus, FaUserMinus, FaUsers, FaUserFriends, FaNetworkWired, FaUserCheck } from 'react-icons/fa';
-import { getAvatarUrl } from '../utils/helpers';
+import { getAvatarUrl } from '../components/utils/helpers';
 
 const NetworkPage = () => {
   const { user } = useAuth();

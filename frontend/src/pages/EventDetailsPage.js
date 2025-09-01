@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { eventsAPI } from '../utils/api';
+import { eventsAPI } from '../components/utils/api';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 

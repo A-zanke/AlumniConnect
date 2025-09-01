@@ -5,7 +5,7 @@ import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { userAPI, postsAPI, connectionAPI } from '../components/utils/api';
 import { toast } from 'react-toastify';
-import { getAvatarUrl } from '../utils/helpers';
+import { getAvatarUrl } from '../components/utils/helpers';
 import {
   FaUserCheck, FaUserFriends, FaUserPlus, FaEdit, FaLinkedin, FaTwitter, FaGithub,
   FaGlobe, FaBriefcase, FaGraduationCap, FaStar, FaMapMarkerAlt, FaBuilding, FaCalendarAlt, FaComments

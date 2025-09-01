@@ -2,9 +2,9 @@ import React, { useState, useEffect, useContext, useRef, useCallback } from 'rea
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import { toast } from 'react-toastify';
-import { connectionAPI, fetchMessages } from '../utils/api';
+import { connectionAPI, fetchMessages } from '../components/utils/api';
 import { io } from 'socket.io-client';
-import { getAvatarUrl } from '../utils/helpers';
+import { getAvatarUrl } from '../components/utils/helpers';
 
 const MessagesPage = () => {
   const { user } = useAuth();

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState, useRef } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { getAvatarUrl } from '../../utils/helpers';
+import { getAvatarUrl } from '../utils/helpers';
 
 const NetworkGraph = ({ connections, currentUser }) => {
   const navigate = useNavigate();

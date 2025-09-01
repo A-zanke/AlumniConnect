@@ -1,5 +1,5 @@
 import React from 'react';
-import { getAvatarUrl } from '../../utils/helpers';
+import { getAvatarUrl } from '../utils/helpers';
 
 const Avatar = ({ name = '', avatarUrl, size = 40, style = {} }) => {
   const src = avatarUrl ? getAvatarUrl(avatarUrl) : null;
