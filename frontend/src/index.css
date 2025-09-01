@@ -27,6 +27,11 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .hover-tilt {
   transition: transform .2s ease, box-shadow .2s ease;
 }

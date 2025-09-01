@@ -46,8 +46,10 @@ const ProfilePage = () => {
     linkedin: '', twitter: '', github: '', website: '',
   });
 
-  const [connectionStatus, setConnectionStatus] = useState('not_connected');
+  const [connectionStatus, setConnectionStatus] = useState('none');
   const [pendingRequestFromUser, setPendingRequestFromUser] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const isOwnProfile = useMemo(
     () => (!username && !userId) || (authUser && (authUser.username === username || authUser._id === userId)),
@@ -99,10 +101,18 @@ const ProfilePage = () => {
         }
 
         if (!isOwnProfile && u?._id) {
-          const statusRes = await connectionAPI.getConnectionStatus(u._id);
-          setConnectionStatus(statusRes.status || 'not_connected');
-          const pending = await connectionAPI.getPendingRequests();
-          setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          try {
+            const statusRes = await connectionAPI.getConnectionStatus(u._id);
+            setConnectionStatus(statusRes.data?.status || 'none');
+            
+            // Check if this user has sent a request to current user
+            const pending = await connectionAPI.getPendingRequests();
+            setPendingRequestFromUser(pending.data?.some(req => req._id === u._id) || false);
+          } catch (error) {
+            console.error('Error fetching connection status:', error);
+            setConnectionStatus('none');
+            setPendingRequestFromUser(false);
+          }
         }
       } catch {
         toast.error('Failed to load profile');
@@ -155,13 +165,23 @@ const ProfilePage = () => {
   };
 
   const handleConnect = async (userId) => {
+    if (isConnecting) return;
+    
     try {
+      setIsConnecting(true);
       await connectionAPI.followUser(userId);
       toast.success('Connection request sent!');
       setConnectionStatus('requested');
+      
+      // Refresh the profile to get updated connection status
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error('Connection error:', error);
       toast.error('Failed to send connection request');
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -171,6 +191,11 @@ const ProfilePage = () => {
       toast.success('Connection request accepted!');
       setPendingRequestFromUser(false);
       setConnectionStatus('connected');
+      
+      // Refresh the profile to get updated connection status
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error('Accept error:', error);
       toast.error('Failed to accept request');
@@ -183,6 +208,11 @@ const ProfilePage = () => {
       toast.info('Connection request removed.');
       setPendingRequestFromUser(false);
       setConnectionStatus('none');
+      
+      // Refresh the profile to get updated connection status
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error('Reject error:', error);
       toast.error('Failed to remove request');
@@ -209,6 +239,15 @@ const ProfilePage = () => {
   }
 
   const showChat = !isOwnProfile && connectionStatus === 'connected';
+  
+  // Helper function to get connection button text and state
+  const getConnectionButtonState = () => {
+    if (isConnecting) return { text: 'Connecting...', disabled: true, icon: 'spinner' };
+    if (connectionStatus === 'pending') return { text: 'Pending', disabled: true, icon: 'check' };
+    if (connectionStatus === 'requested') return { text: 'Requested', disabled: true, icon: 'check' };
+    if (connectionStatus === 'connected') return { text: 'Connected', disabled: true, icon: 'friends' };
+    return { text: 'Connect', disabled: false, icon: 'plus' };
+  };
 
   return (
     <div style={{ backgroundColor: '#f3f2ef', minHeight: '100vh' }}>
@@ -236,18 +275,23 @@ const ProfilePage = () => {
                     objectFit: 'cover', border: '4px solid white',
                     boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
                   }}
+                  onError={(e) => {
+                    // If image fails to load, show default avatar
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
                 />
-              ) : (
-                <div style={{
-                  width: 120, height: 120, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #0a66c2, #004182)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'white', fontWeight: 'bold', fontSize: '48px',
-                  border: '4px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
-                }}>
-                  {(user.name || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
+              ) : null}
+              <div style={{
+                width: 120, height: 120, borderRadius: '50%',
+                background: 'linear-gradient(135deg, #0a66c2, #004182)',
+                display: user.avatarUrl ? 'none' : 'flex', 
+                alignItems: 'center', justifyContent: 'center',
+                color: 'white', fontWeight: 'bold', fontSize: '48px',
+                border: '4px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
+              }}>
+                {(user.name || '?').charAt(0).toUpperCase()}
+              </div>
               {isOwnProfile && isEditing && (
                 <div style={{ marginTop: 8 }}>
                   <FileInput accept="image/*" onChange={handleAvatarChange} />
@@ -272,6 +316,34 @@ const ProfilePage = () => {
 
           {/* Actions */}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+            {!isOwnProfile && (
+              <button
+                onClick={() => window.location.reload()}
+                style={{
+                  padding: '8px',
+                  borderRadius: '50%',
+                  border: '1px solid #666666',
+                  backgroundColor: 'white',
+                  color: '#666666',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Refresh profile"
+                onMouseOver={(e) => {
+                  e.target.style.backgroundColor = '#f3f2ef';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = 'white';
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                </svg>
+              </button>
+            )}
             {isOwnProfile ? (
               <button
                 onClick={() => setIsEditing(prev => !prev)}
@@ -344,48 +416,44 @@ const ProfilePage = () => {
                     color: connectionStatus === 'connected' ? '#666666' : 'white',
                     fontWeight: '600',
                     fontSize: '14px',
-                    cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 'not-allowed' : 'pointer',
+                    cursor: getConnectionButtonState().disabled ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 0.6 : 1
+                    opacity: getConnectionButtonState().disabled ? 0.6 : 1
                   }}
-                  disabled={
-                    connectionStatus === 'pending' ||
-                    connectionStatus === 'connected' ||
-                    pendingRequestFromUser
-                  }
+                  disabled={getConnectionButtonState().disabled}
                   onMouseOver={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                    if (!getConnectionButtonState().disabled) {
                       e.target.style.backgroundColor = '#004182';
                     }
                   }}
                   onMouseOut={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                    if (!getConnectionButtonState().disabled) {
                       e.target.style.backgroundColor = '#0a66c2';
                     }
                   }}
                 >
-                  {connectionStatus === 'pending' ? (
+                  {getConnectionButtonState().icon === 'spinner' ? (
+                    <>
+                      <div style={{ width: 14, height: 14, border: '2px solid transparent', borderTop: '2px solid currentColor', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      {getConnectionButtonState().text}
+                    </>
+                  ) : getConnectionButtonState().icon === 'check' ? (
                     <>
                       <FaUserCheck size={14} />
-                      Pending
+                      {getConnectionButtonState().text}
                     </>
-                  ) : connectionStatus === 'requested' ? (
-                    <>
-                      <FaUserCheck size={14} />
-                      Requested
-                    </>
-                  ) : connectionStatus === 'connected' ? (
+                  ) : getConnectionButtonState().icon === 'friends' ? (
                     <>
                       <FaUserFriends size={14} />
-                      Connected
+                      {getConnectionButtonState().text}
                     </>
                   ) : (
                     <>
                       <FaUserPlus size={14} />
-                      Connect
+                      {getConnectionButtonState().text}
                     </>
                   )}
                 </button>
