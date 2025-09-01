@@ -126,7 +126,42 @@ router.post('/reject', async (req, res) => {
     }
 });
 
-// Get connection status
+// Get connection status between current user and another user
+router.get('/status/:userId', async (req, res) => {
+    const { userId } = req.params;
+    const currentUserId = req.user._id;
+    
+    try {
+        const currentUser = await User.findById(currentUserId);
+        const targetUser = await User.findById(userId);
+        
+        if (!currentUser || !targetUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        // Check if already connected
+        if (currentUser.connections.includes(userId)) {
+            return res.json({ status: 'connected' });
+        }
+        
+        // Check if current user has sent a request to target user
+        if (targetUser.connectionRequests.includes(currentUserId)) {
+            return res.json({ status: 'requested' });
+        }
+        
+        // Check if target user has sent a request to current user
+        if (currentUser.connectionRequests.includes(userId)) {
+            return res.json({ status: 'pending' });
+        }
+        
+        return res.json({ status: 'none' });
+    } catch (error) {
+        console.error('Error getting connection status:', error);
+        res.status(500).json({ message: 'Error getting status' });
+    }
+});
+
+// Get connection status (legacy endpoint)
 router.get('/status/:fromUserId/:toUserId', async (req, res) => {
     const { fromUserId, toUserId } = req.params;
     try {

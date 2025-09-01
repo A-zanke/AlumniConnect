@@ -3,7 +3,7 @@ import { FiBell } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import Avatar from './ui/Avatar';
 import { useAuth } from '../context/AuthContext';
-// import { connectionActions } from '../utils/api';
+import { connectionAPI } from './utils/api';
 import axios from 'axios';
 
 const NotificationBell = () => {
@@ -39,18 +39,22 @@ const NotificationBell = () => {
     setOpen(false);
   };
 
-  const accept = async (senderId) => {
+  const accept = async (notificationId) => {
     try {
-    //   await connectionActions.acceptByUserId(senderId, user._id);
-      setItems(prev => prev.filter(n => !(n.sender?._id === senderId && n.type === 'connection_request')));
-    } catch {}
+      await connectionAPI.acceptFollowRequest(notificationId);
+      setItems(prev => prev.filter(n => n._id !== notificationId));
+    } catch (error) {
+      console.error('Error accepting connection request:', error);
+    }
   };
 
-  const reject = async (senderId) => {
+  const reject = async (notificationId) => {
     try {
-    //   await connectionActions.rejectByUserId(senderId, user._id);
-      setItems(prev => prev.filter(n => !(n.sender?._id === senderId && n.type === 'connection_request')));
-    } catch {}
+      await connectionAPI.rejectFollowRequest(notificationId);
+      setItems(prev => prev.filter(n => n._id !== notificationId));
+    } catch (error) {
+      console.error('Error rejecting connection request:', error);
+    }
   };
 
   return (
@@ -91,10 +95,16 @@ const NotificationBell = () => {
                     </div>
                     {n.type === 'connection_request' && (
                       <div className="mt-2 flex gap-2">
-                        <button className="btn btn-primary" onClick={() => accept(n.sender?._id)}>
+                        <button 
+                          className="px-3 py-1 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700" 
+                          onClick={() => accept(n._id)}
+                        >
                           Accept
                         </button>
-                        <button className="btn btn-outline" onClick={() => reject(n.sender?._id)}>
+                        <button 
+                          className="px-3 py-1 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" 
+                          onClick={() => reject(n._id)}
+                        >
                           Reject
                         </button>
                       </div>

@@ -42,6 +42,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
 const connectionRoutes = require('./routes/connectionRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const postsRoutes = require('./routes/postsRoutes');
@@ -52,6 +53,7 @@ const messagesRoutes = require('./routes/messagesRoutes');
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/posts', postsRoutes);

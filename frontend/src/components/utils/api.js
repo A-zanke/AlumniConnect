@@ -197,6 +197,9 @@ export const connectionAPI = {
   // Unfollow user
   unfollowUser: (userId) => axios.delete(`/api/connections/${userId}`),
   
+  // Get connection status between current user and another user
+  getConnectionStatus: (userId) => axios.get(`/api/connections/status/${userId}`),
+  
   // Accept follow request
   acceptFollowRequest: (requestId) =>
     axios.put(`/api/connections/${requestId}/accept`),
@@ -231,6 +234,12 @@ export const userAPI = {
   
   // Get current user profile
   getProfile: () => axios.get('/api/auth/profile'),
+  
+  // Get user profile by username
+  getUserByUsername: (username) => axios.get(`/api/users/username/${username}`),
+  
+  // Get user profile by ID
+  getUserById: (userId) => axios.get(`/api/users/${userId}`),
   
   // Update profile
   updateProfile: (userData, avatar = null) => {
