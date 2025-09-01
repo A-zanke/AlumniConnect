@@ -16,6 +16,7 @@
   width: 100%;
   max-width: 400px;
   animation: fadeIn 0.7s cubic-bezier(.4,0,.2,1);
+  backdrop-filter: blur(4px);
 }
 
 @keyframes fadeIn {
@@ -98,7 +99,7 @@
   margin-top: 0.5rem;
   cursor: pointer;
   transition: background 0.2s, box-shadow 0.2s;
-  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
+  box-shadow: 0 2px 12px rgba(25, 118, 210, 0.18);
 }
 .login-btn:hover {
   background: #0d47a1;

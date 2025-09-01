@@ -28,13 +28,11 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Passwords do not match' });
     }
 
-    // Check if user exists
-    const userExists = await User.findOne({ $or: [{ email }, { username }] });
+    // Check if username exists (email can repeat)
+    const userExists = await User.findOne({ username });
 
     if (userExists) {
-      return res.status(400).json({ 
-        message: userExists.email === email ? 'Email already registered' : 'Username already taken' 
-      });
+      return res.status(400).json({ message: 'Username already taken' });
     }
 
     // Enforce password strength

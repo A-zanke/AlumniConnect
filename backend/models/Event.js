@@ -1,25 +1,20 @@
 const mongoose = require('mongoose');
 
-const CommentSchema = new mongoose.Schema({
-  postId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Post',
-    required: true
-  },
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  content: {
-    type: String,
-    required: [true, 'Please provide comment content'],
-    trim: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-});
+const EventSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  departmentScope: [{ type: String }],
+  yearScope: [{ type: Number }],
+  audience: { type: String, enum: ['college', 'department', 'year', 'custom'], default: 'college' },
+  location: { type: String },
+  startAt: { type: Date, required: true },
+  endAt: { type: Date, required: true },
+  approved: { type: Boolean, default: false },
+  rsvps: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+}, { timestamps: true });
 
-module.exports = mongoose.model('Comment', CommentSchema);
+EventSchema.index({ startAt: 1 });
+EventSchema.index({ organizer: 1 });
+
+module.exports = mongoose.model('Event', EventSchema);
