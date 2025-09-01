@@ -99,10 +99,15 @@ const ProfilePage = () => {
         }
 
         if (!isOwnProfile && u?._id) {
-          const statusRes = await connectionAPI.getConnectionStatus(u._id);
-          setConnectionStatus(statusRes.status || 'not_connected');
-          const pending = await connectionAPI.getPendingRequests();
-          setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          try {
+            const statusRes = await connectionAPI.getConnectionStatus(u._id);
+            setConnectionStatus(statusRes.data?.status || 'not_connected');
+            const pending = await connectionAPI.getPendingRequests();
+            setPendingRequestFromUser(pending.data?.some(req => req._id === u._id) || false);
+          } catch (error) {
+            console.error('Error fetching connection status:', error);
+            setConnectionStatus('not_connected');
+          }
         }
       } catch {
         toast.error('Failed to load profile');
@@ -182,10 +187,21 @@ const ProfilePage = () => {
       await connectionAPI.rejectFollowRequest(user._id);
       toast.info('Connection request removed.');
       setPendingRequestFromUser(false);
-      setConnectionStatus('none');
+      setConnectionStatus('not_connected');
     } catch (error) {
       console.error('Reject error:', error);
       toast.error('Failed to remove request');
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    try {
+      await connectionAPI.unfollowUser(user._id);
+      toast.info('Connection request cancelled.');
+      setConnectionStatus('not_connected');
+    } catch (error) {
+      console.error('Cancel error:', error);
+      toast.error('Failed to cancel request');
     }
   };
 
@@ -213,20 +229,51 @@ const ProfilePage = () => {
   return (
     <div style={{ backgroundColor: '#f3f2ef', minHeight: '100vh' }}>
       <div className="container mx-auto px-4 py-8">
-        {/* LinkedIn-style header */}
+        {/* LinkedIn-style header with cover photo */}
         <div
           style={{
             backgroundColor: 'white',
             borderRadius: '8px',
-            padding: '24px',
             marginBottom: '16px',
             boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
-            position: 'relative'
+            position: 'relative',
+            overflow: 'hidden'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Cover Photo */}
+          <div
+            style={{
+              height: '200px',
+              background: 'linear-gradient(135deg, #0a66c2 0%, #004182 100%)',
+              position: 'relative'
+            }}
+          >
+            {isOwnProfile && isEditing && (
+              <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
+                <button
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '24px',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    backdropFilter: 'blur(10px)'
+                  }}
+                >
+                  Add cover photo
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {/* Profile Content */}
+          <div style={{ padding: '24px', position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginTop: '-60px' }}>
             {/* Avatar */}
-            <div>
+            <div style={{ position: 'relative' }}>
               {user.avatarUrl ? (
                 <img
                   src={getAvatarUrl(user.avatarUrl)}
@@ -236,20 +283,34 @@ const ProfilePage = () => {
                     objectFit: 'cover', border: '4px solid white',
                     boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
                   }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
                 />
-              ) : (
-                <div style={{
+              ) : null}
+              <div 
+                style={{
                   width: 120, height: 120, borderRadius: '50%',
                   background: 'linear-gradient(135deg, #0a66c2, #004182)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  display: user.avatarUrl ? 'none' : 'flex', 
+                  alignItems: 'center', justifyContent: 'center',
                   color: 'white', fontWeight: 'bold', fontSize: '48px',
                   border: '4px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
-                }}>
-                  {(user.name || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
+                }}
+              >
+                {(user.name || '?').charAt(0).toUpperCase()}
+              </div>
               {isOwnProfile && isEditing && (
-                <div style={{ marginTop: 8 }}>
+                <div style={{ 
+                  position: 'absolute', 
+                  bottom: '0', 
+                  right: '0',
+                  backgroundColor: 'white',
+                  borderRadius: '50%',
+                  padding: '4px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}>
                   <FileInput accept="image/*" onChange={handleAvatarChange} />
                 </div>
               )}
@@ -264,6 +325,15 @@ const ProfilePage = () => {
               <div style={{ color: '#666666', fontSize: '14px', marginBottom: '4px' }}>
                 <FaMapMarkerAlt style={{ marginRight: '4px' }} />
                 {user.location || 'Location not specified'}
+              </div>
+              <div style={{ color: '#666666', fontSize: '14px', marginBottom: '4px' }}>
+                {user.college && (
+                  <>
+                    <FaGraduationCap style={{ marginRight: '4px' }} />
+                    {user.college}
+                    {user.graduationYear && ` • ${user.graduationYear}`}
+                  </>
+                )}
               </div>
               <div style={{ color: '#666666', fontSize: '14px' }}>
                 {user.connections?.length || 0} connections
@@ -335,7 +405,13 @@ const ProfilePage = () => {
                   </button>
                 )}
                 <button
-                  onClick={() => handleConnect(user._id)}
+                  onClick={() => {
+                    if (connectionStatus === 'requested') {
+                      handleCancelRequest();
+                    } else {
+                      handleConnect(user._id);
+                    }
+                  }}
                   style={{
                     padding: '8px 16px',
                     borderRadius: '24px',
@@ -358,12 +434,12 @@ const ProfilePage = () => {
                   }
                   onMouseOver={(e) => {
                     if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
-                      e.target.style.backgroundColor = '#004182';
+                      e.target.style.backgroundColor = connectionStatus === 'requested' ? '#dc2626' : '#004182';
                     }
                   }}
                   onMouseOut={(e) => {
                     if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
-                      e.target.style.backgroundColor = '#0a66c2';
+                      e.target.style.backgroundColor = connectionStatus === 'requested' ? '#ef4444' : '#0a66c2';
                     }
                   }}
                 >
@@ -375,7 +451,7 @@ const ProfilePage = () => {
                   ) : connectionStatus === 'requested' ? (
                     <>
                       <FaUserCheck size={14} />
-                      Requested
+                      Cancel Request
                     </>
                   ) : connectionStatus === 'connected' ? (
                     <>
@@ -447,6 +523,7 @@ const ProfilePage = () => {
               </>
             )}
           </div>
+          </div>
         </div>
       </div>
 
@@ -462,12 +539,28 @@ const ProfilePage = () => {
               boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
             }}>
               <h2 style={{ fontWeight: '600', fontSize: '20px', marginBottom: '16px', color: '#000000' }}>About</h2>
-            {isEditing ? (
-              <textarea name="bio" value={formData.bio} onChange={handleChange} className="form-textarea" rows="4" placeholder="Tell us about yourself..." />
-            ) : (
-              <p style={{ color: '#334155' }}>{user.bio || 'No bio available.'}</p>
-            )}
-          </div>
+              {isEditing ? (
+                <textarea 
+                  name="bio" 
+                  value={formData.bio} 
+                  onChange={handleChange} 
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    minHeight: '100px'
+                  }}
+                  rows="4" 
+                  placeholder="Tell us about yourself..." 
+                />
+              ) : (
+                <p style={{ color: '#334155', lineHeight: '1.6' }}>{user.bio || 'No bio available.'}</p>
+              )}
+            </div>
 
             {/* Experience */}
             <div style={{ 
@@ -479,48 +572,119 @@ const ProfilePage = () => {
               <h2 style={{ fontWeight: '600', fontSize: '20px', marginBottom: '16px', color: '#000000' }}>
                 <FaBriefcase style={{ marginRight: '8px' }} /> Experience
               </h2>
-            {isEditing ? (
-              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
-                <div className="form-group">
-                  <label>Company</label>
-                  <input name="company" value={formData.company} onChange={handleChange} className="form-input" placeholder="Company name" />
+              {isEditing ? (
+                <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>Company</label>
+                    <input 
+                      name="company" 
+                      value={formData.company} 
+                      onChange={handleChange} 
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: '14px'
+                      }}
+                      placeholder="Company name" 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>Position</label>
+                    <input 
+                      name="position" 
+                      value={formData.position} 
+                      onChange={handleChange} 
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: '14px'
+                      }}
+                      placeholder="Job title" 
+                    />
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label>Position</label>
-                  <input name="position" value={formData.position} onChange={handleChange} className="form-input" placeholder="Job title" />
+              ) : (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 10, background: 'linear-gradient(135deg,#22d3ee,#a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                    <FaBuilding />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '16px' }}>{user.position || 'Position not specified'}</div>
+                    <div style={{ color: '#64748b', fontSize: '14px' }}>{user.company || 'Company not specified'}</div>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 42, height: 42, borderRadius: 10, background: 'linear-gradient(135deg,#22d3ee,#a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                  <FaBuilding />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{user.position || 'Position not specified'}</div>
-                  <div style={{ color: '#64748b' }}>{user.company || 'Company not specified'}</div>
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
           {/* Education */}
-          <div className="theme-card float-in" style={{ padding: 16 }}>
-            <h2 className="gradient-text" style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-              <FaGraduationCap className="inline mr-2" /> Education
+          <div style={{ 
+            backgroundColor: 'white', 
+            borderRadius: '8px', 
+            padding: '24px', 
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
+          }}>
+            <h2 style={{ fontWeight: '600', fontSize: '20px', marginBottom: '16px', color: '#000000' }}>
+              <FaGraduationCap style={{ marginRight: '8px' }} /> Education
             </h2>
             {isEditing ? (
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr 1fr' }}>
-                <div className="form-group"><label>College/University</label><input name="college" value={formData.college} onChange={handleChange} className="form-input" /></div>
-                <div className="form-group"><label>Specialization</label><input name="specialization" value={formData.specialization} onChange={handleChange} className="form-input" /></div>
-                <div className="form-group"><label>Graduation Year</label><input name="graduationYear" value={formData.graduationYear} onChange={handleChange} className="form-input" /></div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>College/University</label>
+                  <input 
+                    name="college" 
+                    value={formData.college} 
+                    onChange={handleChange} 
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>Specialization</label>
+                  <input 
+                    name="specialization" 
+                    value={formData.specialization} 
+                    onChange={handleChange} 
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>Graduation Year</label>
+                  <input 
+                    name="graduationYear" 
+                    value={formData.graduationYear} 
+                    onChange={handleChange} 
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
               </div>
             ) : (
               <div>
-                <div style={{ fontWeight: 700 }}>{user.specialization || 'Field not specified'}</div>
-                <div style={{ color: '#64748b' }}>{user.college || 'Institution not specified'}</div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>{user.specialization || 'Field not specified'}</div>
+                <div style={{ color: '#64748b', fontSize: '14px' }}>{user.college || 'Institution not specified'}</div>
                 {user.graduationYear && (
-                  <div style={{ color: '#64748b', marginTop: 6 }}>
-                    <FaCalendarAlt className="inline mr-2" /> {user.graduationYear}
+                  <div style={{ color: '#64748b', marginTop: 6, fontSize: '14px' }}>
+                    <FaCalendarAlt style={{ marginRight: '4px' }} /> {user.graduationYear}
                   </div>
                 )}
               </div>
@@ -528,53 +692,265 @@ const ProfilePage = () => {
           </div>
 
           {/* Skills */}
-          <div className="theme-card float-in" style={{ padding: 16 }}>
-            <h2 className="gradient-text" style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-              <FaStar className="inline mr-2" /> Skills
+          <div style={{ 
+            backgroundColor: 'white', 
+            borderRadius: '8px', 
+            padding: '24px', 
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
+          }}>
+            <h2 style={{ fontWeight: '600', fontSize: '20px', marginBottom: '16px', color: '#000000' }}>
+              <FaStar style={{ marginRight: '8px' }} /> Skills
             </h2>
             {isEditing ? (
-              <input name="skills" value={formData.skills} onChange={handleChange} className="form-input" placeholder="Skills (comma separated)" />
+              <input 
+                name="skills" 
+                value={formData.skills} 
+                onChange={handleChange} 
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  fontSize: '14px'
+                }}
+                placeholder="Skills (comma separated)" 
+              />
             ) : (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {user.skills && user.skills.length > 0 ? (
                   user.skills.map((skill, i) => (
-                    <span key={i} style={{ padding: '6px 10px', borderRadius: 999, background: 'rgba(6,182,212,.12)', color: '#0e7490', fontWeight: 600, fontSize: 12 }}>
+                    <span key={i} style={{ 
+                      padding: '6px 12px', 
+                      borderRadius: '16px', 
+                      background: '#e3f2fd', 
+                      color: '#1976d2', 
+                      fontWeight: 600, 
+                      fontSize: 14,
+                      border: '1px solid #bbdefb'
+                    }}>
                       {skill}
                     </span>
                   ))
                 ) : (
-                  <p style={{ color: '#334155' }}>No skills listed.</p>
+                  <p style={{ color: '#64748b' }}>No skills listed.</p>
                 )}
               </div>
             )}
           </div>
 
           {/* Socials */}
-          <div className="theme-card float-in" style={{ padding: 16 }}>
-            <h2 className="gradient-text" style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>Social Links</h2>
+          <div style={{ 
+            backgroundColor: 'white', 
+            borderRadius: '8px', 
+            padding: '24px', 
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
+          }}>
+            <h2 style={{ fontWeight: '600', fontSize: '20px', marginBottom: '16px', color: '#000000' }}>Social Links</h2>
             {isEditing ? (
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
-                <div className="form-group"><label>LinkedIn</label><input name="linkedin" value={formData.linkedin} onChange={handleChange} className="form-input" /></div>
-                <div className="form-group"><label>Twitter</label><input name="twitter" value={formData.twitter} onChange={handleChange} className="form-input" /></div>
-                <div className="form-group"><label>GitHub</label><input name="github" value={formData.github} onChange={handleChange} className="form-input" /></div>
-                <div className="form-group"><label>Website</label><input name="website" value={formData.website} onChange={handleChange} className="form-input" /></div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>LinkedIn</label>
+                  <input 
+                    name="linkedin" 
+                    value={formData.linkedin} 
+                    onChange={handleChange} 
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>Twitter</label>
+                  <input 
+                    name="twitter" 
+                    value={formData.twitter} 
+                    onChange={handleChange} 
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>GitHub</label>
+                  <input 
+                    name="github" 
+                    value={formData.github} 
+                    onChange={handleChange} 
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#374151' }}>Website</label>
+                  <input 
+                    name="website" 
+                    value={formData.website} 
+                    onChange={handleChange} 
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {user.socials?.linkedin && <a href={user.socials.linkedin} target="_blank" rel="noopener noreferrer" className="social-link linkedin"><FaLinkedin /> <span style={{ marginLeft: 6 }}>LinkedIn</span></a>}
-                {user.socials?.twitter && <a href={user.socials.twitter} target="_blank" rel="noopener noreferrer" className="social-link twitter"><FaTwitter /> <span style={{ marginLeft: 6 }}>Twitter</span></a>}
-                {user.socials?.github && <a href={user.socials.github} target="_blank" rel="noopener noreferrer" className="social-link github"><FaGithub /> <span style={{ marginLeft: 6 }}>GitHub</span></a>}
-                {user.socials?.website && <a href={user.socials.website} target="_blank" rel="noopener noreferrer" className="social-link website"><FaGlobe /> <span style={{ marginLeft: 6 }}>Website</span></a>}
-                {!user.socials?.linkedin && !user.socials?.twitter && !user.socials?.github && !user.socials?.website && (<p style={{ color: '#334155' }}>No social links available.</p>)}
+                {user.socials?.linkedin && (
+                  <a 
+                    href={user.socials.linkedin} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: '#0077b5',
+                      color: 'white',
+                      textDecoration: 'none',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}
+                  >
+                    <FaLinkedin style={{ marginRight: '6px' }} />
+                    LinkedIn
+                  </a>
+                )}
+                {user.socials?.twitter && (
+                  <a 
+                    href={user.socials.twitter} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: '#1da1f2',
+                      color: 'white',
+                      textDecoration: 'none',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}
+                  >
+                    <FaTwitter style={{ marginRight: '6px' }} />
+                    Twitter
+                  </a>
+                )}
+                {user.socials?.github && (
+                  <a 
+                    href={user.socials.github} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: '#333',
+                      color: 'white',
+                      textDecoration: 'none',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}
+                  >
+                    <FaGithub style={{ marginRight: '6px' }} />
+                    GitHub
+                  </a>
+                )}
+                {user.socials?.website && (
+                  <a 
+                    href={user.socials.website} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: '#6b7280',
+                      color: 'white',
+                      textDecoration: 'none',
+                      fontSize: '14px',
+                      fontWeight: '600'
+                    }}
+                  >
+                    <FaGlobe style={{ marginRight: '6px' }} />
+                    Website
+                  </a>
+                )}
+                {!user.socials?.linkedin && !user.socials?.twitter && !user.socials?.github && !user.socials?.website && (
+                  <p style={{ color: '#64748b' }}>No social links available.</p>
+                )}
               </div>
             )}
           </div>
 
           {/* Save/Cancel */}
           {isOwnProfile && isEditing && (
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }} className="float-in">
-              <button type="button" onClick={() => setIsEditing(false)} className="btn btn-outline hover-tilt">Cancel</button>
-              <button type="submit" onClick={handleSubmit} className="btn btn-primary hover-tilt">Save Changes</button>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                onClick={() => setIsEditing(false)}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '24px',
+                  border: '1px solid #666666',
+                  backgroundColor: 'white',
+                  color: '#666666',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.backgroundColor = '#f3f2ef';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = 'white';
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                onClick={handleSubmit}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '24px',
+                  border: '1px solid #0a66c2',
+                  backgroundColor: '#0a66c2',
+                  color: 'white',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.backgroundColor = '#004182';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = '#0a66c2';
+                }}
+              >
+                Save Changes
+              </button>
             </div>
           )}
         </div>
