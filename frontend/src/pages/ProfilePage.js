@@ -208,6 +208,16 @@ const ProfilePage = () => {
 
   return (
     <div className="profile-page">
+      <div className="relative overflow-hidden rounded-2xl theme-card mb-6 float-in">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-50 to-purple-50" />
+        <div className="relative p-6 flex items-center gap-4">
+          <div className="w-20 h-20 rounded-full skeleton" />
+          <div>
+            <h1 className="text-2xl font-extrabold gradient-text">Your Profile</h1>
+            <p className="text-gray-600">Showcase your journey and connect</p>
+          </div>
+        </div>
+      </div>
       {/* Cover Photo Section */}
       <div className="cover-photo-section">
         <div className="cover-photo">

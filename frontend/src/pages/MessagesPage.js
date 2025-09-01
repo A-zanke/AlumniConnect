@@ -115,7 +115,10 @@ const MessagesPage = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900">Messages</h1>
+      <div className="theme-card p-6 mb-6 float-in">
+        <h1 className="text-2xl font-extrabold gradient-text">Messages</h1>
+        <p className="text-gray-600">Chat with your connections in real-time</p>
+      </div>
       
       <div className="mt-6 bg-white rounded-lg shadow-md overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-3 h-[calc(100vh-12rem)]">
