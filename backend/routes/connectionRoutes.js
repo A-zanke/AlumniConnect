@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 // Send connection request
 router.post('/', protect, async (req, res) => {
@@ -30,6 +31,16 @@ router.post('/', protect, async (req, res) => {
         // Add to connection requests
         toUser.connectionRequests.push(fromUserId);
         await toUser.save();
+
+        // Create notification
+        const notification = new Notification({
+            recipient: userId,
+            sender: fromUserId,
+            type: 'connection_request',
+            content: `${fromUser.name} sent you a connection request`,
+            read: false
+        });
+        await notification.save();
 
         res.status(200).json({ message: 'Connection request sent successfully' });
     } catch (error) {
@@ -100,6 +111,32 @@ router.delete('/:requestId/reject', protect, async (req, res) => {
     }
 });
 
+// Cancel connection request (remove from target user's requests)
+router.delete('/:userId', protect, async (req, res) => {
+    const { userId } = req.params;
+    const currentUserId = req.user._id;
+    
+    try {
+        const targetUser = await User.findById(userId);
+
+        if (!targetUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Remove current user from target user's connection requests
+        targetUser.connectionRequests = targetUser.connectionRequests.filter(
+            id => id.toString() !== currentUserId
+        );
+
+        await targetUser.save();
+
+        res.status(200).json({ message: 'Connection request cancelled' });
+    } catch (error) {
+        console.error('Error cancelling connection request:', error);
+        res.status(500).json({ message: 'Error cancelling connection request' });
+    }
+});
+
 // Get connection status between current user and another user
 router.get('/status/:userId', protect, async (req, res) => {
     const { userId } = req.params;
@@ -128,7 +165,7 @@ router.get('/status/:userId', protect, async (req, res) => {
             return res.json({ status: 'pending' });
         }
         
-        return res.json({ status: 'none' });
+        return res.json({ status: 'not_connected' });
     } catch (error) {
         console.error('Error getting connection status:', error);
         res.status(500).json({ message: 'Error getting status' });
