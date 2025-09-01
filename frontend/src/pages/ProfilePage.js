@@ -46,8 +46,9 @@ const ProfilePage = () => {
     linkedin: '', twitter: '', github: '', website: '',
   });
 
-  const [connectionStatus, setConnectionStatus] = useState('not_connected');
+  const [connectionStatus, setConnectionStatus] = useState('none');
   const [pendingRequestFromUser, setPendingRequestFromUser] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   const isOwnProfile = useMemo(
     () => (!username && !userId) || (authUser && (authUser.username === username || authUser._id === userId)),
@@ -99,10 +100,18 @@ const ProfilePage = () => {
         }
 
         if (!isOwnProfile && u?._id) {
-          const statusRes = await connectionAPI.getConnectionStatus(u._id);
-          setConnectionStatus(statusRes.status || 'not_connected');
-          const pending = await connectionAPI.getPendingRequests();
-          setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          try {
+            const statusRes = await connectionAPI.getConnectionStatus(u._id);
+            setConnectionStatus(statusRes.data?.status || 'none');
+            
+            // Check if this user has sent a request to current user
+            const pending = await connectionAPI.getPendingRequests();
+            setPendingRequestFromUser(pending.data?.data?.some(req => req.requesterId._id === u._id) || false);
+          } catch (error) {
+            console.error('Error checking connection status:', error);
+            setConnectionStatus('none');
+            setPendingRequestFromUser(false);
+          }
         }
       } catch {
         toast.error('Failed to load profile');
@@ -155,13 +164,18 @@ const ProfilePage = () => {
   };
 
   const handleConnect = async (userId) => {
+    if (isConnecting) return;
+    
     try {
+      setIsConnecting(true);
       await connectionAPI.followUser(userId);
       toast.success('Connection request sent!');
       setConnectionStatus('requested');
     } catch (error) {
       console.error('Connection error:', error);
       toast.error('Failed to send connection request');
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -212,6 +226,14 @@ const ProfilePage = () => {
 
   return (
     <div style={{ backgroundColor: '#f3f2ef', minHeight: '100vh' }}>
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
       <div className="container mx-auto px-4 py-8">
         {/* LinkedIn-style header */}
         <div
@@ -236,18 +258,25 @@ const ProfilePage = () => {
                     objectFit: 'cover', border: '4px solid white',
                     boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
                   }}
+                  onError={(e) => {
+                    // If image fails to load, show default avatar
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
                 />
-              ) : (
-                <div style={{
+              ) : null}
+              <div 
+                style={{
                   width: 120, height: 120, borderRadius: '50%',
                   background: 'linear-gradient(135deg, #0a66c2, #004182)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  display: user.avatarUrl ? 'none' : 'flex', 
+                  alignItems: 'center', justifyContent: 'center',
                   color: 'white', fontWeight: 'bold', fontSize: '48px',
                   border: '4px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
-                }}>
-                  {(user.name || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
+                }}
+              >
+                {(user.name || '?').charAt(0).toUpperCase()}
+              </div>
               {isOwnProfile && isEditing && (
                 <div style={{ marginTop: 8 }}>
                   <FileInput accept="image/*" onChange={handleAvatarChange} />
@@ -344,30 +373,37 @@ const ProfilePage = () => {
                     color: connectionStatus === 'connected' ? '#666666' : 'white',
                     fontWeight: '600',
                     fontSize: '14px',
-                    cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 'not-allowed' : 'pointer',
+                    cursor: (connectionStatus === 'pending' || connectionStatus === 'connected' || connectionStatus === 'requested' || pendingRequestFromUser || isConnecting) ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 0.6 : 1
+                    opacity: (connectionStatus === 'pending' || connectionStatus === 'connected' || connectionStatus === 'requested' || pendingRequestFromUser || isConnecting) ? 0.6 : 1
                   }}
                   disabled={
                     connectionStatus === 'pending' ||
                     connectionStatus === 'connected' ||
-                    pendingRequestFromUser
+                    connectionStatus === 'requested' ||
+                    pendingRequestFromUser ||
+                    isConnecting
                   }
                   onMouseOver={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                    if (connectionStatus === 'none' && !pendingRequestFromUser && !isConnecting) {
                       e.target.style.backgroundColor = '#004182';
                     }
                   }}
                   onMouseOut={(e) => {
-                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                    if (connectionStatus === 'none' && !pendingRequestFromUser && !isConnecting) {
                       e.target.style.backgroundColor = '#0a66c2';
                     }
                   }}
                 >
-                  {connectionStatus === 'pending' ? (
+                  {isConnecting ? (
+                    <>
+                      <div style={{ width: 14, height: 14, border: '2px solid transparent', borderTop: '2px solid white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      Connecting...
+                    </>
+                  ) : connectionStatus === 'pending' ? (
                     <>
                       <FaUserCheck size={14} />
                       Pending
