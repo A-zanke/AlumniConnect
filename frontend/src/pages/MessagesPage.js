@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import { toast } from 'react-toastify';
 import { connectionAPI, fetchMessages } from '../utils/api';
+import { io } from 'socket.io-client';
 import { getAvatarUrl } from '../utils/helpers';
 
 const MessagesPage = () => {
@@ -40,50 +41,19 @@ const MessagesPage = () => {
     fetchConnections();
   }, []);
 
-  // Initialize WebSocket connection
+  // Initialize Socket.IO connection
   useEffect(() => {
     if (user) {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-      const ws = new WebSocket(wsUrl);
-      
-      ws.onopen = () => {
-        console.log('Connected to WebSocket server');
-        // Authenticate user
-        ws.send(JSON.stringify({
-          type: 'auth',
-          userId: user._id
-        }));
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Received message:', data);
-          
-          if (data.type === 'chat' && 
-              ((data.senderId === selectedUser?._id && data.recipientId === user._id) || 
-               (data.senderId === user._id && data.recipientId === selectedUser?._id))) {
-            setMessages(prev => [...prev, data]);
-          }
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+      const token = localStorage.getItem('token');
+      const s = io('/', { auth: { token } });
+      s.on('connect', () => {});
+      s.on('chat:receive', (msg) => {
+        if ((msg.from === selectedUser?._id && msg.to === user._id) || (msg.from === user._id && msg.to === selectedUser?._id)) {
+          setMessages(prev => [...prev, { senderId: msg.from, recipientId: msg.to, content: msg.content, timestamp: msg.createdAt }]);
         }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-      
-      ws.onclose = () => {
-        console.log('Disconnected from WebSocket server');
-      };
-      
-      setSocket(ws);
-      
-      return () => {
-        ws.close();
-      };
+      });
+      setSocket(s);
+      return () => { s.disconnect(); };
     }
   }, [user, selectedUser]);
 
@@ -119,20 +89,9 @@ const MessagesPage = () => {
     
     if (!newMessage.trim() || !selectedUser || !socket) return;
     
-    const messageData = {
-      type: 'chat',
-      senderId: user._id,
-      senderName: user.name,
-      recipientId: selectedUser._id,
-      content: newMessage,
-      timestamp: new Date().toISOString()
-    };
-    
     try {
-      socket.send(JSON.stringify(messageData));
-      
-      // Add to local messages
-      setMessages(prev => [...prev, messageData]);
+      socket.emit('chat:send', { to: selectedUser._id, content: newMessage });
+      setMessages(prev => [...prev, { senderId: user._id, recipientId: selectedUser._id, content: newMessage, timestamp: new Date().toISOString() }]);
       
       // Clear input
       setNewMessage('');

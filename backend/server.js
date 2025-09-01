@@ -17,6 +17,11 @@ connectDB();
 
 // Initialize Express
 const app = express();
+const http = require('http').createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(http, {
+  cors: { origin: 'http://localhost:3000', credentials: true }
+});
 
 // Middleware
 app.use(express.json());
@@ -42,6 +47,7 @@ const postsRoutes = require('./routes/postsRoutes');
 const eventsRoutes = require('./routes/eventsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const messagesRoutes = require('./routes/messagesRoutes');
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -51,6 +57,7 @@ app.use('/api/posts', postsRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
@@ -84,7 +91,7 @@ app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
+http.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
 
@@ -93,4 +100,46 @@ process.on('unhandledRejection', (err) => {
   console.error(`Unhandled Rejection: ${err.message}`);
   // Close server & exit process
   process.exit(1);
+});
+
+// Socket.IO basic chat
+const jwt = require('jsonwebtoken');
+const User = require('./models/User');
+const Connection = require('./models/Connection');
+const Message = require('./models/Message');
+
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('No token'));
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('_id');
+    if (!user) return next(new Error('User not found'));
+    socket.userId = user._id.toString();
+    next();
+  } catch (e) {
+    next(new Error('Auth failed'));
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.on('chat:send', async (payload) => {
+    try {
+      const from = socket.userId;
+      const { to, content } = payload || {};
+      if (!to || !content) return;
+      const allowed = await Connection.findOne({
+        $or: [
+          { requesterId: from, recipientId: to, status: 'accepted' },
+          { requesterId: to, recipientId: from, status: 'accepted' }
+        ]
+      });
+      if (!allowed) return;
+      const msg = await Message.create({ from, to, content });
+      io.to(to).emit('chat:receive', { _id: msg._id, from, to, content, createdAt: msg.createdAt });
+      socket.emit('chat:sent', { _id: msg._id, from, to, content, createdAt: msg.createdAt });
+    } catch (e) {}
+  });
+
+  socket.join(socket.userId);
 });
