@@ -1,4 +1,4 @@
-const BACKEND_URL = 'http://localhost:5001';
+const BACKEND_URL = 'http://localhost:5000';
 
 export const getAvatarUrl = (avatarPath) => {
   if (!avatarPath) return '/default-avatar.png';
