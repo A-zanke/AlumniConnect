@@ -1,147 +1,141 @@
+const fs = require('fs');
+const path = require('path');
 const Post = require('../models/Post');
 const User = require('../models/User');
 
-const getUserPosts = async (req, res) => {
-  try {
-    const posts = await Post.find({ userId: req.params.userId })
-      .sort({ createdAt: -1 })
-      .populate('userId', 'name avatarUrl')
-      .populate('mentions', 'name avatarUrl')
-      .populate('comments.userId', 'name avatarUrl');
-    res.json(posts);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching user posts' });
-  }
+const detectMedia = (file) => {
+  const type = (file.mimetype || '').toLowerCase();
+  if (type.startsWith('image/')) return 'image';
+  if (type.startsWith('video/')) return 'video';
+  return 'file';
 };
 
-const createPost = async (req, res) => {
+exports.createPost = async (req, res) => {
   try {
-    const { content, postType, visibility, location, tags, mentions } = req.body;
-    
-    if (!content) {
-      return res.status(400).json({ message: 'Content is required' });
+    const { content = '', visibility = 'public' } = req.body;
+
+    if (!content.trim() && (!req.files || req.files.length === 0)) {
+      return res.status(400).json({ message: 'Content or media required' });
     }
 
-    // Process mentions if any
-    let mentionUsers = [];
-    if (mentions && mentions.length > 0) {
-      mentionUsers = await User.find({ username: { $in: mentions } });
-    }
+    const media = (req.files || []).map(f => ({
+      url: `/uploads/${path.basename(f.path)}`,
+      type: detectMedia(f),
+      name: f.originalname
+    }));
 
-    // Process tags if any
-    const processedTags = tags ? tags.map(tag => tag.trim()) : [];
+    // simple mentions from content using @username
+    const mentionUsernames = Array.from(new Set((content.match(/@([a-zA-Z0-9_.-]+)/g) || []).map(m => m.slice(1))));
+    const mentionUsers = mentionUsernames.length > 0 ? await User.find({ username: { $in: mentionUsernames } }).select('_id') : [];
 
     const post = new Post({
       userId: req.user._id,
       content,
-      images: req.body.images || [],
-      postType: postType || 'text',
-      visibility: visibility || 'public',
-      location: location || null,
-      tags: processedTags,
-      mentions: mentionUsers.map(user => user._id)
+      media,
+      postType: 'text',
+      visibility: ['public','connections','private'].includes(visibility) ? visibility : 'public',
+      tags: [],
+      mentions: mentionUsers.map(u => u._id)
     });
 
     await post.save();
 
-    // Populate user and mention details before sending response
-    const populatedPost = await Post.findById(post._id)
+    const populated = await Post.findById(post._id)
       .populate('userId', 'name avatarUrl')
       .populate('mentions', 'name avatarUrl');
 
-    res.status(201).json(populatedPost);
-  } catch (error) {
+    // shape response like HomePage expects
+    res.status(201).json({
+      _id: populated._id,
+      user: {
+        name: populated.userId.name,
+        avatarUrl: populated.userId.avatarUrl ? `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${populated.userId.avatarUrl}` : null
+      },
+      content: populated.content,
+      media: populated.media?.map(m => ({ ...m, url: `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${m.url}` })) || [],
+      createdAt: populated.createdAt
+    });
+  } catch (e) {
+    console.error('createPost error:', e);
     res.status(500).json({ message: 'Error creating post' });
   }
 };
 
-const getPosts = async (req, res) => {
+exports.getUserPosts = async (req, res) => {
   try {
-    const { visibility = 'public' } = req.query;
-    
-    let query = {};
-    if (visibility === 'connections') {
-      // Get user's connections
-      const user = await User.findById(req.user._id).populate('connections');
-      const connectionIds = user.connections.map(conn => conn._id);
-      query = {
-        $or: [
-          { userId: { $in: connectionIds } },
-          { userId: req.user._id }
-        ],
-        visibility: { $in: ['public', 'connections'] }
-      };
-    } else if (visibility === 'private') {
-      query = { userId: req.user._id };
-    } else {
-      query = { visibility: 'public' };
-    }
-
-    const posts = await Post.find(query)
+    const posts = await Post.find({ userId: req.params.userId })
       .sort({ createdAt: -1 })
       .populate('userId', 'name avatarUrl')
-      .populate('mentions', 'name avatarUrl')
-      .populate('comments.userId', 'name avatarUrl');
-    
-    res.json(posts);
-  } catch (error) {
+      .populate('mentions', 'name avatarUrl');
+
+    const shaped = posts.map(p => ({
+      _id: p._id,
+      user: {
+        name: p.userId?.name,
+        avatarUrl: p.userId?.avatarUrl ? `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${p.userId.avatarUrl}` : null
+      },
+      content: p.content,
+      media: (p.media || []).map(m => ({ ...m, url: `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${m.url}` })),
+      createdAt: p.createdAt
+    }));
+    res.json({ data: shaped });
+  } catch {
+    res.status(500).json({ message: 'Error fetching user posts' });
+  }
+};
+
+exports.getPosts = async (req, res) => {
+  try {
+    const posts = await Post.find({})
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name avatarUrl')
+      .populate('mentions', 'name avatarUrl');
+
+    const shaped = posts.map(p => ({
+      _id: p._id,
+      user: {
+        name: p.userId?.name,
+        avatarUrl: p.userId?.avatarUrl ? `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${p.userId.avatarUrl}` : null
+      },
+      content: p.content,
+      media: (p.media || []).map(m => ({ ...m, url: `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${m.url}` })),
+      createdAt: p.createdAt
+    }));
+    res.json(shaped);
+  } catch {
     res.status(500).json({ message: 'Error fetching posts' });
   }
 };
 
-const likePost = async (req, res) => {
+exports.likePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.postId);
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
+    if (!post) return res.status(404).json({ message: 'Post not found' });
 
-    const likeIndex = post.likes.indexOf(req.user._id);
-    if (likeIndex === -1) {
-      post.likes.push(req.user._id);
-    } else {
-      post.likes.splice(likeIndex, 1);
-    }
+    const idx = post.likes.findIndex(id => id.toString() === req.user._id.toString());
+    if (idx === -1) post.likes.push(req.user._id);
+    else post.likes.splice(idx, 1);
 
     await post.save();
-    res.json(post);
-  } catch (error) {
-    res.status(500).json({ message: 'Error updating post like' });
+    res.json({ likes: post.likes.length });
+  } catch {
+    res.status(500).json({ message: 'Error liking post' });
   }
 };
 
-const addComment = async (req, res) => {
+exports.addComment = async (req, res) => {
   try {
     const { content } = req.body;
-    if (!content) {
-      return res.status(400).json({ message: 'Comment content is required' });
-    }
+    if (!content?.trim()) return res.status(400).json({ message: 'Comment required' });
 
     const post = await Post.findById(req.params.postId);
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
+    if (!post) return res.status(404).json({ message: 'Post not found' });
 
-    post.comments.push({
-      userId: req.user._id,
-      content
-    });
-
+    post.comments.push({ userId: req.user._id, content });
     await post.save();
-    
-    const populatedPost = await Post.findById(post._id)
-      .populate('comments.userId', 'name avatarUrl');
-    
-    res.json(populatedPost);
-  } catch (error) {
+
+    res.json({ success: true });
+  } catch {
     res.status(500).json({ message: 'Error adding comment' });
   }
 };
-
-module.exports = { 
-  getUserPosts, 
-  createPost, 
-  getPosts, 
-  likePost, 
-  addComment 
-}; 

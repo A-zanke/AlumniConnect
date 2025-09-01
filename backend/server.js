@@ -15,6 +15,7 @@ dotenv.config();
 // Connect to database
 connectDB();
 
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Initialize Express
 const app = express();
 const http = require('http').createServer(app);

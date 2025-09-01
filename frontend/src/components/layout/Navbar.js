@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { FiMenu, FiX, FiBell, FiMessageSquare, FiUser, FiLogOut, FiSearch } from 'react-icons/fi';
 import NotificationBell from '../NotificationBell';
 
+
 const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();

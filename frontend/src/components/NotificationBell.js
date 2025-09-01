@@ -1,144 +1,105 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useNotifications } from '../contexts/NotificationContext';
-import { formatDistanceToNow } from 'date-fns';
-import { Link } from 'react-router-dom';
-import { FaBell, FaCheck, FaCheckDouble } from 'react-icons/fa';
-import { connectionAPI } from '../utils/api';
-import { toast } from 'react-toastify';
+import React, { useEffect, useRef, useState } from 'react';
+import { FiBell } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
+import Avatar from './ui/Avatar';
+import { useAuth } from '../context/AuthContext';
+// import { connectionActions } from '../utils/api';
+import axios from 'axios';
 
 const NotificationBell = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
-  const dropdownRef = useRef(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const ref = useRef(null);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
+    const load = async () => {
+      try {
+        const res = await axios.get('/api/notifications'); // adjust to your endpoint if different
+        setItems(res.data || []);
+      } catch {
+        setItems([]);
       }
     };
+    if (user) load();
+  }, [user]);
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+  useEffect(() => {
+    const onClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
   }, []);
 
-  const handleNotificationClick = async (notification) => {
-    if (!notification.read) {
-      await markAsRead(notification._id);
-    }
-    setIsOpen(false);
+  const goProfile = (sender) => {
+    const u = sender?.username || sender?._id;
+    if (u) navigate(`/profile/${sender.username || ''}` || `/profile/${u}`);
+    setOpen(false);
   };
 
-  const handleAccept = async (notification) => {
+  const accept = async (senderId) => {
     try {
-      await connectionAPI.acceptFollowRequest(notification.relatedId);
-      toast.success('Connection request accepted!');
-      // Optionally, refresh notifications or update UI
-    } catch (error) {
-      toast.error('Failed to accept request');
-    }
+    //   await connectionActions.acceptByUserId(senderId, user._id);
+      setItems(prev => prev.filter(n => !(n.sender?._id === senderId && n.type === 'connection_request')));
+    } catch {}
   };
 
-  const handleReject = async (notification) => {
+  const reject = async (senderId) => {
     try {
-      await connectionAPI.rejectFollowRequest(notification.relatedId);
-      toast.info('Connection request removed.');
-      // Optionally, refresh notifications or update UI
-    } catch (error) {
-      toast.error('Failed to remove request');
-    }
-  };
-
-  const getNotificationLink = (notification) => {
-    if (notification.type === 'connection_request' || notification.type === 'connection_accepted') {
-      return `/profile/${notification.sender.username}`;
-    }
-    switch (notification.type) {
-      case 'message':
-        return `/messages/${notification.sender._id}`;
-      case 'event_invite':
-      case 'event_reminder':
-        return `/events/${notification.relatedId}`;
-      case 'post_like':
-      case 'post_comment':
-        return `/posts/${notification.relatedId}`;
-      default:
-        return '#';
-    }
+    //   await connectionActions.rejectByUserId(senderId, user._id);
+      setItems(prev => prev.filter(n => !(n.sender?._id === senderId && n.type === 'connection_request')));
+    } catch {}
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div ref={ref} className="relative">
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-600 hover:text-gray-800 focus:outline-none"
+        className="p-2 rounded-full text-gray-700 hover:text-cyan-600 relative"
+        onClick={() => setOpen((o) => !o)}
+        title="Notifications"
       >
-        <FaBell className="w-6 h-6" />
-        {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-500 rounded-full">
-            {unreadCount}
+        <FiBell size={20} />
+        {items.length > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs px-1">
+            {items.length}
           </span>
         )}
       </button>
 
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg z-50">
-          <div className="p-4 border-b">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Notifications</h3>
-              {unreadCount > 0 && (
-                <button
-                  onClick={markAllAsRead}
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                >
-                  Mark all as read
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="max-h-96 overflow-y-auto">
-            {notifications.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">
-                No notifications
-              </div>
+      {open && (
+        <div className="absolute right-0 mt-2 w-80 rounded-xl shadow-lg bg-white border border-cyan-100 z-50">
+          <div className="p-2">
+            {items.length === 0 ? (
+              <div className="p-4 text-gray-500 text-center">No notifications</div>
             ) : (
-              notifications.map((notification) => (
-                <div key={notification._id} className={`block p-4 border-b hover:bg-gray-50 ${!notification.read ? 'bg-blue-50' : ''}`}>
-                  <Link
-                    to={getNotificationLink(notification)}
-                    onClick={() => handleNotificationClick(notification)}
-                    className="flex items-start"
-                  >
-                    <img
-                      src={notification.sender.avatarUrl || '/default-avatar.png'}
-                      alt={notification.sender.name}
-                      className="w-10 h-10 rounded-full mr-3"
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-800">{notification.content}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatDistanceToNow(new Date(notification.createdAt), {
-                          addSuffix: true
-                        })}
-                      </p>
+              items.map((n) => (
+                <div key={n._id} className="flex items-start gap-3 p-3 hover:bg-cyan-50 rounded-lg">
+                  <div onClick={() => goProfile(n.sender)} style={{ cursor:'pointer' }}>
+                    <Avatar name={n.sender?.name} avatarUrl={n.sender?.avatarUrl} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div className="text-sm">
+                      <span
+                        className="font-semibold hover:text-cyan-600 cursor-pointer"
+                        onClick={() => goProfile(n.sender)}
+                      >
+                        {n.sender?.name || 'User'}
+                      </span>{' '}
+                      <span className="text-gray-600">{n.content || n.type}</span>
                     </div>
-                    {!notification.read && (
-                      <FaCheck className="w-4 h-4 text-blue-500 ml-2" />
+                    {n.type === 'connection_request' && (
+                      <div className="mt-2 flex gap-2">
+                        <button className="btn btn-primary" onClick={() => accept(n.sender?._id)}>
+                          Accept
+                        </button>
+                        <button className="btn btn-outline" onClick={() => reject(n.sender?._id)}>
+                          Reject
+                        </button>
+                      </div>
                     )}
-                  </Link>
-                  {notification.type === 'connection_request' && (
-                    <div className="flex gap-2 mt-2">
-                      {notification.relatedId ? (
-                        <>
-                          <button className="btn btn-primary btn-xs" onClick={() => handleAccept(notification)}>Accept</button>
-                          <button className="btn btn-secondary btn-xs" onClick={() => handleReject(notification)}>Remove</button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-red-500">This request cannot be managed. Please ignore or delete this notification.</span>
-                      )}
-                    </div>
-                  )}
+                  </div>
                 </div>
               ))
             )}
@@ -148,5 +109,4 @@ const NotificationBell = () => {
     </div>
   );
 };
-
-export default NotificationBell; 
+export default NotificationBell;

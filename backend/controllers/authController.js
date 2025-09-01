@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Otp = require('../models/Otp');
@@ -155,7 +156,7 @@ const sendOtp = async (req, res) => {
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Email already registered' });
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await Otp.create({ email, code, purpose: 'registration', expiresAt });

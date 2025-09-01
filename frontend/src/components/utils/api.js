@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // Set default base URL
@@ -262,5 +263,28 @@ export const userAPI = {
     return axios.put('/api/auth/profile', userData);
   },
 };
+// // Add near other helpers
+// export const connectionActions = {
+//   acceptByUserId: async (fromUserId, toUserId) => {
+//     const res = await fetch(`${API_BASE_URL}/connections/accept`, {
+//       method: 'POST',
+//       headers: { ...getAuthHeaders() },
+//       credentials: 'include',
+//       body: JSON.stringify({ fromUserId, toUserId })
+//     });
+//     if (!res.ok) throw new Error('Failed to accept request');
+//     return await res.json();
+//   },
+//   rejectByUserId: async (fromUserId, toUserId) => {
+//     const res = await fetch(`${API_BASE_URL}/connections/reject`, {
+//       method: 'POST',
+//       headers: { ...getAuthHeaders() },
+//       credentials: 'include',
+//       body: JSON.stringify({ fromUserId, toUserId })
+//     });
+//     if (!res.ok) throw new Error('Failed to reject request');
+//     return await res.json();
+//   }
+// };
 
 export default axios;
