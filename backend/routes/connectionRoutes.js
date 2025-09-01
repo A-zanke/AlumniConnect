@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const User = require('../models/User');
+const NotificationService = require('../services/notificationService');
 
 // Send connection request
 router.post('/', protect, async (req, res) => {
@@ -30,6 +31,21 @@ router.post('/', protect, async (req, res) => {
         // Add to connection requests
         toUser.connectionRequests.push(fromUserId);
         await toUser.save();
+
+        // Create notification for the recipient
+        try {
+            await NotificationService.createNotification({
+                recipientId: userId,
+                senderId: fromUserId,
+                type: 'connection_request',
+                content: `${fromUser.name} sent you a connection request`,
+                relatedId: fromUserId,
+                onModel: 'User'
+            });
+        } catch (notificationError) {
+            console.error('Error creating notification:', notificationError);
+            // Don't fail the connection request if notification fails
+        }
 
         res.status(200).json({ message: 'Connection request sent successfully' });
     } catch (error) {
@@ -66,6 +82,21 @@ router.put('/:requestId/accept', protect, async (req, res) => {
 
         await currentUser.save();
         await requesterUser.save();
+
+        // Create notification for the requester
+        try {
+            await NotificationService.createNotification({
+                recipientId: requestId,
+                senderId: currentUserId,
+                type: 'connection_accepted',
+                content: `${currentUser.name} accepted your connection request`,
+                relatedId: currentUserId,
+                onModel: 'User'
+            });
+        } catch (notificationError) {
+            console.error('Error creating notification:', notificationError);
+            // Don't fail the acceptance if notification fails
+        }
 
         res.status(200).json({ message: 'Connection request accepted' });
     } catch (error) {
@@ -141,7 +172,16 @@ router.get('/requests', protect, async (req, res) => {
         const user = await User.findById(req.user._id)
             .populate('connectionRequests', 'name username avatarUrl role');
         
-        res.json({ data: user.connectionRequests || [] });
+        // Return the user objects with their IDs for easier frontend handling
+        const requests = (user.connectionRequests || []).map(req => ({
+            _id: req._id,
+            name: req.name,
+            username: req.username,
+            avatarUrl: req.avatarUrl,
+            role: req.role
+        }));
+        
+        res.json({ data: requests });
     } catch (error) {
         console.error('Error fetching pending requests:', error);
         res.status(500).json({ message: 'Error fetching pending requests' });
@@ -154,7 +194,16 @@ router.get('/followers', protect, async (req, res) => {
         const user = await User.findById(req.user._id)
             .populate('connections', 'name username avatarUrl role');
         
-        res.json({ data: user.connections || [] });
+        // Return the user objects with their IDs for easier frontend handling
+        const followers = (user.connections || []).map(conn => ({
+            _id: conn._id,
+            name: conn.name,
+            username: conn.username,
+            avatarUrl: conn.avatarUrl,
+            role: conn.role
+        }));
+        
+        res.json({ data: followers });
     } catch (error) {
         console.error('Error fetching followers:', error);
         res.status(500).json({ message: 'Error fetching followers' });
@@ -167,7 +216,16 @@ router.get('/following', protect, async (req, res) => {
         const user = await User.findById(req.user._id)
             .populate('connections', 'name username avatarUrl role');
         
-        res.json({ data: user.connections || [] });
+        // Return the user objects with their IDs for easier frontend handling
+        const following = (user.connections || []).map(conn => ({
+            _id: conn._id,
+            name: conn.name,
+            username: conn.username,
+            avatarUrl: conn.avatarUrl,
+            role: conn.role
+        }));
+        
+        res.json({ data: following });
     } catch (error) {
         console.error('Error fetching following:', error);
         res.status(500).json({ message: 'Error fetching following' });
@@ -188,7 +246,18 @@ router.get('/suggested', protect, async (req, res) => {
             }
         }).select('name username avatarUrl role department year').limit(10);
         
-        res.json({ data: allUsers });
+        // Return the user objects with their IDs for easier frontend handling
+        const suggested = allUsers.map(user => ({
+            _id: user._id,
+            name: user.name,
+            username: user.username,
+            avatarUrl: user.avatarUrl,
+            role: user.role,
+            department: user.department,
+            year: user.year
+        }));
+        
+        res.json({ data: suggested });
     } catch (error) {
         console.error('Error fetching suggested connections:', error);
         res.status(500).json({ message: 'Error fetching suggested connections' });

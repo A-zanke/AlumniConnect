@@ -3,8 +3,8 @@ import { FiBell } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import Avatar from './ui/Avatar';
 import { useAuth } from '../context/AuthContext';
-import { connectionAPI } from './utils/api';
-import axios from 'axios';
+import { connectionAPI, notificationAPI } from './utils/api';
+import { toast } from 'react-toastify';
 
 const NotificationBell = () => {
   const { user } = useAuth();
@@ -16,9 +16,10 @@ const NotificationBell = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await axios.get('/api/notifications'); // adjust to your endpoint if different
-        setItems(res.data || []);
-      } catch {
+        const res = await notificationAPI.getNotifications();
+        setItems(res.data?.data || []);
+      } catch (error) {
+        console.error('Error loading notifications:', error);
         setItems([]);
       }
     };
@@ -39,21 +40,45 @@ const NotificationBell = () => {
     setOpen(false);
   };
 
-  const accept = async (notificationId) => {
+  const accept = async (notification) => {
     try {
-      await connectionAPI.acceptFollowRequest(notificationId);
-      setItems(prev => prev.filter(n => n._id !== notificationId));
+      // Accept the connection request using the sender's ID
+      await connectionAPI.acceptFollowRequest(notification.sender._id);
+      toast.success('Connection request accepted!');
+      
+      // Remove the notification from the list
+      setItems(prev => prev.filter(n => n._id !== notification._id));
+      
+      // Mark notification as read
+      try {
+        await notificationAPI.markAsRead(notification._id);
+      } catch (readError) {
+        console.error('Error marking notification as read:', readError);
+      }
     } catch (error) {
       console.error('Error accepting connection request:', error);
+      toast.error('Failed to accept connection request');
     }
   };
 
-  const reject = async (notificationId) => {
+  const reject = async (notification) => {
     try {
-      await connectionAPI.rejectFollowRequest(notificationId);
-      setItems(prev => prev.filter(n => n._id !== notificationId));
+      // Reject the connection request using the sender's ID
+      await connectionAPI.rejectFollowRequest(notification.sender._id);
+      toast.info('Connection request rejected');
+      
+      // Remove the notification from the list
+      setItems(prev => prev.filter(n => n._id !== notification._id));
+      
+      // Mark notification as read
+      try {
+        await notificationAPI.markAsRead(notification._id);
+      } catch (readError) {
+        console.error('Error marking notification as read:', readError);
+      }
     } catch (error) {
       console.error('Error rejecting connection request:', error);
+      toast.error('Failed to reject connection request');
     }
   };
 
@@ -97,13 +122,13 @@ const NotificationBell = () => {
                       <div className="mt-2 flex gap-2">
                         <button 
                           className="px-3 py-1 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700" 
-                          onClick={() => accept(n._id)}
+                          onClick={() => accept(n)}
                         >
                           Accept
                         </button>
                         <button 
                           className="px-3 py-1 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" 
-                          onClick={() => reject(n._id)}
+                          onClick={() => reject(n)}
                         >
                           Reject
                         </button>

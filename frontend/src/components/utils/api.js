@@ -191,10 +191,10 @@ export const eventsAPI = {
 
 // Connection API
 export const connectionAPI = {
-  // Follow user
+  // Follow user (send connection request)
   followUser: (userId) => axios.post('/api/connections', { userId }),
   
-  // Unfollow user
+  // Unfollow user (remove connection)
   unfollowUser: (userId) => axios.delete(`/api/connections/${userId}`),
   
   // Get connection status between current user and another user
@@ -219,6 +219,21 @@ export const connectionAPI = {
   
   // Get suggested connections
   getSuggestedConnections: () => axios.get('/api/connections/suggested'),
+  
+  // Send connection request (alias for followUser)
+  sendRequest: (userId) => axios.post('/api/connections', { userId }),
+};
+
+// Notification API
+export const notificationAPI = {
+  // Get all notifications
+  getNotifications: () => axios.get('/api/notifications'),
+  
+  // Mark notification as read
+  markAsRead: (notificationId) => axios.put(`/api/notifications/${notificationId}/read`),
+  
+  // Mark all notifications as read
+  markAllAsRead: () => axios.put('/api/notifications/read-all'),
 };
 
 // User API
