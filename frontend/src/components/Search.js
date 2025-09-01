@@ -69,7 +69,7 @@ const Search = () => {
     const handleSearch = async () => {
         setLoading(true);
         try {
-            const response = await axios.get(`http://localhost:5000/api/search/users?query=${encodeURIComponent(query)}&excludeId=${currentUserId}`,
+            const response = await axios.get(`http://localhost:5001/api/search/users?query=${encodeURIComponent(query)}&excludeId=${currentUserId}`,
                 { withCredentials: true }
             );
             setResults(response.data);

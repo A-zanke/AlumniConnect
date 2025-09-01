@@ -161,8 +161,17 @@ const sendOtp = async (req, res) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await Otp.create({ email, code, purpose: 'registration', expiresAt });
-    await sendOtpEmail({ to: email, code });
-    res.json({ success: true });
+    try {
+      await sendOtpEmail({ to: email, code });
+    } catch (mailError) {
+      console.error('Mail send failed:', mailError?.message || mailError);
+    }
+    const payload = { success: true };
+    if (process.env.NODE_ENV !== 'production') {
+      payload.devOtp = code;
+      console.log(`DEV ONLY: OTP for ${email} is ${code}`);
+    }
+    return res.json(payload);
   } catch (error) {
     console.error('sendOtp error:', error);
     res.status(500).json({ message: 'Failed to send OTP' });
