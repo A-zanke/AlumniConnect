@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Otp = require('../models/Otp');
 const bcrypt = require('bcryptjs');
+const { sendOtpEmail } = require('../services/emailService');
 
 // Generate JWT
 const generateToken = (id) => {
@@ -14,7 +16,7 @@ const generateToken = (id) => {
 // @access Public
 const registerUser = async (req, res) => {
   try {
-    const { username, password, confirmPassword, name, email, role } = req.body;
+    const { username, password, confirmPassword, name, email, role, department, year, graduationYear } = req.body;
 
     // Validate required fields
     if (!username || !password || !confirmPassword || !name || !email) {
@@ -35,13 +37,30 @@ const registerUser = async (req, res) => {
       });
     }
 
+    // Enforce password strength
+    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
+    if (!passwordStrong.test(password)) {
+      return res.status(400).json({ message: 'Password not strong enough' });
+    }
+
+    // Require email verified (registration flow should verify before saving)
+    const verifiedOtp = await Otp.findOne({ email, consumed: true }).sort({ createdAt: -1 });
+    const isEmailVerified = Boolean(verifiedOtp);
+    if (!isEmailVerified) {
+      return res.status(400).json({ message: 'Please verify your email via OTP before registration' });
+    }
+
     // Create user
     const user = await User.create({
       username,
-      password, // Let model hash it
+      password,
       name,
       email,
-      role: role || 'student', // Default to student if role not provided
+      role: (role || 'student').toLowerCase(),
+      department,
+      year,
+      graduationYear,
+      emailVerified: isEmailVerified
     });
 
     if (user) {
@@ -60,6 +79,10 @@ const registerUser = async (req, res) => {
         email: user.email,
         username: user.username,
         role: user.role,
+        emailVerified: user.emailVerified,
+        department: user.department,
+        year: user.year,
+        graduationYear: user.graduationYear,
         token,
       });
     } else {
@@ -79,15 +102,19 @@ const registerUser = async (req, res) => {
 // @access Public
 const loginUser = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    let { username, password } = req.body;
+
+    // If email prefix provided without domain, append @mit.asia
+    if (username && !username.includes('@')) {
+      // Try username as-is first, then fallback to domain email
+    }
 
     // Find user by username or email
-    const user = await User.findOne({ 
-      $or: [
-        { username },
-        { email: username } // Allow login with email too
-      ]
-    });
+    let user = await User.findOne({ username });
+    if (!user) {
+      const maybeEmail = username.includes('@') ? username : `${username}@mit.asia`;
+      user = await User.findOne({ email: maybeEmail });
+    }
 
     // Check user and password
     if (user && (await user.matchPassword(password))) {
@@ -115,6 +142,75 @@ const loginUser = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Send OTP for registration
+const sendOtp = async (req, res) => {
+  try {
+    const { emailPrefix } = req.body;
+    if (!emailPrefix || /@/.test(emailPrefix)) {
+      return res.status(400).json({ message: 'Provide email prefix only' });
+    }
+    const email = `${emailPrefix}@mit.asia`;
+
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: 'Email already registered' });
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await Otp.create({ email, code, purpose: 'registration', expiresAt });
+    await sendOtpEmail({ to: email, code });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('sendOtp error:', error);
+    res.status(500).json({ message: 'Failed to send OTP' });
+  }
+};
+
+// Verify OTP
+const verifyOtp = async (req, res) => {
+  try {
+    const { emailPrefix, code } = req.body;
+    if (!emailPrefix || /@/.test(emailPrefix) || !code) {
+      return res.status(400).json({ message: 'Invalid input' });
+    }
+    const email = `${emailPrefix}@mit.asia`;
+    const otp = await Otp.findOne({ email, purpose: 'registration', consumed: false }).sort({ createdAt: -1 });
+
+    if (!otp) return res.status(400).json({ message: 'OTP not found' });
+    if (otp.expiresAt < new Date()) return res.status(400).json({ message: 'OTP expired' });
+    if (otp.code !== code) {
+      otp.attempts += 1;
+      await otp.save();
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+    otp.consumed = true;
+    await otp.save();
+    res.json({ success: true, email });
+  } catch (error) {
+    console.error('verifyOtp error:', error);
+    res.status(500).json({ message: 'Failed to verify OTP' });
+  }
+};
+
+// Check username availability
+const checkUsername = async (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) return res.status(400).json({ message: 'Username required' });
+    const exists = await User.findOne({ username });
+    if (!exists) return res.json({ available: true, suggestions: [] });
+    const suggestions = [
+      `${username}${Math.floor(Math.random() * 90 + 10)}`,
+      `${username}_${Math.floor(Math.random() * 900 + 100)}`,
+      `${username}${new Date().getFullYear()}`
+    ];
+    res.json({ available: false, suggestions });
+  } catch (error) {
+    console.error('checkUsername error:', error);
+    res.status(500).json({ message: 'Failed to check username' });
   }
 };
 
@@ -217,4 +313,7 @@ module.exports = {
   logoutUser,
   getUserProfile,
   updateUserProfile,
+  sendOtp,
+  verifyOtp,
+  checkUsername,
 };

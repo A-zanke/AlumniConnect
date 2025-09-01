@@ -6,6 +6,8 @@ import './LoginPage.css';
 const LoginPage = () => {
   const [formData, setFormData] = useState({
     username: '',
+    emailPrefix: '',
+    useEmailPrefix: false,
     password: ''
   });
   const [error, setError] = useState('');
@@ -27,7 +29,10 @@ const LoginPage = () => {
     setError('');
     setLoading(true);
     try {
-      const result = await login(formData.username, formData.password);
+      const identifier = formData.useEmailPrefix
+        ? `${formData.emailPrefix}@mit.asia`
+        : formData.username;
+      const result = await login(identifier, formData.password);
       if (result.success) {
         navigate('/profile');
       } else {
@@ -48,18 +53,45 @@ const LoginPage = () => {
         <form className="login-form" onSubmit={handleSubmit}>
           {error && <div className="login-error">{error}</div>}
           <div className="login-field">
-            <label htmlFor="username" className="login-label">Email or Username</label>
-            <input
-              id="username"
-              name="username"
-              type="text"
-              autoComplete="username"
-              required
-              className="login-input"
-              placeholder="Enter your email or username"
-              value={formData.username}
-              onChange={handleChange}
-            />
+            <label className="login-label">Email or Username</label>
+            {!formData.useEmailPrefix ? (
+              <input
+                name="username"
+                type="text"
+                autoComplete="username"
+                required
+                className="login-input"
+                placeholder="Enter your email or username"
+                value={formData.username}
+                onChange={handleChange}
+              />
+            ) : (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  name="emailPrefix"
+                  type="text"
+                  required
+                  className="login-input"
+                  placeholder="email prefix"
+                  value={formData.emailPrefix}
+                  onChange={(e) => {
+                    if (e.target.value.includes('@')) return;
+                    handleChange(e);
+                  }}
+                />
+                <span>@mit.asia</span>
+              </div>
+            )}
+            <div style={{ marginTop: '8px' }}>
+              <label className="login-checkbox">
+                <input
+                  type="checkbox"
+                  checked={formData.useEmailPrefix}
+                  onChange={(e) => setFormData(prev => ({ ...prev, useEmailPrefix: e.target.checked }))}
+                />
+                Use email prefix (@mit.asia)
+              </label>
+            </div>
           </div>
           <div className="login-field">
             <label htmlFor="password" className="login-label">Password</label>

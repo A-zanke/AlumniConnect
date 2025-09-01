@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 
 // Configure axios defaults
-axios.defaults.baseURL = 'http://localhost:5000';
+axios.defaults.baseURL = 'http://localhost:5001';
 axios.defaults.withCredentials = true;
 
 const AuthContext = createContext();
@@ -54,6 +54,38 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Send OTP to prefix@mit.asia
+  const sendOtp = async (emailPrefix) => {
+    try {
+      const res = await axios.post('/api/auth/send-otp', { emailPrefix });
+      return { success: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Failed to send OTP';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  // Verify OTP
+  const verifyOtp = async (emailPrefix, code) => {
+    try {
+      const res = await axios.post('/api/auth/verify-otp', { emailPrefix, code });
+      return { success: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'OTP verification failed';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  // Check username availability
+  const checkUsername = async (username) => {
+    try {
+      const res = await axios.get('/api/auth/check-username', { params: { username } });
+      return { success: true, ...res.data };
+    } catch (err) {
+      return { success: false, available: false, suggestions: [] };
     }
   };
 
@@ -124,7 +156,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername }}>
       {children}
     </AuthContext.Provider>
   );

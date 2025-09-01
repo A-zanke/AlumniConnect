@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './RegisterPage.css';
@@ -7,14 +7,23 @@ const RegisterPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     username: '',
+    emailPrefix: '',
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'student'
+    role: 'student',
+    department: '',
+    otherDepartment: '',
+    year: '',
+    graduationYear: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
+  const { register, sendOtp, verifyOtp, checkUsername } = useAuth();
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState({ available: null, suggestions: [] });
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -32,15 +41,23 @@ const RegisterPage = () => {
       setError('Passwords do not match');
       return;
     }
+    if (!emailVerified) {
+      setError('Please verify your email via OTP before registering');
+      return;
+    }
+    const finalEmail = `${formData.emailPrefix}@mit.asia`;
     setLoading(true);
     try {
       const result = await register({
         name: formData.name,
         username: formData.username,
-        email: formData.email,
+        email: finalEmail,
         password: formData.password,
         confirmPassword: formData.confirmPassword,
-        role: formData.role
+        role: formData.role,
+        department: formData.department === 'Other' ? formData.otherDepartment : formData.department,
+        year: formData.role === 'student' ? Number(formData.year) : undefined,
+        graduationYear: formData.role === 'alumni' ? Number(formData.graduationYear) : undefined
       });
 
       if (result.success) {
@@ -54,6 +71,45 @@ const RegisterPage = () => {
       setLoading(false);
     }
   };
+
+  const handleSendOtp = async () => {
+    if (!formData.emailPrefix || /@/.test(formData.emailPrefix)) {
+      setError('Enter email prefix only');
+      return;
+    }
+    setError('');
+    const resp = await sendOtp(formData.emailPrefix.trim());
+    if (resp.success) {
+      setOtpSent(true);
+    } else {
+      setError(resp.error || 'Failed to send OTP');
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode || otpCode.length !== 6) {
+      setError('Enter the 6-digit OTP');
+      return;
+    }
+    const resp = await verifyOtp(formData.emailPrefix.trim(), otpCode.trim());
+    if (resp.success) {
+      setEmailVerified(true);
+      setFormData(prev => ({ ...prev, email: resp.data?.email || `${formData.emailPrefix}@mit.asia` }));
+    } else {
+      setError(resp.error || 'OTP verification failed');
+    }
+  };
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      if (!formData.username) { setUsernameStatus({ available: null, suggestions: [] }); return; }
+      const resp = await checkUsername(formData.username);
+      if (resp.success) {
+        setUsernameStatus({ available: resp.available, suggestions: resp.suggestions || [] });
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [formData.username]);
 
   return (
     <div className="register-container">
@@ -78,15 +134,38 @@ const RegisterPage = () => {
             </div>
 
             <div className="register-field">
-              <label>Email</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                placeholder="Enter your email"
-              />
+              <label>Institution Email</label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  name="emailPrefix"
+                  value={formData.emailPrefix}
+                  onChange={(e) => {
+                    if (e.target.value.includes('@')) return; // prevent typing @
+                    handleChange(e);
+                  }}
+                  required
+                  placeholder="email prefix"
+                />
+                <span>@mit.asia</span>
+                {!otpSent && (
+                  <button type="button" onClick={handleSendOtp} className="register-button" style={{ padding: '8px 12px' }}>Verify</button>
+                )}
+              </div>
+              {otpSent && !emailVerified && (
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="Enter 6-digit OTP"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                  />
+                  <button type="button" onClick={handleVerifyOtp} className="register-button" style={{ padding: '8px 12px' }}>Submit OTP</button>
+                </div>
+              )}
+              {emailVerified && <div className="register-success">Email verified</div>}
             </div>
 
             <div className="register-field">
@@ -99,6 +178,12 @@ const RegisterPage = () => {
                 required
                 placeholder="Choose a username"
               />
+              {usernameStatus.available === false && (
+                <div className="register-error">Username taken. Suggestions: {usernameStatus.suggestions.join(', ')}</div>
+              )}
+              {usernameStatus.available === true && formData.username && (
+                <div className="register-success">Username available</div>
+              )}
             </div>
 
             <div className="register-field">
@@ -111,6 +196,7 @@ const RegisterPage = () => {
                 required
                 placeholder="Create a password"
               />
+              <small>Min 8 chars, uppercase, lowercase, number, special</small>
             </div>
 
             <div className="register-field">
@@ -134,10 +220,75 @@ const RegisterPage = () => {
                 className="register-select"
               >
                 <option value="student">Student</option>
-                <option value="alumni">Alumni</option>
                 <option value="teacher">Teacher</option>
+                <option value="alumni">Alumni</option>
               </select>
             </div>
+
+            <div className="register-field">
+              <label>Department</label>
+              <select
+                name="department"
+                value={formData.department}
+                onChange={handleChange}
+                className="register-select"
+                required
+              >
+                <option value="">Select department</option>
+                <option value="CSE">CSE</option>
+                <option value="AI-DS">AI-DS</option>
+                <option value="Civil">Civil</option>
+                <option value="Mechanical">Mechanical</option>
+                <option value="Electrical">Electrical</option>
+                <option value="ETC">ETC</option>
+                <option value="Other">Other</option>
+              </select>
+              {formData.department === 'Other' && (
+                <input
+                  type="text"
+                  name="otherDepartment"
+                  placeholder="Enter your department"
+                  value={formData.otherDepartment}
+                  onChange={handleChange}
+                  style={{ marginTop: '8px' }}
+                />
+              )}
+            </div>
+
+            {formData.role === 'student' && (
+              <div className="register-field">
+                <label>Year</label>
+                <select
+                  name="year"
+                  value={formData.year}
+                  onChange={handleChange}
+                  className="register-select"
+                  required
+                >
+                  <option value="">Select year</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </div>
+            )}
+
+            {formData.role === 'alumni' && (
+              <div className="register-field">
+                <label>Graduation Year</label>
+                <input
+                  type="number"
+                  name="graduationYear"
+                  placeholder="e.g., 2022"
+                  value={formData.graduationYear}
+                  onChange={handleChange}
+                  min="1950"
+                  max="2099"
+                  step="1"
+                />
+              </div>
+            )}
 
             <button
               type="submit"

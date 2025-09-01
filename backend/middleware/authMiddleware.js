@@ -29,4 +29,13 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+const roleMiddleware = (...roles) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
+  const normalized = roles.map(r => r.toLowerCase());
+  if (!normalized.includes((req.user.role || '').toLowerCase())) {
+    return res.status(403).json({ message: 'Forbidden: insufficient role' });
+  }
+  next();
+};
+
+module.exports = { protect, roleMiddleware };

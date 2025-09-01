@@ -7,7 +7,10 @@ const {
   loginUser, 
   logoutUser, 
   getUserProfile, 
-  updateUserProfile 
+  updateUserProfile,
+  sendOtp,
+  verifyOtp,
+  checkUsername
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const { OAuth2Client } = require('google-auth-library');
@@ -46,6 +49,9 @@ const upload = multer({
 // Public routes
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/send-otp', sendOtp);
+router.post('/verify-otp', verifyOtp);
+router.get('/check-username', checkUsername);
 
 // Protected routes
 router.post('/logout', protect, logoutUser);
