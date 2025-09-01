@@ -30,7 +30,7 @@ const PlaceholderAvatar = ({ name = '', size = 96, fontSize = 36 }) => {
 };
 
 const ProfilePage = () => {
-  const { username } = useParams();
+  const { username, userId } = useParams();
   const navigate = useNavigate();
   const { user: authUser, updateProfile } = useAuth();
 
@@ -50,8 +50,8 @@ const ProfilePage = () => {
   const [pendingRequestFromUser, setPendingRequestFromUser] = useState(false);
 
   const isOwnProfile = useMemo(
-    () => !username || (authUser && authUser.username === username),
-    [username, authUser]
+    () => (!username && !userId) || (authUser && (authUser.username === username || authUser._id === userId)),
+    [username, userId, authUser]
   );
 
   useEffect(() => {
@@ -62,8 +62,15 @@ const ProfilePage = () => {
         if (isOwnProfile) {
           u = authUser || (await userAPI.getProfile()).data;
         } else {
-          const res = await userAPI.getUserByUsername(username);
-          u = res.data;
+          if (username) {
+            const res = await userAPI.getUserByUsername(username);
+            u = res.data;
+          } else if (userId) {
+            const res = await userAPI.getUserById(userId);
+            u = res.data;
+          } else {
+            throw new Error('No username or userId provided');
+          }
         }
         setUser(u);
 
@@ -104,7 +111,7 @@ const ProfilePage = () => {
       }
     };
     load();
-  }, [authUser, isOwnProfile, username]);
+  }, [authUser, isOwnProfile, username, userId]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -135,6 +142,9 @@ const ProfilePage = () => {
         setUser(refreshed.data);
       } else if (username) {
         const refreshed = await userAPI.getUserByUsername(username);
+        setUser(refreshed.data);
+      } else if (userId) {
+        const refreshed = await userAPI.getUserById(userId);
         setUser(refreshed.data);
       }
       setIsEditing(false);
@@ -201,110 +211,180 @@ const ProfilePage = () => {
   const showChat = !isOwnProfile && connectionStatus === 'connected';
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Unique header (no banner) */}
-      <div
-        className="theme-card float-in"
-        style={{
-          overflow: 'hidden',
-          padding: '18px',
-          borderRadius: 16,
-          position: 'relative',
-          background: 'linear-gradient(135deg, rgba(6,182,212,.08), rgba(59,130,246,.08))'
-        }}
-      >
+    <div style={{ backgroundColor: '#f3f2ef', minHeight: '100vh' }}>
+      <div className="container mx-auto px-4 py-8">
+        {/* LinkedIn-style header */}
         <div
           style={{
-            position: 'absolute', inset: 0,
-            background: 'radial-gradient(600px 200px at 10% -10%, rgba(6,182,212,.18), transparent), radial-gradient(600px 200px at 110% 110%, rgba(139,92,246,.18), transparent)'
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '24px',
+            marginBottom: '16px',
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
+            position: 'relative'
           }}
-        />
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 16 }}>
-          {/* Avatar */}
-          <div>
-            {user.avatarUrl ? (
-              <img
-                src={getAvatarUrl(user.avatarUrl)}
-                alt={user.name}
-                style={{
-                  width: 96, height: 96, borderRadius: '50%',
-                  objectFit: 'cover', border: '3px solid rgba(6,182,212,.25)',
-                  boxShadow: '0 12px 30px rgba(6,182,212,.25)'
-                }}
-              />
-            ) : (
-              <PlaceholderAvatar name={user.name} />
-            )}
-            {isOwnProfile && isEditing && (
-              <div style={{ marginTop: 8 }}>
-                <FileInput accept="image/*" onChange={handleAvatarChange} />
-              </div>
-            )}
-          </div>
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* Avatar */}
+            <div>
+              {user.avatarUrl ? (
+                <img
+                  src={getAvatarUrl(user.avatarUrl)}
+                  alt={user.name}
+                  style={{
+                    width: 120, height: 120, borderRadius: '50%',
+                    objectFit: 'cover', border: '4px solid white',
+                    boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: 120, height: 120, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #0a66c2, #004182)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'white', fontWeight: 'bold', fontSize: '48px',
+                  border: '4px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)'
+                }}>
+                  {(user.name || '?').charAt(0).toUpperCase()}
+                </div>
+              )}
+              {isOwnProfile && isEditing && (
+                <div style={{ marginTop: 8 }}>
+                  <FileInput accept="image/*" onChange={handleAvatarChange} />
+                </div>
+              )}
+            </div>
 
-          {/* Identity */}
-          <div>
-            <h1 className="gradient-text" style={{ fontWeight: 900, fontSize: 28 }}>{user.name}</h1>
-            <div style={{ color: '#475569', marginTop: 2 }}>
-              @{user.username} • {user.role}
+            {/* Identity */}
+            <div style={{ flex: 1 }}>
+              <h1 style={{ fontWeight: '400', fontSize: '32px', color: '#000000', margin: '0 0 4px 0' }}>{user.name}</h1>
+              <div style={{ color: '#666666', fontSize: '16px', marginBottom: '8px' }}>
+                {user.position && user.company ? `${user.position} at ${user.company}` : user.position || user.company || user.role}
+              </div>
+              <div style={{ color: '#666666', fontSize: '14px', marginBottom: '4px' }}>
+                <FaMapMarkerAlt style={{ marginRight: '4px' }} />
+                {user.location || 'Location not specified'}
+              </div>
+              <div style={{ color: '#666666', fontSize: '14px' }}>
+                {user.connections?.length || 0} connections
+              </div>
             </div>
-            <div style={{ color: '#64748b', marginTop: 6 }}>
-              <FaMapMarkerAlt className="inline mr-2" />
-              {user.location || 'Location not specified'}
-            </div>
-          </div>
 
           {/* Actions */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
             {isOwnProfile ? (
               <button
                 onClick={() => setIsEditing(prev => !prev)}
-                className="btn btn-primary hover-tilt"
-                style={{ padding: '10px 14px' }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '24px',
+                  border: '1px solid #0a66c2',
+                  backgroundColor: isEditing ? '#f3f2ef' : '#0a66c2',
+                  color: isEditing ? '#0a66c2' : 'white',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                onMouseOver={(e) => {
+                  if (!isEditing) {
+                    e.target.style.backgroundColor = '#004182';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!isEditing) {
+                    e.target.style.backgroundColor = '#0a66c2';
+                  }
+                }}
               >
-                <FaEdit className="inline mr-2" />
+                <FaEdit size={14} />
                 {isEditing ? 'Cancel' : 'Edit Profile'}
               </button>
             ) : (
               <>
                 {showChat && (
                   <button
-                    className="btn btn-outline hover-tilt"
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '24px',
+                      border: '1px solid #0a66c2',
+                      backgroundColor: 'white',
+                      color: '#0a66c2',
+                      fontWeight: '600',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
                     onClick={() => navigate('/messages')}
                     title="Open chat"
+                    onMouseOver={(e) => {
+                      e.target.style.backgroundColor = '#f3f2ef';
+                    }}
+                    onMouseOut={(e) => {
+                      e.target.style.backgroundColor = 'white';
+                    }}
                   >
-                    <FaComments className="inline mr-2" />
+                    <FaComments size={14} />
                     Message
                   </button>
                 )}
                 <button
                   onClick={() => handleConnect(user._id)}
-                  className={`btn ${
-                    connectionStatus === 'pending'
-                      ? 'btn-secondary'
-                      : connectionStatus === 'connected'
-                      ? 'btn-success'
-                      : 'btn-primary'
-                  } hover-tilt`}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '24px',
+                    border: connectionStatus === 'connected' ? '1px solid #666666' : '1px solid #0a66c2',
+                    backgroundColor: connectionStatus === 'connected' ? 'white' : '#0a66c2',
+                    color: connectionStatus === 'connected' ? '#666666' : 'white',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    cursor: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    opacity: connectionStatus === 'pending' || connectionStatus === 'connected' || pendingRequestFromUser ? 0.6 : 1
+                  }}
                   disabled={
                     connectionStatus === 'pending' ||
                     connectionStatus === 'connected' ||
                     pendingRequestFromUser
                   }
+                  onMouseOver={(e) => {
+                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                      e.target.style.backgroundColor = '#004182';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (connectionStatus !== 'pending' && connectionStatus !== 'connected' && !pendingRequestFromUser) {
+                      e.target.style.backgroundColor = '#0a66c2';
+                    }
+                  }}
                 >
                   {connectionStatus === 'pending' ? (
                     <>
-                      <FaUserCheck className="inline mr-2" />
+                      <FaUserCheck size={14} />
+                      Pending
+                    </>
+                  ) : connectionStatus === 'requested' ? (
+                    <>
+                      <FaUserCheck size={14} />
                       Requested
                     </>
                   ) : connectionStatus === 'connected' ? (
                     <>
-                      <FaUserFriends className="inline mr-2" />
+                      <FaUserFriends size={14} />
                       Connected
                     </>
                   ) : (
                     <>
-                      <FaUserPlus className="inline mr-2" />
+                      <FaUserPlus size={14} />
                       Connect
                     </>
                   )}
@@ -312,10 +392,54 @@ const ProfilePage = () => {
 
                 {pendingRequestFromUser && (
                   <>
-                    <button className="btn btn-primary hover-tilt" onClick={handleAcceptRequest}>
+                    <button 
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '24px',
+                        border: '1px solid #0a66c2',
+                        backgroundColor: '#0a66c2',
+                        color: 'white',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      onClick={handleAcceptRequest}
+                      onMouseOver={(e) => {
+                        e.target.style.backgroundColor = '#004182';
+                      }}
+                      onMouseOut={(e) => {
+                        e.target.style.backgroundColor = '#0a66c2';
+                      }}
+                    >
                       Accept
                     </button>
-                    <button className="btn btn-outline hover-tilt" onClick={handleRejectRequest}>
+                    <button 
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '24px',
+                        border: '1px solid #666666',
+                        backgroundColor: 'white',
+                        color: '#666666',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      onClick={handleRejectRequest}
+                      onMouseOver={(e) => {
+                        e.target.style.backgroundColor = '#f3f2ef';
+                      }}
+                      onMouseOut={(e) => {
+                        e.target.style.backgroundColor = 'white';
+                      }}
+                    >
                       Remove
                     </button>
                   </>
@@ -326,13 +450,18 @@ const ProfilePage = () => {
         </div>
       </div>
 
-      {/* Main content */}
-      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
-        {/* Editable sections */}
-        <div style={{ display: 'grid', gap: 16 }}>
-          {/* About */}
-          <div className="theme-card float-in" style={{ padding: 16 }}>
-            <h2 className="gradient-text" style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>About</h2>
+        {/* Main content */}
+        <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
+          {/* Editable sections */}
+          <div style={{ display: 'grid', gap: '16px' }}>
+            {/* About */}
+            <div style={{ 
+              backgroundColor: 'white', 
+              borderRadius: '8px', 
+              padding: '24px', 
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
+            }}>
+              <h2 style={{ fontWeight: '600', fontSize: '20px', marginBottom: '16px', color: '#000000' }}>About</h2>
             {isEditing ? (
               <textarea name="bio" value={formData.bio} onChange={handleChange} className="form-textarea" rows="4" placeholder="Tell us about yourself..." />
             ) : (
@@ -340,11 +469,16 @@ const ProfilePage = () => {
             )}
           </div>
 
-          {/* Experience */}
-          <div className="theme-card float-in" style={{ padding: 16 }}>
-            <h2 className="gradient-text" style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-              <FaBriefcase className="inline mr-2" /> Experience
-            </h2>
+            {/* Experience */}
+            <div style={{ 
+              backgroundColor: 'white', 
+              borderRadius: '8px', 
+              padding: '24px', 
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
+            }}>
+              <h2 style={{ fontWeight: '600', fontSize: '20px', marginBottom: '16px', color: '#000000' }}>
+                <FaBriefcase style={{ marginRight: '8px' }} /> Experience
+              </h2>
             {isEditing ? (
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
                 <div className="form-group">
@@ -445,10 +579,15 @@ const ProfilePage = () => {
           )}
         </div>
 
-        {/* Sidebar */}
-        <aside style={{ display: 'grid', gap: 16 }}>
-          <div className="theme-card float-in" style={{ padding: 16 }}>
-            <h3 className="gradient-text" style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Profile Info</h3>
+          {/* Sidebar */}
+          <aside style={{ display: 'grid', gap: '16px' }}>
+            <div style={{ 
+              backgroundColor: 'white', 
+              borderRadius: '8px', 
+              padding: '24px', 
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
+            }}>
+              <h3 style={{ fontWeight: '600', fontSize: '18px', marginBottom: '16px', color: '#000000' }}>Profile Info</h3>
             <div style={{ color: '#334155' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
                 <span style={{ color: '#64748b' }}>Role</span><span style={{ fontWeight: 700 }}>{user.role}</span>
@@ -459,8 +598,13 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          <div className="theme-card float-in" style={{ padding: 16 }}>
-            <h3 className="gradient-text" style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Recent Posts</h3>
+            <div style={{ 
+              backgroundColor: 'white', 
+              borderRadius: '8px', 
+              padding: '24px', 
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
+            }}>
+              <h3 style={{ fontWeight: '600', fontSize: '18px', marginBottom: '16px', color: '#000000' }}>Recent Posts</h3>
             {userPosts.length === 0 ? (
               <p style={{ color: '#64748b' }}>No posts yet.</p>
             ) : (
@@ -473,8 +617,9 @@ const ProfilePage = () => {
                 ))}
               </div>
             )}
-          </div>
-        </aside>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );

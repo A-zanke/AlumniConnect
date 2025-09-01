@@ -86,7 +86,11 @@ const Search = () => {
     };
 
     const handleProfileClick = (user) => {
-        navigate(`/profile/${user._id}`);
+        if (user.username) {
+            navigate(`/profile/${user.username}`);
+        } else {
+            navigate(`/profile/id/${user._id}`);
+        }
     };
 
     const handleConnect = async (e, userId) => {
@@ -183,12 +187,34 @@ const Search = () => {
                                                 </p>
                                             </div>
                                             <button
-                                                className={`ml-4 px-4 py-2 rounded transition ${connectionStatuses[user._id] === 'pending' ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
-                                                disabled={connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'accepted'}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    borderRadius: '24px',
+                                                    border: connectionStatuses[user._id] === 'connected' ? '1px solid #666666' : '1px solid #0a66c2',
+                                                    backgroundColor: connectionStatuses[user._id] === 'connected' ? 'white' : '#0a66c2',
+                                                    color: connectionStatuses[user._id] === 'connected' ? '#666666' : 'white',
+                                                    fontWeight: '600',
+                                                    fontSize: '14px',
+                                                    cursor: connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'connected' ? 'not-allowed' : 'pointer',
+                                                    transition: 'all 0.2s ease',
+                                                    opacity: connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'connected' ? 0.6 : 1
+                                                }}
+                                                disabled={connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'connected'}
                                                 onClick={e => handleConnect(e, user._id)}
+                                                onMouseOver={(e) => {
+                                                    if (connectionStatuses[user._id] !== 'pending' && connectionStatuses[user._id] !== 'requested' && connectionStatuses[user._id] !== 'connected') {
+                                                        e.target.style.backgroundColor = '#004182';
+                                                    }
+                                                }}
+                                                onMouseOut={(e) => {
+                                                    if (connectionStatuses[user._id] !== 'pending' && connectionStatuses[user._id] !== 'requested' && connectionStatuses[user._id] !== 'connected') {
+                                                        e.target.style.backgroundColor = '#0a66c2';
+                                                    }
+                                                }}
                                             >
-                                                {connectionStatuses[user._id] === 'pending' ? 'Requested'
-                                                    : connectionStatuses[user._id] === 'accepted' ? 'Connected'
+                                                {connectionStatuses[user._id] === 'pending' ? 'Pending'
+                                                    : connectionStatuses[user._id] === 'requested' ? 'Requested'
+                                                    : connectionStatuses[user._id] === 'connected' ? 'Connected'
                                                     : 'Connect'}
                                             </button>
                                         </div>
