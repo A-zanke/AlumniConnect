@@ -191,10 +191,10 @@ export const eventsAPI = {
 
 // Connection API
 export const connectionAPI = {
-  // Follow user
+  // Follow user (send connection request)
   followUser: (userId) => axios.post('/api/connections', { userId }),
   
-  // Unfollow user
+  // Unfollow user (cancel request or remove connection)
   unfollowUser: (userId) => axios.delete(`/api/connections/${userId}`),
   
   // Get connection status between current user and another user
