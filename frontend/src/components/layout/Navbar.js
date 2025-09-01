@@ -38,8 +38,10 @@ const Navbar = () => {
             <div className="hidden md:flex md:items-center md:space-x-4">
               <NavLinkA to="/" label="Home" />
               <NavLinkA to="/events" label="Events" />
+              <NavLinkA to="/about" label="About" />
               <NavLinkA to="/forum" label="Forum" />
               {user && <NavLinkA to="/network" label="Network" />}
+              {user && (user.role || '').toLowerCase() === 'admin' && <NavLinkA to="/admin" label="Admin" />}
               <button
                 onClick={() => navigate('/search')}
                 className="ml-2 p-2 rounded-full hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400"
@@ -130,8 +132,10 @@ const Navbar = () => {
             <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
               <NavLinkA to="/" label="Home" onClick={toggleMenu} mobile />
               <NavLinkA to="/events" label="Events" onClick={toggleMenu} mobile />
+              <NavLinkA to="/about" label="About" onClick={toggleMenu} mobile />
               <NavLinkA to="/forum" label="Forum" onClick={toggleMenu} mobile />
               {user && <NavLinkA to="/network" label="Network" onClick={toggleMenu} mobile />}
+              {user && (user.role || '').toLowerCase() === 'admin' && <NavLinkA to="/admin" label="Admin" onClick={toggleMenu} mobile />}
               <NavLinkA to="/search" label="Search" onClick={toggleMenu} mobile />
             </div>
             {user ? (

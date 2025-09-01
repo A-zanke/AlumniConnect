@@ -98,10 +98,20 @@ const EventsPage = () => {
   
   return (
     <div className="container mx-auto px-4 py-8">
+      <div className="relative overflow-hidden rounded-2xl mb-8">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600 opacity-90" />
+        <img src="https://images.unsplash.com/photo-1551836022-deb4988cc6c7?q=80&w=1200&auto=format&fit=crop" alt="events" className="w-full h-48 object-cover" />
+        <div className="absolute inset-0 flex items-center px-6">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-white drop-shadow">Events</h1>
+            <p className="text-white/90">Discover networking events, workshops, and more</p>
+          </div>
+        </div>
+      </div>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Events</h1>
-          <p className="mt-2 text-gray-600">Discover networking events, workshops, and more</p>
+          <h2 className="text-2xl font-bold text-gray-900">Explore</h2>
+          <p className="mt-1 text-gray-600">Use filters to find what matters to you</p>
         </div>
         
         <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-4">

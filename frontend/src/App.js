@@ -7,6 +7,7 @@ import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import HomePage from './pages/HomePage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import AboutPage from './pages/AboutPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import EventsPage from './pages/EventsPage';
@@ -32,6 +33,7 @@ function App() {
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/events" element={<EventsPage />} />
                 <Route path="/events/:id" element={<EventDetailsPage />} />
+                <Route path="/about" element={<AboutPage />} />
                 <Route
                   path="/network"
                   element={
