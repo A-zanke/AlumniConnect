@@ -238,7 +238,9 @@ const logoutUser = (req, res) => {
 // @access Private
 const getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id)
+      .select('-password -connectionRequests')
+      .populate('connections', 'name username avatarUrl role');
 
     if (user) {
       res.json(user);
