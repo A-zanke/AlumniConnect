@@ -1,22 +1,4 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-
-const HomePage = () => {
-    return (
-        <div>
-            <h1>Welcome to Alumni Connect</h1>
-            <div className="banner">
-                <h2 className="text-2xl text-white">MIT - Maharashtra Institute of Technology, Aurangabad</h2>
-            </div>
-            <div className="testimonials">
-                <h2>Latest Placements</h2>
-                <div className="placement-card">Student Name - Company - Role</div>
-            </div>
-        </div>
-    );
-};
-
-export default HomePage;const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const EventSchema = new mongoose.Schema({
   title: { type: String, required: true },
