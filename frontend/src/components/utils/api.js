@@ -205,45 +205,6 @@ export const connectionAPI = {
   
   // Get pending requests
   getPendingRequests: () => axios.get('/api/connections/pending'),
-  },
-  
-  // Delete event
-  deleteEvent: (id) => axios.delete(`/api/events/${id}`),
-  
-  // Attend event
-  attendEvent: (id) => axios.put(`/api/events/${id}/attend`),
-  
-  // Unattend event
-  unattendEvent: (id) => axios.put(`/api/events/${id}/unattend`),
-};
-
-// Connection API
-export const connectionAPI = {
-  // Follow user
-  followUser: (userId) => axios.post('/api/connections', { userId }),
-  
-  // Unfollow user
-  unfollowUser: (userId) => axios.delete(`/api/connections/${userId}`),
-  
-  // Get connection status between current user and another user
-  getConnectionStatus: (userId) => axios.get(`/api/connections/status/${userId}`),
-  
-  // Accept follow request
-  acceptFollowRequest: (requestId) =>
-    axios.put(`/api/connections/${requestId}/accept`),
-  
-  // Reject follow request
-  rejectFollowRequest: (requestId) =>
-    axios.delete(`/api/connections/${requestId}/reject`),
-  
-  // Get followers
-  getFollowers: () => axios.get('/api/connections/followers'),
-  
-  // Get following
-  getFollowing: () => axios.get('/api/connections/following'),
-  
-  // Get pending requests
-  getPendingRequests: () => axios.get('/api/connections/requests'),
   
   // Get suggested connections
   getSuggestedConnections: () => axios.get('/api/connections/suggested'),

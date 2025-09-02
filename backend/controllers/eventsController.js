@@ -108,10 +108,23 @@ const rsvpEvent = async (req, res) => {
     }
 };
 
+const listPending = async (req, res) => {
+    try {
+        const events = await Event.find({ approved: false })
+            .populate('organizer', 'name email')
+            .sort({ createdAt: -1 });
+        res.status(200).json(events);
+    } catch (err) {
+        console.error('Error listing pending events:', err);
+        res.status(500).json({ message: 'Failed to fetch pending events' });
+    }
+};
+
 module.exports = {
     createEvent,
     listEvents,
     approveEvent,
     getEventById,
-    rsvpEvent
+    rsvpEvent,
+    listPending
 };
