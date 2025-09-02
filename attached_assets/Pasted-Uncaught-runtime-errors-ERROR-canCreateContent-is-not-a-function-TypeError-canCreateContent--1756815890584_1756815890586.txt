@@ -1,0 +1,41 @@
+Uncaught runtime errors:
+×
+ERROR
+canCreateContent is not a function
+TypeError: canCreateContent is not a function
+    at EventsPage (http://localhost:3000/static/js/bundle.js:137259:24)
+    at renderWithHooks (http://localhost:3000/static/js/bundle.js:64219:22)
+    at updateFunctionComponent (http://localhost:3000/static/js/bundle.js:67786:24)
+    at beginWork (http://localhost:3000/static/js/bundle.js:69505:20)
+    at HTMLUnknownElement.callCallback (http://localhost:3000/static/js/bundle.js:54475:18)
+    at Object.invokeGuardedCallbackDev (http://localhost:3000/static/js/bundle.js:54519:20)
+    at invokeGuardedCallback (http://localhost:3000/static/js/bundle.js:54576:35)
+    at beginWork$1 (http://localhost:3000/static/js/bundle.js:74474:11)
+    at performUnitOfWork (http://localhost:3000/static/js/bundle.js:73722:16)
+    at workLoopSync (http://localhost:3000/static/js/bundle.js:73645:9)
+ERROR
+canCreateContent is not a function
+TypeError: canCreateContent is not a function
+    at EventsPage (http://localhost:3000/static/js/bundle.js:137259:24)
+    at renderWithHooks (http://localhost:3000/static/js/bundle.js:64219:22)
+    at updateFunctionComponent (http://localhost:3000/static/js/bundle.js:67786:24)
+    at beginWork (http://localhost:3000/static/js/bundle.js:69505:20)
+    at HTMLUnknownElement.callCallback (http://localhost:3000/static/js/bundle.js:54475:18)
+    at Object.invokeGuardedCallbackDev (http://localhost:3000/static/js/bundle.js:54519:20)
+    at invokeGuardedCallback (http://localhost:3000/static/js/bundle.js:54576:35)
+    at beginWork$1 (http://localhost:3000/static/js/bundle.js:74474:11)
+    at performUnitOfWork (http://localhost:3000/static/js/bundle.js:73722:16)
+    at workLoopSync (http://localhost:3000/static/js/bundle.js:73645:9)
+ERROR
+canCreateContent is not a function
+TypeError: canCreateContent is not a function
+    at EventsPage (http://localhost:3000/static/js/bundle.js:137259:24)
+    at renderWithHooks (http://localhost:3000/static/js/bundle.js:64219:22)
+    at updateFunctionComponent (http://localhost:3000/static/js/bundle.js:67786:24)
+    at beginWork (http://localhost:3000/static/js/bundle.js:69505:20)
+    at beginWork$1 (http://localhost:3000/static/js/bundle.js:74452:18)
+    at performUnitOfWork (http://localhost:3000/static/js/bundle.js:73722:16)
+    at workLoopSync (http://localhost:3000/static/js/bundle.js:73645:9)
+    at renderRootSync (http://localhost:3000/static/js/bundle.js:73618:11)
+    at recoverFromConcurrentError (http://localhost:3000/static/js/bundle.js:73110:24)
+    at performConcurrentWorkOnRoot (http://localhost:3000/static/js/bundle.js:73023:26)
