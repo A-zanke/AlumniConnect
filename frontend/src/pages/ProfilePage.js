@@ -94,17 +94,30 @@ const ProfilePage = () => {
         }
 
         if (u?._id) {
-          const posts = await postsAPI.getUserPosts(u._id);
-          setUserPosts(posts.data || []);
+          try {
+            const postsResponse = await postsAPI.getUserPosts(u._id);
+            // Handle different response structures
+            const posts = postsResponse.data?.data || postsResponse.data || [];
+            setUserPosts(Array.isArray(posts) ? posts : []);
+          } catch (error) {
+            console.error('Error fetching user posts:', error);
+            setUserPosts([]);
+          }
         }
 
         if (!isOwnProfile && u?._id) {
-          const statusRes = await connectionAPI.getConnectionStatus(u._id);
-          setConnectionStatus(statusRes.status || 'not_connected');
-          const pending = await connectionAPI.getPendingRequests();
-          setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          try {
+            const statusRes = await connectionAPI.getConnectionStatus(u._id);
+            setConnectionStatus(statusRes.data?.status || statusRes.status || 'not_connected');
+            const pending = await connectionAPI.getPendingRequests();
+            setPendingRequestFromUser(pending.data?.some(req => req.requesterId === u._id) || false);
+          } catch (error) {
+            console.error('Error fetching connection status:', error);
+            setConnectionStatus('not_connected');
+          }
         }
-      } catch {
+      } catch (error) {
+        console.error('Error loading profile:', error);
         toast.error('Failed to load profile');
       } finally {
         setLoading(false);
@@ -598,13 +611,8 @@ const ProfilePage = () => {
             </div>
           </div>
 
-            <div style={{ 
-              backgroundColor: 'white', 
-              borderRadius: '8px', 
-              padding: '24px', 
-              boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' 
-            }}>
-              <h3 style={{ fontWeight: '600', fontSize: '18px', marginBottom: '16px', color: '#000000' }}>Recent Posts</h3>
+          <div className="theme-card float-in" style={{ padding: 16 }}>
+            <h3 className="gradient-text" style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Recent Posts</h3>
             {userPosts.length === 0 ? (
               <p style={{ color: '#64748b' }}>No posts yet.</p>
             ) : (

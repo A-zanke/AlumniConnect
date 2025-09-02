@@ -1,12 +1,11 @@
 const express = require('express');
+const { protect, teacherOrAlumni } = require('../middleware/auth');
+const { createEvent, listEvents, approveEvent } = require('../controllers/eventsController');
+
 const router = express.Router();
-const { protect, roleMiddleware } = require('../middleware/authMiddleware');
-const { createEvent, listEvents, approveEvent, rsvpEvent } = require('../controllers/eventsController');
 
 router.get('/', protect, listEvents);
-router.post('/', protect, roleMiddleware('teacher', 'alumni', 'admin'), createEvent);
-router.post('/:id/rsvp', protect, rsvpEvent);
-router.post('/:id/approve', protect, roleMiddleware('admin'), approveEvent);
+router.post('/', protect, teacherOrAlumni, createEvent);
+router.post('/:id/approve', protect, approveEvent);
 
 module.exports = router;
-
