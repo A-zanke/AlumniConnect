@@ -1,15 +1,26 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { FiMenu, FiX, FiBell, FiMessageSquare, FiUser, FiLogOut, FiSearch } from 'react-icons/fi';
-import NotificationBell from '../NotificationBell';
 
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { FiMenu, FiX, FiBell, FiMessageSquare, FiUser, FiLogOut, FiSearch, FiHome, FiCalendar, FiUsers, FiMessageCircle } from 'react-icons/fi';
+import { motion, AnimatePresence } from 'framer-motion';
+import NotificationBell from '../NotificationBell';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const toggleMenu = () => setIsOpen(!isOpen);
   const toggleDropdown = () => setShowDropdown(!showDropdown);
@@ -17,250 +28,431 @@ const Navbar = () => {
   const handleLogout = () => {
     logout();
     navigate('/login');
+    setShowDropdown(false);
   };
 
+  const navItems = [
+    { to: '/', label: 'Home', icon: FiHome },
+    { to: '/events', label: 'Events', icon: FiCalendar },
+    { to: '/about', label: 'About', icon: FiUsers },
+    { to: '/forum', label: 'Forum', icon: FiMessageCircle },
+    ...(user ? [{ to: '/network', label: 'Network', icon: FiUsers }] : []),
+    ...(user && (user.role || '').toLowerCase() === 'admin' ? [{ to: '/admin', label: 'Admin', icon: FiUser }] : [])
+  ];
+
   return (
-    <nav className="relative z-50">
-      {/* Animated gradient bar */}
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 animate-gradient-x" />
-      <div className="backdrop-blur-lg bg-white/80 border-b border-slate-200 shadow-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            {/* Logo */}
-            <div className="flex items-center">
-              <Link to="/" className="flex items-center gap-2 group">
-                <span className="text-2xl font-extrabold bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 text-transparent bg-clip-text tracking-tight drop-shadow-lg transition-transform duration-200 group-hover:scale-110 group-hover:brightness-125 animate-logo-shine">
-                  AlumniConnect
-                </span>
-              </Link>
-            </div>
+    <motion.nav
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
+        scrolled 
+          ? 'backdrop-blur-2xl bg-white/80 shadow-2xl border-b border-white/20' 
+          : 'backdrop-blur-xl bg-white/60'
+      }`}
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      transition={{ type: "spring", stiffness: 200, damping: 20 }}
+    >
+      {/* Animated gradient border */}
+      <motion.div
+        className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500"
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: 1 }}
+        transition={{ duration: 1.5, ease: "easeOut" }}
+      />
 
-            {/* Desktop Nav */}
-            <div className="hidden md:flex md:items-center md:space-x-4">
-              <NavLinkA to="/" label="Home" />
-              <NavLinkA to="/events" label="Events" />
-              <NavLinkA to="/about" label="About" />
-              <NavLinkA to="/forum" label="Forum" />
-              {user && <NavLinkA to="/network" label="Network" />}
-              {user && (user.role || '').toLowerCase() === 'admin' && <NavLinkA to="/admin" label="Admin" />}
-              <button
-                onClick={() => navigate('/search')}
-                className="ml-2 p-2 rounded-full hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400"
-                aria-label="Search"
-                title="Search"
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-20 items-center">
+          {/* Enhanced Logo */}
+          <motion.div
+            className="flex items-center"
+            whileHover={{ scale: 1.05 }}
+            transition={{ type: "spring", stiffness: 400 }}
+          >
+            <Link to="/" className="flex items-center gap-3 group">
+              <motion.div
+                className="w-12 h-12 bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg"
+                whileHover={{ rotate: 360 }}
+                transition={{ duration: 0.8 }}
               >
-                <FiSearch size={22} className="text-cyan-600" />
-              </button>
-              {user ? (
-                <>
-                  <Link to="/messages" className="p-2 rounded-full text-gray-700 hover:text-cyan-600 relative">
-                    <FiMessageSquare size={20} />
-                  </Link>
-                  <NotificationBell />
-                  <div className="relative ml-3">
-                    <button
-                      onClick={toggleDropdown}
-                      type="button"
-                      className="flex text-sm rounded-full focus:outline-none border-2 border-cyan-200 hover:border-cyan-400 transition"
-                      id="user-menu"
-                      aria-expanded="false"
-                      aria-haspopup="true"
-                    >
-                      <span className="sr-only">Open user menu</span>
-                      {user.avatarUrl ? (
-                        <img
-                          className="h-9 w-9 rounded-full object-cover border border-cyan-200 shadow"
-                          src={user.avatarUrl}
-                          alt={user.name}
-                        />
-                      ) : (
-                        <div className="h-9 w-9 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-600 font-bold text-lg">
-                          {user.name?.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                    </button>
-                    <div className={`origin-top-right absolute right-0 mt-2 w-48 rounded-xl shadow-lg py-2 bg-white/90 ring-1 ring-cyan-200 ring-opacity-50 focus:outline-none transition-all duration-200 ${showDropdown ? 'opacity-100 scale-100 pointer-events-auto animate-fade-in' : 'opacity-0 scale-95 pointer-events-none'}`}
-                      role="menu"
-                      aria-orientation="vertical"
-                      aria-labelledby="user-menu"
-                    >
-                      <Link
-                        to="/profile"
-                        className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-cyan-50 rounded-lg transition"
-                        role="menuitem"
-                        onClick={() => setShowDropdown(false)}
-                      >
-                        <FiUser className="mr-2" /> Your Profile
-                      </Link>
-                      <button
-                        onClick={() => {
-                          setShowDropdown(false);
-                          handleLogout();
-                        }}
-                        className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-cyan-50 rounded-lg transition"
-                        role="menuitem"
-                      >
-                        <FiLogOut className="mr-2" /> Sign out
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Link to="/login" className="login-btn">Login</Link>
-                  <Link to="/register" className="register-btn">Register</Link>
-                </>
-              )}
-            </div>
+                <span className="text-white font-black text-xl">A</span>
+              </motion.div>
+              
+              <motion.span
+                className="text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent tracking-tight"
+                animate={{
+                  backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+                }}
+                transition={{
+                  duration: 3,
+                  repeat: Infinity,
+                  ease: "linear"
+                }}
+                style={{
+                  backgroundSize: '200% 100%'
+                }}
+              >
+                AlumniConnect
+              </motion.span>
+            </Link>
+          </motion.div>
 
-            {/* Mobile menu button */}
-            <button
-              onClick={toggleMenu}
-              type="button"
-              className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-cyan-600 focus:outline-none"
-              aria-controls="mobile-menu"
-              aria-expanded={isOpen}
+          {/* Desktop Navigation */}
+          <div className="hidden lg:flex lg:items-center lg:space-x-2">
+            {navItems.map((item, index) => (
+              <motion.div
+                key={item.to}
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <NavLink
+                  to={item.to}
+                  label={item.label}
+                  icon={item.icon}
+                  isActive={location.pathname === item.to}
+                />
+              </motion.div>
+            ))}
+
+            {/* Search Button */}
+            <motion.button
+              onClick={() => navigate('/search')}
+              className="ml-4 p-3 rounded-xl hover:bg-indigo-100 focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group"
+              whileHover={{ scale: 1.1, rotate: 15 }}
+              whileTap={{ scale: 0.9 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
             >
-              <span className="sr-only">Open main menu</span>
-              {isOpen ? <FiX size={24} /> : <FiMenu size={24} />}
-            </button>
-          </div>
-        </div>
+              <FiSearch size={22} className="text-indigo-600 group-hover:text-purple-600 transition-colors duration-300" />
+            </motion.button>
 
-        {/* Mobile menu */}
-        {isOpen && (
-          <div className="md:hidden animate-slide-down bg-white/95 border-b border-cyan-100" id="mobile-menu">
-            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-              <NavLinkA to="/" label="Home" onClick={toggleMenu} mobile />
-              <NavLinkA to="/events" label="Events" onClick={toggleMenu} mobile />
-              <NavLinkA to="/about" label="About" onClick={toggleMenu} mobile />
-              <NavLinkA to="/forum" label="Forum" onClick={toggleMenu} mobile />
-              {user && <NavLinkA to="/network" label="Network" onClick={toggleMenu} mobile />}
-              {user && (user.role || '').toLowerCase() === 'admin' && <NavLinkA to="/admin" label="Admin" onClick={toggleMenu} mobile />}
-              <NavLinkA to="/search" label="Search" onClick={toggleMenu} mobile />
-            </div>
             {user ? (
-              <div className="pt-4 pb-3 border-t border-cyan-100">
-                <div className="flex items-center px-5">
-                  <div className="flex-shrink-0">
+              <motion.div
+                className="flex items-center gap-3 ml-6"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                {/* Messages */}
+                <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                  <Link
+                    to="/messages"
+                    className="p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 transition-all duration-300 relative group"
+                  >
+                    <FiMessageSquare size={20} />
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  </Link>
+                </motion.div>
+
+                {/* Notifications */}
+                <NotificationBell />
+
+                {/* User Menu */}
+                <div className="relative">
+                  <motion.button
+                    onClick={toggleDropdown}
+                    className={`flex items-center gap-3 p-2 rounded-xl border-2 transition-all duration-300 ${
+                      showDropdown 
+                        ? 'border-indigo-400 bg-indigo-50' 
+                        : 'border-transparent hover:border-indigo-300 hover:bg-indigo-50'
+                    }`}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
                     {user.avatarUrl ? (
-                      <img
-                        className="h-10 w-10 rounded-full object-cover border border-cyan-200"
+                      <motion.img
+                        className="h-10 w-10 rounded-full object-cover shadow-lg"
                         src={user.avatarUrl}
                         alt={user.name}
+                        whileHover={{ scale: 1.1 }}
                       />
                     ) : (
-                      <div className="h-10 w-10 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-600 font-bold">
+                      <motion.div
+                        className="h-10 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-lg"
+                        whileHover={{ scale: 1.1, rotate: 5 }}
+                      >
                         {user.name?.charAt(0).toUpperCase()}
-                      </div>
+                      </motion.div>
                     )}
-                  </div>
-                  <div className="ml-3">
-                    <div className="text-base font-medium text-gray-800">{user.name}</div>
-                    <div className="text-sm font-medium text-gray-500">{user.role}</div>
-                  </div>
+                    <span className="hidden md:block font-semibold text-slate-700">
+                      {user.name?.split(' ')[0]}
+                    </span>
+                  </motion.button>
+
+                  <AnimatePresence>
+                    {showDropdown && (
+                      <motion.div
+                        className="absolute right-0 mt-3 w-56 rounded-2xl shadow-2xl py-2 bg-white/95 backdrop-blur-xl ring-1 ring-black/5 border border-white/20"
+                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <div className="px-4 py-3 border-b border-slate-100">
+                          <p className="text-sm font-semibold text-slate-800">{user.name}</p>
+                          <p className="text-sm text-slate-500">{user.email}</p>
+                        </div>
+                        
+                        <motion.div whileHover={{ x: 5 }}>
+                          <Link
+                            to="/profile"
+                            className="flex items-center px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-200"
+                            onClick={() => setShowDropdown(false)}
+                          >
+                            <FiUser className="mr-3" />
+                            Your Profile
+                          </Link>
+                        </motion.div>
+                        
+                        <motion.button
+                          onClick={handleLogout}
+                          className="flex w-full items-center px-4 py-3 text-sm text-slate-700 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+                          whileHover={{ x: 5 }}
+                        >
+                          <FiLogOut className="mr-3" />
+                          Sign out
+                        </motion.button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-                <Link to="/profile" className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-cyan-600" onClick={toggleMenu}>Your Profile</Link>
-                <Link to="/messages" className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-cyan-600" onClick={toggleMenu}>Messages</Link>
-                <button
-                  onClick={() => {
-                    toggleMenu();
-                    handleLogout();
-                  }}
-                  className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-cyan-600"
-                >
-                  Sign out
-                </button>
-              </div>
+              </motion.div>
             ) : (
-              <div className="mt-3 px-2 space-y-1 flex flex-col">
-                <Link to="/login" className="block px-3 py-2 rounded-md text-base font-medium text-cyan-600 border border-cyan-400 bg-white hover:bg-cyan-50" onClick={toggleMenu}>Login</Link>
-                <Link to="/register" className="block px-3 py-2 rounded-md text-base font-medium bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-600 hover:to-blue-700" onClick={toggleMenu}>Register</Link>
-              </div>
+              <motion.div
+                className="flex items-center gap-4"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Link
+                    to="/login"
+                    className="px-6 py-3 border-2 border-indigo-500 rounded-xl text-indigo-600 font-semibold hover:bg-indigo-50 transition-all duration-300"
+                  >
+                    Login
+                  </Link>
+                </motion.div>
+                
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Link
+                    to="/register"
+                    className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/25 transition-all duration-300"
+                  >
+                    Join Now
+                  </Link>
+                </motion.div>
+              </motion.div>
             )}
           </div>
-        )}
+
+          {/* Mobile menu button */}
+          <motion.button
+            onClick={toggleMenu}
+            className="lg:hidden p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 focus:outline-none transition-all duration-300"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <AnimatePresence mode="wait">
+              {isOpen ? (
+                <motion.div
+                  key="close"
+                  initial={{ rotate: -90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  exit={{ rotate: 90, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <FiX size={24} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="menu"
+                  initial={{ rotate: 90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  exit={{ rotate: -90, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <FiMenu size={24} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.button>
+        </div>
       </div>
-      <style>{`
-        .nav-link, .mobile-nav-link {
-          position: relative;
-          display: inline-block;
-          padding: 0.5rem 1rem;
-          font-size: 1rem;
-          font-weight: 500;
-          color: #1e293b;
-          border-radius: 0.5rem;
-          transition: color 0.2s;
-        }
-        .nav-link:after, .mobile-nav-link:after {
-          content: '';
-          position: absolute;
-          left: 50%;
-          bottom: 0.2rem;
-          transform: translateX(-50%) scaleX(0);
-          width: 80%;
-          height: 2px;
-          background: linear-gradient(90deg, #06b6d4, #6366f1, #a78bfa);
-          border-radius: 2px;
-          transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-        }
-        .nav-link:hover:after, .mobile-nav-link:hover:after {
-          transform: translateX(-50%) scaleX(1);
-        }
-        .nav-link:hover, .mobile-nav-link:hover {
-          color: #06b6d4;
-        }
-        .login-btn {
-          @apply px-4 py-2 border-2 border-cyan-500 rounded-lg text-cyan-600 font-semibold hover:bg-cyan-50 transition;
-        }
-        .register-btn {
-          @apply px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow hover:from-cyan-600 hover:to-blue-700 transition;
-        }
-        .animate-fade-in {
-          animation: fadeIn 0.2s ease-in;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-slide-down {
-          animation: slideDown 0.3s cubic-bezier(0.4,0,0.2,1);
-        }
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-logo-shine {
-          background-size: 200% 100%;
-          animation: logoShine 2.5s linear infinite;
-        }
-        @keyframes logoShine {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        .animate-gradient-x {
-          background-size: 200% 100%;
-          animation: gradientX 4s linear infinite;
-        }
-        @keyframes gradientX {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
-    </nav>
+
+      {/* Enhanced Mobile menu */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            className="lg:hidden absolute top-full left-0 right-0 backdrop-blur-2xl bg-white/95 border-b border-white/20 shadow-2xl"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            <div className="px-4 py-6 space-y-2">
+              {navItems.map((item, index) => (
+                <motion.div
+                  key={item.to}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <MobileNavLink
+                    to={item.to}
+                    label={item.label}
+                    icon={item.icon}
+                    onClick={toggleMenu}
+                    isActive={location.pathname === item.to}
+                  />
+                </motion.div>
+              ))}
+              
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: navItems.length * 0.1 }}
+              >
+                <MobileNavLink
+                  to="/search"
+                  label="Search"
+                  icon={FiSearch}
+                  onClick={toggleMenu}
+                  isActive={location.pathname === '/search'}
+                />
+              </motion.div>
+            </div>
+
+            {user ? (
+              <motion.div
+                className="border-t border-white/20 px-4 py-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+              >
+                <div className="flex items-center mb-4 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50">
+                  {user.avatarUrl ? (
+                    <img
+                      className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 shadow"
+                      src={user.avatarUrl}
+                      alt={user.name}
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow">
+                      {user.name?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-4">
+                    <div className="text-lg font-bold text-slate-800">{user.name}</div>
+                    <div className="text-sm text-slate-500">{user.role}</div>
+                  </div>
+                </div>
+                
+                <div className="space-y-1">
+                  <MobileNavLink to="/profile" label="Profile" icon={FiUser} onClick={toggleMenu} />
+                  <MobileNavLink to="/messages" label="Messages" icon={FiMessageSquare} onClick={toggleMenu} />
+                  
+                  <motion.button
+                    onClick={() => {
+                      toggleMenu();
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 font-semibold"
+                    whileHover={{ x: 5 }}
+                  >
+                    <FiLogOut className="mr-3" />
+                    Sign out
+                  </motion.button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                className="border-t border-white/20 px-4 py-6 space-y-3"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+              >
+                <Link
+                  to="/login"
+                  className="block px-6 py-3 text-center rounded-xl border-2 border-indigo-500 text-indigo-600 font-semibold hover:bg-indigo-50 transition-all duration-300"
+                  onClick={toggleMenu}
+                >
+                  Login
+                </Link>
+                <Link
+                  to="/register"
+                  className="block px-6 py-3 text-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold shadow-lg hover:shadow-indigo-500/25 transition-all duration-300"
+                  onClick={toggleMenu}
+                >
+                  Join Now
+                </Link>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.nav>
   );
 };
 
-// Animated NavLink with underline
-function NavLinkA({ to, label, onClick, mobile }) {
+// Enhanced Desktop NavLink Component
+function NavLink({ to, label, icon: Icon, isActive }) {
   return (
-    <Link
-      to={to}
-      onClick={onClick}
-      className={mobile ? 'mobile-nav-link' : 'nav-link'}
+    <motion.div
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
     >
-      {label}
-    </Link>
+      <Link
+        to={to}
+        className={`relative flex items-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all duration-300 group ${
+          isActive
+            ? 'text-indigo-600 bg-indigo-100'
+            : 'text-slate-700 hover:text-indigo-600 hover:bg-indigo-50'
+        }`}
+      >
+        <Icon size={18} className="transition-transform duration-300 group-hover:rotate-12" />
+        <span>{label}</span>
+        
+        {/* Animated underline */}
+        <motion.div
+          className="absolute bottom-1 left-1/2 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+          initial={{ width: 0, x: '-50%' }}
+          animate={{ width: isActive ? '80%' : 0, x: '-50%' }}
+          whileHover={{ width: '80%' }}
+          transition={{ duration: 0.3 }}
+        />
+      </Link>
+    </motion.div>
+  );
+}
+
+// Enhanced Mobile NavLink Component
+function MobileNavLink({ to, label, icon: Icon, onClick, isActive }) {
+  return (
+    <motion.div
+      whileHover={{ x: 5 }}
+      whileTap={{ scale: 0.98 }}
+    >
+      <Link
+        to={to}
+        onClick={onClick}
+        className={`flex items-center gap-3 px-4 py-4 rounded-xl font-semibold transition-all duration-300 ${
+          isActive
+            ? 'text-indigo-600 bg-gradient-to-r from-indigo-100 to-purple-100'
+            : 'text-slate-700 hover:text-indigo-600 hover:bg-indigo-50'
+        }`}
+      >
+        <Icon size={20} />
+        <span>{label}</span>
+        {isActive && (
+          <motion.div
+            className="ml-auto w-2 h-2 bg-indigo-500 rounded-full"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 500 }}
+          />
+        )}
+      </Link>
+    </motion.div>
   );
 }
 
