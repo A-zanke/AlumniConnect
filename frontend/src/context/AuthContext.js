@@ -145,6 +145,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check if user can create content
+  const canCreateContent = () => {
+    if (!user) return false;
+    const role = (user.role || '').toLowerCase();
+    return role === 'teacher' || role === 'alumni' || role === 'admin';
+  };
+
   // Logout user
   const logout = async () => {
     try {
@@ -156,7 +163,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername }}>
+    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent }}>
       {children}
     </AuthContext.Provider>
   );

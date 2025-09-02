@@ -181,6 +181,34 @@ export const eventsAPI = {
   
   // Delete event
   deleteEvent: (id) => axios.delete(`/api/events/${id}`),
+};
+
+// Connection API
+export const connectionAPI = {
+  // Send connection request
+  sendRequest: (userId) => axios.post('/api/connections/request', { targetUserId: userId }),
+  
+  // Accept connection request
+  acceptRequest: (userId) => axios.post('/api/connections/accept', { targetUserId: userId }),
+  
+  // Reject connection request
+  rejectRequest: (userId) => axios.post('/api/connections/reject', { targetUserId: userId }),
+  
+  // Remove connection
+  removeConnection: (userId) => axios.delete(`/api/connections/${userId}`),
+  
+  // Get connection status
+  getConnectionStatus: (userId) => axios.get(`/api/connections/status/${userId}`),
+  
+  // Get user connections
+  getConnections: () => axios.get('/api/connections'),
+  
+  // Get pending requests
+  getPendingRequests: () => axios.get('/api/connections/pending'),
+  },
+  
+  // Delete event
+  deleteEvent: (id) => axios.delete(`/api/events/${id}`),
   
   // Attend event
   attendEvent: (id) => axios.put(`/api/events/${id}/attend`),

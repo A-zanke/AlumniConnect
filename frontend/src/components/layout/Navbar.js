@@ -42,13 +42,9 @@ const Navbar = () => {
 
   return (
     <motion.nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled 
-          ? 'backdrop-blur-2xl bg-white/80 shadow-2xl border-b border-white/20' 
-          : 'backdrop-blur-xl bg-white/60'
-      }`}
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
+      className="relative z-50 transition-all duration-500 backdrop-blur-md bg-transparent"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ type: "spring", stiffness: 200, damping: 20 }}
     >
       {/* Animated gradient border */}
