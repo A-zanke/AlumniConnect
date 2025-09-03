@@ -186,13 +186,22 @@ export const eventsAPI = {
 // Connection API
 export const connectionAPI = {
   // Send connection request
-  sendRequest: (userId) => axios.post('/api/connections/request', { targetUserId: userId }),
+  sendRequest: (userId) => axios.post('/api/connections', { userId }),
+  
+  // Follow user (alias for sendRequest for backward compatibility)
+  followUser: (userId) => axios.post('/api/connections', { userId }),
   
   // Accept connection request
-  acceptRequest: (userId) => axios.post('/api/connections/accept', { targetUserId: userId }),
+  acceptRequest: (requestId) => axios.put(`/api/connections/${requestId}/accept`),
+  
+  // Accept follow request (alias for notifications)
+  acceptFollowRequest: (requestId) => axios.put(`/api/connections/${requestId}/accept`),
   
   // Reject connection request
-  rejectRequest: (userId) => axios.post('/api/connections/reject', { targetUserId: userId }),
+  rejectRequest: (requestId) => axios.delete(`/api/connections/${requestId}/reject`),
+  
+  // Reject follow request (alias for notifications)
+  rejectFollowRequest: (requestId) => axios.delete(`/api/connections/${requestId}/reject`),
   
   // Remove connection
   removeConnection: (userId) => axios.delete(`/api/connections/${userId}`),
@@ -201,10 +210,10 @@ export const connectionAPI = {
   getConnectionStatus: (userId) => axios.get(`/api/connections/status/${userId}`),
   
   // Get user connections
-  getConnections: () => axios.get('/api/connections'),
+  getConnections: () => axios.get('/api/connections/followers'),
   
   // Get pending requests
-  getPendingRequests: () => axios.get('/api/connections/pending'),
+  getPendingRequests: () => axios.get('/api/connections/requests'),
   
   // Get suggested connections
   getSuggestedConnections: () => axios.get('/api/connections/suggested'),

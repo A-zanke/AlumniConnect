@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const User = require('../models/User');
+const NotificationService = require('../services/notificationService');
 
 // Send connection request
 router.post('/', protect, async (req, res) => {
@@ -30,6 +31,19 @@ router.post('/', protect, async (req, res) => {
         // Add to connection requests
         toUser.connectionRequests.push(fromUserId);
         await toUser.save();
+
+        // Create notification for the recipient
+        try {
+            await NotificationService.createNotification({
+                recipientId: userId,
+                senderId: fromUserId,
+                type: 'connection_request',
+                content: `sent you a connection request`
+            });
+        } catch (notificationError) {
+            console.error('Error creating notification:', notificationError);
+            // Continue without failing the main request
+        }
 
         res.status(200).json({ message: 'Connection request sent successfully' });
     } catch (error) {
@@ -67,6 +81,18 @@ router.put('/:requestId/accept', protect, async (req, res) => {
         await currentUser.save();
         await requesterUser.save();
 
+        // Create notification for the requester
+        try {
+            await NotificationService.createNotification({
+                recipientId: requestId,
+                senderId: currentUserId,
+                type: 'connection_accepted',
+                content: `accepted your connection request`
+            });
+        } catch (notificationError) {
+            console.error('Error creating acceptance notification:', notificationError);
+        }
+
         res.status(200).json({ message: 'Connection request accepted' });
     } catch (error) {
         console.error('Error accepting connection request:', error);
@@ -92,6 +118,18 @@ router.delete('/:requestId/reject', protect, async (req, res) => {
         );
 
         await currentUser.save();
+
+        // Create notification for the requester
+        try {
+            await NotificationService.createNotification({
+                recipientId: requestId,
+                senderId: currentUserId,
+                type: 'connection_rejected',
+                content: `declined your connection request`
+            });
+        } catch (notificationError) {
+            console.error('Error creating rejection notification:', notificationError);
+        }
 
         res.status(200).json({ message: 'Connection request rejected' });
     } catch (error) {
