@@ -1,9 +1,11 @@
 import React from 'react';
-import { getAvatarUrl } from '../utils/helpers';
+import { getAvatarUrl, generateAvatarColor } from '../utils/helpers';
 
 const Avatar = ({ name = '', avatarUrl, size = 40, style = {} }) => {
   const src = avatarUrl ? getAvatarUrl(avatarUrl) : null;
   const initial = (name || '?').trim().charAt(0).toUpperCase();
+  const backgroundColor = generateAvatarColor(name || 'User');
+  
   const box = {
     width: size,
     height: size,
@@ -23,9 +25,11 @@ const Avatar = ({ name = '', avatarUrl, size = 40, style = {} }) => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #06b6d4, #3b82f6, #8b5cf6)',
+        backgroundColor,
         color: '#fff',
-        fontWeight: 800
+        fontWeight: 800,
+        fontSize: size * 0.4,
+        textShadow: '0 1px 2px rgba(0,0,0,0.1)'
       }}
       aria-label="default avatar"
       title={name}

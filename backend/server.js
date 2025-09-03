@@ -50,6 +50,7 @@ const eventsRoutes = require('./routes/eventsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const messagesRoutes = require('./routes/messagesRoutes');
+const avatarRoutes = require('./routes/avatarRoutes');
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -61,6 +62,7 @@ app.use('/api/events', eventsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api', avatarRoutes);
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
