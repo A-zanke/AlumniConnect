@@ -17,10 +17,9 @@ const NotificationBell = () => {
     const load = async () => {
       try {
         const res = await axios.get('/api/notifications');
-        // Fix: Backend returns { data: [...] }, so access res.data.data
+        // MINIMAL FIX: Backend returns { data: notifications }, so access res.data.data
         setItems(res.data.data || []);
-      } catch (error) {
-        console.error('Error loading notifications:', error);
+      } catch {
         setItems([]);
       }
     };
@@ -41,33 +40,19 @@ const NotificationBell = () => {
     setOpen(false);
   };
 
-  const accept = async (notification) => {
+  const accept = async (notificationId) => {
     try {
-      // Use sender ID for accepting connection request
-      const senderId = notification.sender?._id;
-      if (!senderId) {
-        console.error('No sender ID found in notification');
-        return;
-      }
-      
-      await connectionAPI.acceptFollowRequest(senderId);
-      setItems(prev => prev.filter(n => n._id !== notification._id));
+      await connectionAPI.acceptFollowRequest(notificationId);
+      setItems(prev => prev.filter(n => n._id !== notificationId));
     } catch (error) {
       console.error('Error accepting connection request:', error);
     }
   };
 
-  const reject = async (notification) => {
+  const reject = async (notificationId) => {
     try {
-      // Use sender ID for rejecting connection request
-      const senderId = notification.sender?._id;
-      if (!senderId) {
-        console.error('No sender ID found in notification');
-        return;
-      }
-      
-      await connectionAPI.rejectFollowRequest(senderId);
-      setItems(prev => prev.filter(n => n._id !== notification._id));
+      await connectionAPI.rejectFollowRequest(notificationId);
+      setItems(prev => prev.filter(n => n._id !== notificationId));
     } catch (error) {
       console.error('Error rejecting connection request:', error);
     }
@@ -113,13 +98,13 @@ const NotificationBell = () => {
                       <div className="mt-2 flex gap-2">
                         <button 
                           className="px-3 py-1 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700" 
-                          onClick={() => accept(n)}
+                          onClick={() => accept(n._id)}
                         >
                           Accept
                         </button>
                         <button 
                           className="px-3 py-1 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" 
-                          onClick={() => reject(n)}
+                          onClick={() => reject(n._id)}
                         >
                           Reject
                         </button>
