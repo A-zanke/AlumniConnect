@@ -1,44 +1,31 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
+// Create a separate axios instance for API calls that won't interfere with AuthContext
+const apiClient = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000'
+});
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
-// Set default base URL
-axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
-// Interceptor to handle request
-axios.interceptors.request.use(
+// Add interceptors only to the API client, not global axios
+apiClient.interceptors.request.use(
   (config) => {
-    // Get token from localStorage
     const token = localStorage.getItem('token');
-    
-    // If token exists, add to headers
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Interceptor to handle response
-axios.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+apiClient.interceptors.response.use(
+  (response) => response,
   (error) => {
     const { response } = error;
     
-    // Handle common error cases
-    if (response && response.status === 401) {
-      // Clear token if 401 Unauthorized
+    // Only handle errors for non-auth routes
+    if (response && response.status === 401 && !error.config.url.includes('/api/auth/')) {
       localStorage.removeItem('token');
-      
-      // If on protected route, redirect to login
       if (!window.location.pathname.includes('/login')) {
         window.location.href = '/login';
         toast.error('Session expired. Please login again.');
@@ -53,87 +40,41 @@ axios.interceptors.response.use(
   }
 );
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': token ? `Bearer ${token}` : '',
-  };
-};
-
-const getCurrentUserId = () => {
-  const user = JSON.parse(localStorage.getItem('user'));
-  return user?._id;
-};
-
 // Posts API
 export const postsAPI = {
-  // Get all posts
-  getPosts: () => axios.get('/api/posts'),
-  
-  // Get post by ID
-  getPost: (id) => axios.get(`/api/posts/${id}`),
-  
-  // Get posts by user
-  getUserPosts: (userId) => axios.get(`/api/posts/user/${userId}`),
-  
-  // Create post
+  getPosts: () => apiClient.get('/api/posts'),
+  getPost: (id) => apiClient.get(`/api/posts/${id}`),
+  getUserPosts: (userId) => apiClient.get(`/api/posts/user/${userId}`),
   createPost: (postData) => {
-    // If post contains media, use FormData
     if (postData.media) {
       const formData = new FormData();
-      
       formData.append('content', postData.content);
       formData.append('media', postData.media);
-      
       if (postData.tags) {
         formData.append('tags', postData.tags);
       }
-      
-      return axios.post('/api/posts', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      return apiClient.post('/api/posts', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
     }
-    
-    // Otherwise, send as JSON
-    return axios.post('/api/posts', postData);
+    return apiClient.post('/api/posts', postData);
   },
-  
-  // Delete post
-  deletePost: (id) => axios.delete(`/api/posts/${id}`),
-  
-  // Like post
-  likePost: (id) => axios.put(`/api/posts/${id}/like`),
-  
-  // Unlike post
-  unlikePost: (id) => axios.put(`/api/posts/${id}/unlike`),
-  
-  // Comment on post
-  commentOnPost: (id, text) => axios.post(`/api/posts/${id}/comment`, { text }),
-  
-  // Delete comment
-  deleteComment: (postId, commentId) => axios.delete(`/api/posts/${postId}/comment/${commentId}`),
+  deletePost: (id) => apiClient.delete(`/api/posts/${id}`),
+  likePost: (id) => apiClient.put(`/api/posts/${id}/like`),
+  unlikePost: (id) => apiClient.put(`/api/posts/${id}/unlike`),
+  commentOnPost: (id, text) => apiClient.post(`/api/posts/${id}/comment`, { text }),
+  deleteComment: (postId, commentId) => apiClient.delete(`/api/posts/${postId}/comment/${commentId}`)
 };
 
 // Events API
 export const eventsAPI = {
-  // Get all events
-  getEvents: (upcomingOnly = false) => axios.get('/api/events', {
-    params: { upcoming: upcomingOnly },
+  getEvents: (upcomingOnly = false) => apiClient.get('/api/events', {
+    params: { upcoming: upcomingOnly }
   }),
-  
-  // Get event by ID
-  getEvent: (id) => axios.get(`/api/events/${id}`),
-  
-  // Create event
+  getEvent: (id) => apiClient.get(`/api/events/${id}`),
   createEvent: (eventData) => {
-    // If event contains image, use FormData
     if (eventData.image) {
       const formData = new FormData();
-      
-      // Add all fields to formData
       Object.keys(eventData).forEach(key => {
         if (key === 'image') {
           formData.append('image', eventData.image);
@@ -141,25 +82,15 @@ export const eventsAPI = {
           formData.append(key, eventData[key]);
         }
       });
-      
-      return axios.post('/api/events', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      return apiClient.post('/api/events', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
     }
-    
-    // Otherwise, send as JSON
-    return axios.post('/api/events', eventData);
+    return apiClient.post('/api/events', eventData);
   },
-  
-  // Update event
   updateEvent: (id, eventData) => {
-    // If event contains image, use FormData
     if (eventData.image) {
       const formData = new FormData();
-      
-      // Add all fields to formData
       Object.keys(eventData).forEach(key => {
         if (key === 'image') {
           formData.append('image', eventData.image);
@@ -167,88 +98,43 @@ export const eventsAPI = {
           formData.append(key, eventData[key]);
         }
       });
-      
-      return axios.put(`/api/events/${id}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      return apiClient.put(`/api/events/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
     }
-    
-    // Otherwise, send as JSON
-    return axios.put(`/api/events/${id}`, eventData);
+    return apiClient.put(`/api/events/${id}`, eventData);
   },
-  
-  // Delete event
-  deleteEvent: (id) => axios.delete(`/api/events/${id}`),
+  deleteEvent: (id) => apiClient.delete(`/api/events/${id}`)
 };
 
 // Connection API - FIXED VERSION
 export const connectionAPI = {
-  // Send connection request
-  sendRequest: (userId) => axios.post('/api/connections', { userId }),
-  
-  // Follow user (alias for sendRequest for backward compatibility)
-  followUser: (userId) => axios.post('/api/connections', { userId }),
-  
-  // Accept connection request
-  acceptRequest: (requestId) => axios.put(`/api/connections/${requestId}/accept`),
-  
-  // Accept follow request (alias for notifications)
-  acceptFollowRequest: (requestId) => axios.put(`/api/connections/${requestId}/accept`),
-  
-  // Reject connection request
-  rejectRequest: (requestId) => axios.delete(`/api/connections/${requestId}/reject`),
-  
-  // Reject follow request (alias for notifications)
-  rejectFollowRequest: (requestId) => axios.delete(`/api/connections/${requestId}/reject`),
-  
-  // Remove connection
-  removeConnection: (userId) => axios.delete(`/api/connections/${userId}`),
-  
-  // Get connection status
-  getConnectionStatus: (userId) => axios.get(`/api/connections/status/${userId}`),
-  
-  // Get user connections
-  getConnections: () => axios.get('/api/connections/followers'),
-  
-  // Get pending requests
-  getPendingRequests: () => axios.get('/api/connections/requests'),
-  
-  // Get suggested connections
-  getSuggestedConnections: () => axios.get('/api/connections/suggested'),
+  sendRequest: (userId) => apiClient.post('/api/connections', { userId }),
+  followUser: (userId) => apiClient.post('/api/connections', { userId }),
+  acceptRequest: (requestId) => apiClient.put(`/api/connections/${requestId}/accept`),
+  acceptFollowRequest: (requestId) => apiClient.put(`/api/connections/${requestId}/accept`),
+  rejectRequest: (requestId) => apiClient.delete(`/api/connections/${requestId}/reject`),
+  rejectFollowRequest: (requestId) => apiClient.delete(`/api/connections/${requestId}/reject`),
+  removeConnection: (userId) => apiClient.delete(`/api/connections/${userId}`),
+  getConnectionStatus: (userId) => apiClient.get(`/api/connections/status/${userId}`),
+  getConnections: () => apiClient.get('/api/connections/followers'),
+  getPendingRequests: () => apiClient.get('/api/connections/requests'),
+  getSuggestedConnections: () => apiClient.get('/api/connections/suggested')
 };
 
-// User API - KEPT ORIGINAL FOR AUTH COMPATIBILITY
+// User API - Using apiClient but keeping same endpoints for compatibility
 export const userAPI = {
-  // Register
-  register: (userData) => axios.post('/api/auth/register', userData),
-  
-  // Login
-  login: (credentials) => axios.post('/api/auth/login', credentials),
-  
-  // Logout
-  logout: () => axios.post('/api/auth/logout'),
-  
-  // Get current user profile
-  getProfile: () => axios.get('/api/auth/profile'),
-  
-  // Get user profile by username
-  getUserByUsername: (username) => axios.get(`/api/users/username/${username}`),
-  
-  // Get user profile by ID
-  getUserById: (userId) => axios.get(`/api/users/${userId}`),
-  
-  // Update profile
+  register: (userData) => axios.post('/api/auth/register', userData), // Keep using global axios for auth
+  login: (credentials) => axios.post('/api/auth/login', credentials), // Keep using global axios for auth
+  logout: () => axios.post('/api/auth/logout'), // Keep using global axios for auth
+  getProfile: () => apiClient.get('/api/auth/profile'),
+  getUserByUsername: (username) => apiClient.get(`/api/users/username/${username}`),
+  getUserById: (userId) => apiClient.get(`/api/users/${userId}`),
   updateProfile: (userData, avatar = null) => {
-    // If avatar included, use FormData
     if (avatar) {
       const formData = new FormData();
-      
-      // Add user data to form
       Object.keys(userData).forEach(key => {
         if (key === 'socials' && typeof userData[key] === 'object') {
-          // Handle nested socials object
           Object.keys(userData[key]).forEach(socialKey => {
             formData.append(`socials[${socialKey}]`, userData[key][socialKey]);
           });
@@ -256,25 +142,19 @@ export const userAPI = {
           formData.append(key, userData[key]);
         }
       });
-      
-      // Add avatar file to form
       formData.append('avatar', avatar);
-      
-      return axios.put('/api/auth/profile', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+      return apiClient.put('/api/auth/profile', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
     }
-    
-    return axios.put('/api/auth/profile', userData);
-  },
+    return apiClient.put('/api/auth/profile', userData);
+  }
 };
 
 // Messages API
 export const fetchMessages = async (userId) => {
   try {
-    const response = await axios.get(`/api/messages/${userId}`);
+    const response = await apiClient.get(`/api/messages/${userId}`);
     return response.data;
   } catch (error) {
     console.error('Error fetching messages:', error);
@@ -282,4 +162,4 @@ export const fetchMessages = async (userId) => {
   }
 };
 
-export default axios;
+export default axios; // Keep exporting global axios for AuthContext compatibility
