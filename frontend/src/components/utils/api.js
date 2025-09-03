@@ -183,7 +183,7 @@ export const eventsAPI = {
   deleteEvent: (id) => axios.delete(`/api/events/${id}`),
 };
 
-// Connection API
+// Connection API - FIXED VERSION
 export const connectionAPI = {
   // Send connection request
   sendRequest: (userId) => axios.post('/api/connections', { userId }),
@@ -219,7 +219,7 @@ export const connectionAPI = {
   getSuggestedConnections: () => axios.get('/api/connections/suggested'),
 };
 
-// User API
+// User API - KEPT ORIGINAL FOR AUTH COMPATIBILITY
 export const userAPI = {
   // Register
   register: (userData) => axios.post('/api/auth/register', userData),
@@ -270,29 +270,6 @@ export const userAPI = {
     return axios.put('/api/auth/profile', userData);
   },
 };
-// // Add near other helpers
-// export const connectionActions = {
-//   acceptByUserId: async (fromUserId, toUserId) => {
-//     const res = await fetch(`${API_BASE_URL}/connections/accept`, {
-//       method: 'POST',
-//       headers: { ...getAuthHeaders() },
-//       credentials: 'include',
-//       body: JSON.stringify({ fromUserId, toUserId })
-//     });
-//     if (!res.ok) throw new Error('Failed to accept request');
-//     return await res.json();
-//   },
-//   rejectByUserId: async (fromUserId, toUserId) => {
-//     const res = await fetch(`${API_BASE_URL}/connections/reject`, {
-//       method: 'POST',
-//       headers: { ...getAuthHeaders() },
-//       credentials: 'include',
-//       body: JSON.stringify({ fromUserId, toUserId })
-//     });
-//     if (!res.ok) throw new Error('Failed to reject request');
-//     return await res.json();
-//   }
-// };
 
 // Messages API
 export const fetchMessages = async (userId) => {
