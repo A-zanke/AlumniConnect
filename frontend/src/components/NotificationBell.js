@@ -40,23 +40,24 @@ const NotificationBell = () => {
     setOpen(false);
   };
 
-  const accept = async (notificationId) => {
-    try {
-      await connectionAPI.acceptFollowRequest(notificationId);
-      setItems(prev => prev.filter(n => n._id !== notificationId));
-    } catch (error) {
-      console.error('Error accepting connection request:', error);
-    }
-  };
+  const accept = async (userId) => {
+  try {
+    await connectionAPI.acceptFollowRequest(userId);
+    setItems(prev => prev.filter(n => n.sender._id !== userId));
+  } catch (error) {
+    console.error('Error accepting connection request:', error);
+  }
+};
 
-  const reject = async (notificationId) => {
-    try {
-      await connectionAPI.rejectFollowRequest(notificationId);
-      setItems(prev => prev.filter(n => n._id !== notificationId));
-    } catch (error) {
-      console.error('Error rejecting connection request:', error);
-    }
-  };
+const reject = async (userId) => {
+  try {
+    await connectionAPI.rejectFollowRequest(userId);
+    setItems(prev => prev.filter(n => n.sender._id !== userId));
+  } catch (error) {
+    console.error('Error rejecting connection request:', error);
+  }
+};
+
 
   return (
     <div ref={ref} className="relative">
@@ -98,13 +99,13 @@ const NotificationBell = () => {
                       <div className="mt-2 flex gap-2">
                         <button 
                           className="px-3 py-1 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700" 
-                          onClick={() => accept(n._id)}
+                          onClick={() => accept(n.sender._id)}
                         >
                           Accept
                         </button>
                         <button 
                           className="px-3 py-1 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" 
-                          onClick={() => reject(n._id)}
+                          onClick={() => reject(n.sender._id)}
                         >
                           Reject
                         </button>
