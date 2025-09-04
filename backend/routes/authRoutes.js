@@ -10,7 +10,10 @@ const {
   updateUserProfile,
   sendOtp,
   verifyOtp,
-  checkUsername
+  checkUsername,
+  sendResetOtp,
+  verifyResetOtp,
+  resetPassword
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const { OAuth2Client } = require('google-auth-library');
@@ -51,6 +54,9 @@ router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
+router.post('/forgot/send-otp', sendResetOtp);
+router.post('/forgot/verify-otp', verifyResetOtp);
+router.post('/forgot/reset', resetPassword);
 router.get('/check-username', checkUsername);
 
 // Protected routes

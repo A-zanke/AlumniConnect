@@ -33,7 +33,21 @@ app.use(cors({
   credentials: true
 }));
 app.use(helmet());
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }));
+
+// Global rate limiter, but skip highly sensitive endpoints that may cause UX issues on bursts
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+});
+
+// Apply limiter except for auth login to avoid accidental 429s on retries
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/api/auth/login') return next();
+  return globalLimiter(req, res, next);
+});
 
 // Logging in development
 if (process.env.NODE_ENV !== 'production') {

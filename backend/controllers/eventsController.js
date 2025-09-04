@@ -25,6 +25,8 @@ const createEvent = async (req, res) => {
             audience: body.audience,
             departmentScope: parseArray(body.departmentScope),
             yearScope: parseArray(body.yearScope).map(n => Number(n)).filter(n => !Number.isNaN(n)),
+            graduationYearScope: parseArray(body.graduationYearScope).map(n => Number(n)).filter(n => !Number.isNaN(n)),
+            roleScope: parseArray(body.roleScope).map(v => String(v).toLowerCase()).filter(v => ['student','teacher','alumni'].includes(v)),
             location: body.location,
             startAt: new Date(body.startAt),
             endAt: new Date(body.endAt),

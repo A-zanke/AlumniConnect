@@ -203,6 +203,98 @@ const verifyOtp = async (req, res) => {
   }
 };
 
+// Forgot password: send OTP
+const sendResetOtp = async (req, res) => {
+  try {
+    const { emailPrefix } = req.body;
+    if (!emailPrefix || /@/.test(emailPrefix)) {
+      return res.status(400).json({ message: 'Provide email prefix only' });
+    }
+    const email = `${emailPrefix}@mit.asia`;
+
+    const existing = await User.findOne({ email });
+    if (!existing) return res.status(404).json({ message: 'No account with this email' });
+
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await Otp.create({ email, code, purpose: 'reset', expiresAt });
+    try {
+      await sendOtpEmail({ to: email, code });
+    } catch (mailError) {
+      console.error('Mail send failed:', mailError?.message || mailError);
+    }
+    const payload = { success: true };
+    if (process.env.NODE_ENV !== 'production') {
+      payload.devOtp = code;
+      console.log(`DEV ONLY: RESET OTP for ${email} is ${code}`);
+    }
+    return res.json(payload);
+  } catch (error) {
+    console.error('sendResetOtp error:', error);
+    res.status(500).json({ message: 'Failed to send reset OTP' });
+  }
+};
+
+// Forgot password: verify OTP
+const verifyResetOtp = async (req, res) => {
+  try {
+    const { emailPrefix, code } = req.body;
+    if (!emailPrefix || /@/.test(emailPrefix) || !code) {
+      return res.status(400).json({ message: 'Invalid input' });
+    }
+    const email = `${emailPrefix}@mit.asia`;
+    const otp = await Otp.findOne({ email, purpose: 'reset', consumed: false }).sort({ createdAt: -1 });
+
+    if (!otp) return res.status(400).json({ message: 'OTP not found' });
+    if (otp.expiresAt < new Date()) return res.status(400).json({ message: 'OTP expired' });
+    if (otp.code !== code) {
+      otp.attempts += 1;
+      await otp.save();
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+    otp.consumed = true;
+    await otp.save();
+    res.json({ success: true, email });
+  } catch (error) {
+    console.error('verifyResetOtp error:', error);
+    res.status(500).json({ message: 'Failed to verify reset OTP' });
+  }
+};
+
+// Forgot password: reset
+const resetPassword = async (req, res) => {
+  try {
+    const { emailPrefix, newPassword } = req.body;
+    if (!emailPrefix || /@/.test(emailPrefix) || !newPassword) {
+      return res.status(400).json({ message: 'Invalid input' });
+    }
+    const email = `${emailPrefix}@mit.asia`;
+
+    // Ensure the last reset OTP is consumed
+    const lastOtp = await Otp.findOne({ email, purpose: 'reset' }).sort({ createdAt: -1 });
+    if (!lastOtp || !lastOtp.consumed) {
+      return res.status(400).json({ message: 'OTP verification required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Validate password strength
+    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
+    if (!passwordStrong.test(newPassword)) {
+      return res.status(400).json({ message: 'Password not strong enough' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('resetPassword error:', error);
+    res.status(500).json({ message: 'Failed to reset password' });
+  }
+};
+
 // Check username availability
 const checkUsername = async (req, res) => {
   try {
@@ -324,4 +416,7 @@ module.exports = {
   sendOtp,
   verifyOtp,
   checkUsername,
+  sendResetOtp,
+  verifyResetOtp,
+  resetPassword,
 };
