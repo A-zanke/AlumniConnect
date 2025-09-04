@@ -10,7 +10,7 @@ import axios from 'axios';
 
 const ProfilePage = () => {
   const { user: currentUser, updateProfile, loading } = useAuth();
-  const { userId } = useParams();
+  const { username, userId } = useParams();
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
@@ -24,7 +24,7 @@ const ProfilePage = () => {
     socials: { linkedin: '', github: '', twitter: '' }
   });
 
-  const isOwnProfile = !userId || userId === currentUser?._id;
+  const isOwnProfile = (!username && !userId) || (userId && userId === currentUser?._id) || (username && username === currentUser?.username);
 
   useEffect(() => {
     if (isOwnProfile) {
@@ -48,8 +48,13 @@ const ProfilePage = () => {
 
   const fetchUserProfile = async () => {
     try {
-      const response = await axios.get(`/api/users/${userId}`);
-      setUser(response.data);
+      let response;
+      if (username) {
+        response = await axios.get(`/api/users/username/${username}`);
+      } else {
+        response = await axios.get(`/api/users/${userId}`);
+      }
+      setUser(response.data?.data || response.data);
     } catch (error) {
       console.error('Error fetching user profile:', error);
       toast.error('Failed to load profile');
