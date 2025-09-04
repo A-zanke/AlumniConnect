@@ -12,6 +12,7 @@ const EventSchema = new mongoose.Schema({
   location: { type: String },
   startAt: { type: Date, required: true },
   endAt: { type: Date, required: true },
+  imageUrl: { type: String },
   approved: { type: Boolean, default: false },
   rsvps: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, { timestamps: true });

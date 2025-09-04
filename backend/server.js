@@ -34,33 +34,44 @@ app.use(cors({
 }));
 app.use(helmet());
 
-// Global rate limiter
+// Whitelist auth/OTP/search + event writes + ALL admin routes
+const AUTH_OTP_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/send-otp',
+  '/api/auth/verify-otp',
+  '/api/auth/forgot/send-otp',
+  '/api/auth/forgot/verify-otp',
+  '/api/auth/forgot/reset',
+  '/api/search/users',
+  '/api/search/departments',
+  '/api/events', // POST
+]);
+
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
+  skip: (req) => {
+    if (req.method === 'OPTIONS') return true;
+    const p = req.path || '';
+
+    // Skip all /api/admin/* requests
+    if (p.startsWith('/api/admin')) return true;
+
+    // Skip POSTs for whitelisted paths
+    if (req.method === 'POST' && AUTH_OTP_PATHS.has(p)) return true;
+
+    // Skip PUT/DELETE for /api/events/:id
+    if ((req.method === 'PUT' || req.method === 'DELETE') && /^\/api\/events\/[^/]+$/.test(p)) return true;
+
+    return false;
+  }
 });
 
-// Apply limiter with OTP/auth exceptions
-app.use((req, res, next) => {
-  const p = req.path || '';
-  if (
-    req.method === 'OPTIONS' ||
-    (req.method === 'POST' && (
-      p === '/api/auth/login' ||
-      p === '/api/auth/send-otp' ||
-      p === '/api/auth/verify-otp' ||
-      p === '/api/auth/forgot/send-otp' ||
-      p === '/api/auth/forgot/verify-otp' ||
-      p === '/api/auth/forgot/reset'
-    ))
-  ) {
-    return next();
-  }
-  return globalLimiter(req, res, next);
-});
+// Apply limiter before routes
+app.use(globalLimiter);
 
 // Logging in development
 if (process.env.NODE_ENV !== 'production') {
@@ -108,7 +119,6 @@ app.use('/uploads', (req, res, next) => {
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../frontend/build')));
-  
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(__dirname, '../frontend', 'build', 'index.html'));
   });
@@ -125,12 +135,6 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 http.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error(`Unhandled Rejection: ${err.message}`);
-  process.exit(1);
 });
 
 // Socket.IO basic chat
