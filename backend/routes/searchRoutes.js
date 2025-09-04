@@ -11,7 +11,7 @@ router.get('/users', async (req, res) => {
     const searchTerm = (queryParam || q || '').trim();
 
     if (!searchTerm) {
-      return res.status(400).json({ message: 'Search query is required' });
+      return res.json([]); // empty list if nothing typed
     }
 
     const regex = { $regex: searchTerm, $options: 'i' };
@@ -21,7 +21,6 @@ router.get('/users', async (req, res) => {
       objectId = new mongoose.Types.ObjectId(excludeId);
     }
 
-    // Search across common user fields
     const criteria = {
       $or: [
         { name: regex },
@@ -31,8 +30,8 @@ router.get('/users', async (req, res) => {
         { position: regex },
         { department: regex },
         { major: regex },
-        { 'skills': regex },           // for array of strings
-        { 'skills.name': regex }       // for array of { name: string }
+        { skills: regex },            // array of strings
+        { 'skills.name': regex }      // array of objects { name }
       ],
       ...(excludeId ? { _id: { $ne: objectId } } : {})
     };
@@ -42,7 +41,6 @@ router.get('/users', async (req, res) => {
       .limit(50)
       .lean();
 
-    // Normalize for frontend expectations
     const normalized = users.map(u => ({
       _id: u._id,
       name: u.name || '',
@@ -66,4 +64,18 @@ router.get('/users', async (req, res) => {
   }
 });
 
-module.exports = route
+// Optional: root search proxy to users search
+// GET /api/search?q=...
+router.get('/', async (req, res) => {
+  try {
+    req.query.query = req.query.query || req.query.q || '';
+    // Proxy to /users endpoint
+    req.url = '/users';
+    router.handle(req, res);
+  } catch (error) {
+    console.error('Root search error:', error);
+    res.status(500).json({ message: 'Error searching users' });
+  }
+});
+
+module.exports = router
