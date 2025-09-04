@@ -34,7 +34,7 @@ app.use(cors({
 }));
 app.use(helmet());
 
-// Global rate limiter, but skip highly sensitive endpoints that may cause UX issues on bursts
+// Global rate limiter
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
@@ -43,9 +43,22 @@ const globalLimiter = rateLimit({
   keyGenerator: (req) => req.ip,
 });
 
-// Apply limiter except for auth login to avoid accidental 429s on retries
+// Apply limiter with OTP/auth exceptions
 app.use((req, res, next) => {
-  if (req.method === 'POST' && req.path === '/api/auth/login') return next();
+  const p = req.path || '';
+  if (
+    req.method === 'OPTIONS' ||
+    (req.method === 'POST' && (
+      p === '/api/auth/login' ||
+      p === '/api/auth/send-otp' ||
+      p === '/api/auth/verify-otp' ||
+      p === '/api/auth/forgot/send-otp' ||
+      p === '/api/auth/forgot/verify-otp' ||
+      p === '/api/auth/forgot/reset'
+    ))
+  ) {
+    return next();
+  }
   return globalLimiter(req, res, next);
 });
 
@@ -117,7 +130,6 @@ http.listen(PORT, '0.0.0.0', () => {
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error(`Unhandled Rejection: ${err.message}`);
-  // Close server & exit process
   process.exit(1);
 });
 
