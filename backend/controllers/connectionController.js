@@ -108,12 +108,31 @@ exports.removeConnection = async (req, res) => {
 exports.getConnectionStatus = async (req, res) => {
   try {
     const { userId } = req.params;
-    const me = await User.findById(req.user._id);
+    const me = await User.findById(req.user._id).select('connections connectionRequests');
+    const other = await User.findById(userId).select('connections connectionRequests');
 
-    const isConnected = me.connections.includes(userId);
-    const hasRequest = me.connectionRequests.includes(userId);
+    if (!me || !other) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-    res.json({ isConnected, hasRequest });
+    const isConnected = me.connections.some(id => id.toString() === userId) &&
+                        other.connections.some(id => id.toString() === me._id.toString());
+
+    if (isConnected) {
+      return res.json({ status: 'connected' });
+    }
+
+    const iRequestedOther = other.connectionRequests.some(id => id.toString() === me._id.toString());
+    if (iRequestedOther) {
+      return res.json({ status: 'requested' });
+    }
+
+    const otherRequestedMe = me.connectionRequests.some(id => id.toString() === userId);
+    if (otherRequestedMe) {
+      return res.json({ status: 'incoming' });
+    }
+
+    return res.json({ status: 'none' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

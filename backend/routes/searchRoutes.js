@@ -4,14 +4,13 @@ const User = require('../models/User');
 const mongoose = require('mongoose');
 
 // GET /api/search/users?query=...&excludeId=...
-// Also accepts q=... for compatibility
 router.get('/users', async (req, res) => {
   try {
     const { query: queryParam, q, excludeId } = req.query;
     const searchTerm = (queryParam || q || '').trim();
 
     if (!searchTerm) {
-      return res.json([]); // empty list if nothing typed
+      return res.json([]);
     }
 
     const regex = { $regex: searchTerm, $options: 'i' };
@@ -30,8 +29,8 @@ router.get('/users', async (req, res) => {
         { position: regex },
         { department: regex },
         { major: regex },
-        { skills: regex },            // array of strings
-        { 'skills.name': regex }      // array of objects { name }
+        { skills: regex },
+        { 'skills.name': regex }
       ],
       ...(excludeId ? { _id: { $ne: objectId } } : {})
     };
@@ -64,18 +63,21 @@ router.get('/users', async (req, res) => {
   }
 });
 
-// Optional: root search proxy to users search
-// GET /api/search?q=...
-router.get('/', async (req, res) => {
+// GET /api/search/departments
+router.get('/departments', async (req, res) => {
   try {
-    req.query.query = req.query.query || req.query.q || '';
-    // Proxy to /users endpoint
-    req.url = '/users';
-    router.handle(req, res);
+    const registrationDepartments = ['CSE', 'AI-DS', 'Civil', 'Mechanical', 'Electrical', 'ETC'];
+    const distinct = await User.distinct('department', { department: { $exists: true, $ne: '' } });
+    const set = new Set(registrationDepartments.map(d => String(d).trim()));
+    for (const d of distinct) {
+      if (typeof d === 'string' && d.trim()) set.add(d.trim());
+    }
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+    res.json(list);
   } catch (error) {
-    console.error('Root search error:', error);
-    res.status(500).json({ message: 'Error searching users' });
+    console.error('Departments fetch error:', error);
+    res.status(500).json({ message: 'Failed to fetch departments' });
   }
 });
 
-module.exports = router
+module.exports = router;
