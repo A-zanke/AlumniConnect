@@ -33,7 +33,8 @@ const EventsPage = () => {
     audienceType: 'college',
     targetDepartments: [],
     targetYears: [],
-    targetRoles: []
+    targetRoles: [],
+    targetGraduationYears: []
   });
   const [eventImage, setEventImage] = useState(null);
   const [error, setError] = useState(null);
@@ -86,7 +87,8 @@ const EventsPage = () => {
       audienceType: 'college',
       targetDepartments: [],
       targetYears: [],
-      targetRoles: []
+      targetRoles: [],
+      targetGraduationYears: []
     });
     setEventImage(null);
     setEditingEvent(null);
@@ -95,11 +97,19 @@ const EventsPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Map frontend fields to backend schema
       const eventData = {
-        ...formData,
-        image: eventImage,
-        organizer: user._id,
-        approved: user.role?.toLowerCase() !== 'alumni'
+        title: formData.title,
+        description: formData.description,
+        audience: formData.audienceType === 'college' ? 'college' : (formData.audienceType === 'department' ? 'department' : (formData.audienceType === 'year' ? 'year' : 'custom')),
+        departmentScope: formData.targetDepartments,
+        yearScope: formData.targetYears,
+        graduationYearScope: formData.targetGraduationYears,
+        roleScope: formData.targetRoles.map(r => r.toLowerCase()),
+        location: formData.isVirtual ? undefined : formData.location,
+        startAt: formData.date,
+        endAt: formData.endDate || formData.date,
+        image: eventImage
       };
 
       if (editingEvent) {
@@ -127,16 +137,17 @@ const EventsPage = () => {
     setFormData({
       title: event.title,
       description: event.description,
-      date: event.date ? event.date.slice(0, 16) : '',
-      endDate: event.endDate ? event.endDate.slice(0, 16) : '',
+      date: event.startAt ? event.startAt.slice(0, 16) : '',
+      endDate: event.endAt ? event.endAt.slice(0, 16) : '',
       location: event.location || '',
       category: event.category || 'other',
       isVirtual: event.isVirtual || false,
       meetingLink: event.meetingLink || '',
-      audienceType: event.audienceType || 'college',
-      targetDepartments: event.targetDepartments || [],
-      targetYears: event.targetYears || [],
-      targetRoles: event.targetRoles || []
+      audienceType: event.audience || 'college',
+      targetDepartments: event.departmentScope || [],
+      targetYears: event.yearScope || [],
+      targetRoles: event.roleScope || [],
+      targetGraduationYears: event.graduationYearScope || []
     });
     setShowCreateForm(true);
   };

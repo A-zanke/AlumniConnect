@@ -79,6 +79,39 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Forgot password: send OTP
+  const sendResetOtp = async (emailPrefix) => {
+    try {
+      const res = await axios.post('/api/auth/forgot/send-otp', { emailPrefix });
+      return { success: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Failed to send OTP';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  // Forgot password: verify OTP
+  const verifyResetOtp = async (emailPrefix, code) => {
+    try {
+      const res = await axios.post('/api/auth/forgot/verify-otp', { emailPrefix, code });
+      return { success: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'OTP verification failed';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  // Forgot password: reset
+  const resetPassword = async (emailPrefix, newPassword) => {
+    try {
+      const res = await axios.post('/api/auth/forgot/reset', { emailPrefix, newPassword });
+      return { success: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Password reset failed';
+      return { success: false, error: errorMsg };
+    }
+  };
+
   // Check username availability
   const checkUsername = async (username) => {
     try {
@@ -163,7 +196,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent }}>
+    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent, sendResetOtp, verifyResetOtp, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );

@@ -6,6 +6,8 @@ const EventSchema = new mongoose.Schema({
   organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   departmentScope: [{ type: String }],
   yearScope: [{ type: Number }],
+  graduationYearScope: [{ type: Number }],
+  roleScope: [{ type: String, enum: ['student', 'teacher', 'alumni'] }],
   audience: { type: String, enum: ['college', 'department', 'year', 'custom'], default: 'college' },
   location: { type: String },
   startAt: { type: Date, required: true },
