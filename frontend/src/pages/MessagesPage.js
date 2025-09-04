@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import { toast } from 'react-toastify';
 import { connectionAPI, fetchMessages } from '../components/utils/api';
+import axios from 'axios';
 import { io } from 'socket.io-client';
 import { getAvatarUrl } from '../components/utils/helpers';
 
@@ -22,9 +23,9 @@ const MessagesPage = () => {
     const fetchConnections = async () => {
       try {
         setLoading(true);
-        // Get users the current user is following (can message)
-        const response = await connectionAPI.getFollowing();
-        setConnections(response.data);
+        // Load accepted connections from backend
+        const response = await connectionAPI.getConnections();
+        setConnections(response.data || []);
         
         // Select first connection by default if exists
         if (response.data.length > 0 && !selectedUser) {
@@ -69,7 +70,7 @@ const MessagesPage = () => {
     
     try {
       setLoading(true);
-      const data = await fetchMessages(selectedUser.id);
+      const data = await fetchMessages(selectedUser._id || selectedUser.id);
       setMessages(data);
       setError(null);
     } catch (err) {
@@ -84,16 +85,17 @@ const MessagesPage = () => {
     fetchMessagesData();
   }, [fetchMessagesData]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     
     if (!newMessage.trim() || !selectedUser || !socket) return;
     
     try {
-      socket.emit('chat:send', { to: selectedUser._id, content: newMessage });
-      setMessages(prev => [...prev, { senderId: user._id, recipientId: selectedUser._id, content: newMessage, timestamp: new Date().toISOString() }]);
-      
-      // Clear input
+      // Persist via REST to ensure validation + notifications
+      const res = await axios.post(`/api/messages/${selectedUser._id}`, { content: newMessage });
+      const saved = res.data;
+      setMessages(prev => [...prev, saved]);
+      if (socket) socket.emit('chat:send', { to: selectedUser._id, content: newMessage });
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);

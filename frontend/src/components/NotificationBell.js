@@ -35,8 +35,10 @@ const NotificationBell = () => {
   }, []);
 
   const goProfile = (sender) => {
-    const u = sender?.username || sender?._id;
-    if (u) navigate(`/profile/${sender.username || ''}` || `/profile/${u}`);
+    const username = sender?.username;
+    const id = sender?._id;
+    if (username) navigate(`/profile/${username}`);
+    else if (id) navigate(`/profile/id/${id}`);
     setOpen(false);
   };
 
@@ -93,7 +95,7 @@ const reject = async (userId) => {
                       >
                         {n.sender?.name || 'User'}
                       </span>{' '}
-                      <span className="text-gray-600">{n.content || n.type}</span>
+                      <span className="text-gray-600">{typeof n.content === 'string' ? n.content : String(n.content || n.type || '')}</span>
                     </div>
                     {n.type === 'connection_request' && (
                       <div className="mt-2 flex gap-2">
