@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useRef, useCallback } from 'rea
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import { toast } from 'react-toastify';
-import { connectionAPI, fetchMessages, sendMessage } from '../components/utils/api';
+import { connectionAPI, fetchMessages, sendMessage, userAPI } from '../components/utils/api';
 import { io } from 'socket.io-client';
 import { getAvatarUrl } from '../components/utils/helpers';
 import { FiSend, FiImage, FiSmile, FiMoreVertical, FiSearch, FiVideo, FiPhone } from 'react-icons/fi';
@@ -43,17 +43,40 @@ const MessagesPage = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [typingUser, setTypingUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [presenceData, setPresenceData] = useState({});
+  const [isTypingTimeout, setIsTypingTimeout] = useState(null);
   const fileInputRef = useRef(null);
 
   // Load connections (people user can message)
   useEffect(() => {
+    if (!user) return;
+
     const fetchConnections = async () => {
       try {
         setLoading(true);
         // Get users the current user is connected with (can message)
         const response = await connectionAPI.getConnections();
         setConnections(response.data);
+        
+        // Fetch presence data for all connections
+        const presencePromises = response.data.map(async (conn) => {
+          try {
+            const presence = await userAPI.getPresence(conn._id);
+            return { userId: conn._id, ...presence };
+          } catch (error) {
+            console.error(`Error fetching presence for ${conn._id}:`, error);
+            return { userId: conn._id, isOnline: false, lastSeen: null };
+          }
+        });
+        
+        const presenceResults = await Promise.all(presencePromises);
+        const presenceMap = {};
+        presenceResults.forEach(presence => {
+          presenceMap[presence.userId] = presence;
+        });
+        setPresenceData(presenceMap);
         
         // Select first connection by default if exists
         if (response.data.length > 0 && !selectedUser) {
@@ -68,14 +91,26 @@ const MessagesPage = () => {
     };
 
     fetchConnections();
-  }, []);
+  }, [user]);
 
   // Initialize Socket.IO connection
   useEffect(() => {
     if (user) {
       const token = localStorage.getItem('token');
       const s = io('/', { auth: { token } });
-      s.on('connect', () => {});
+      
+      s.on('connect', () => {
+        console.log('Connected to server');
+        // Set user as online when connected
+        userAPI.updatePresence(true);
+      });
+      
+      s.on('disconnect', () => {
+        console.log('Disconnected from server');
+        // Set user as offline when disconnected
+        userAPI.updatePresence(false);
+      });
+      
       s.on('chat:receive', (msg) => {
         if ((msg.from === selectedUser?._id && msg.to === user._id) || (msg.from === user._id && msg.to === selectedUser?._id)) {
           setMessages(prev => [...prev, { 
@@ -90,10 +125,44 @@ const MessagesPage = () => {
           setTimeout(scrollToBottom, 100);
         }
       });
+      
+      // Listen for typing events
+      s.on('user_typing', (data) => {
+        if (data.userId !== user._id) {
+          setTypingUser(data.userName);
+          setIsTyping(true);
+          
+          // Clear typing indicator after 3 seconds
+          if (isTypingTimeout) {
+            clearTimeout(isTypingTimeout);
+          }
+          const timeout = setTimeout(() => {
+            setIsTyping(false);
+            setTypingUser(null);
+          }, 3000);
+          setIsTypingTimeout(timeout);
+        }
+      });
+
+      s.on('user_stopped_typing', (data) => {
+        if (data.userId !== user._id) {
+          setIsTyping(false);
+          setTypingUser(null);
+          if (isTypingTimeout) {
+            clearTimeout(isTypingTimeout);
+          }
+        }
+      });
+      
       setSocket(s);
-      return () => { s.disconnect(); };
+      return () => { 
+        s.disconnect();
+        if (isTypingTimeout) {
+          clearTimeout(isTypingTimeout);
+        }
+      };
     }
-  }, [user, selectedUser]);
+  }, [user, selectedUser, isTypingTimeout]);
 
   // Auto-scroll to the bottom of messages
   useEffect(() => {
@@ -173,6 +242,46 @@ const MessagesPage = () => {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
     }
+  };
+
+  // Handle typing indicator
+  const handleTyping = (e) => {
+    setNewMessage(e.target.value);
+    
+    if (socket && selectedUser) {
+      socket.emit('typing', {
+        userId: user._id,
+        userName: user.name,
+        recipientId: selectedUser._id
+      });
+      
+      // Clear existing timeout
+      if (isTypingTimeout) {
+        clearTimeout(isTypingTimeout);
+      }
+      
+      // Set new timeout to stop typing indicator
+      const timeout = setTimeout(() => {
+        socket.emit('stop_typing', {
+          userId: user._id,
+          recipientId: selectedUser._id
+        });
+      }, 1000);
+      setIsTypingTimeout(timeout);
+    }
+  };
+
+  // Format last seen time
+  const formatLastSeen = (lastSeen) => {
+    if (!lastSeen) return 'Unknown';
+    const date = new Date(lastSeen);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+    return date.toLocaleDateString();
   };
 
   const handleImageSelect = (e) => {
@@ -291,7 +400,11 @@ const MessagesPage = () => {
                                 {connection.name?.charAt(0).toUpperCase()}
                               </div>
                             )}
-                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                            {presenceData[connection._id]?.isOnline ? (
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                            ) : (
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gray-400 rounded-full border-2 border-white"></div>
+                            )}
                           </div>
                           <div className="ml-4 flex-1 min-w-0">
                             <p className={`text-sm font-semibold truncate ${
@@ -337,11 +450,24 @@ const MessagesPage = () => {
                               {selectedUser.name?.charAt(0).toUpperCase()}
                             </div>
                           )}
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                          {presenceData[selectedUser._id]?.isOnline ? (
+                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                          ) : (
+                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gray-400 rounded-full border-2 border-white"></div>
+                          )}
                         </div>
                         <div className="ml-4">
                           <p className="text-lg font-semibold text-gray-900">{selectedUser.name}</p>
-                          <p className="text-sm text-gray-500">@{selectedUser.username}</p>
+                          <p className="text-sm text-gray-500">
+                            {presenceData[selectedUser._id]?.isOnline ? (
+                              'Online'
+                            ) : (
+                              `Last seen ${formatLastSeen(presenceData[selectedUser._id]?.lastSeen)}`
+                            )}
+                          </p>
+                          {isTyping && typingUser && (
+                            <p className="text-sm text-blue-500 italic">typing...</p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -458,7 +584,7 @@ const MessagesPage = () => {
                         <input
                           type="text"
                           value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
+                          onChange={handleTyping}
                           onKeyPress={handleKeyPress}
                           placeholder="Type a message... (Press Enter to send)"
                           className="w-full px-6 py-4 pr-12 bg-gray-50 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"

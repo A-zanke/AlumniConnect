@@ -48,6 +48,47 @@ const alumniSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    
+    // Academic Background for AI recommendation system
+    specialization: { type: String, default: '' },
+    higher_studies: {
+        degree: { 
+            type: String, 
+            enum: ['MS', 'MBA', 'PhD', 'Other'],
+            default: ''
+        },
+        university: { type: String, default: '' },
+        specialization: { type: String, default: '' }
+    },
+    
+    // Career Info
+    current_job_title: { type: String, default: '' },
+    company: { type: String, default: '' },
+    industry: { type: String, default: '' },
+    past_experience: [{ type: String, trim: true }],
+    
+    // Mentorship
+    mentorship_interests: [{ 
+        type: String, 
+        enum: ['Career Guidance', 'Higher Studies', 'Technical Mentoring', 'Startup Advice'],
+        default: []
+    }],
+    preferred_students: [{ type: String, trim: true }], // e.g., Same Department, Interested in AI, Entrepreneurship
+    availability: { 
+        type: String, 
+        enum: ['Weekly', 'Bi-weekly', 'Monthly'],
+        default: 'Monthly'
+    },
+    
+    // Achievements
+    certifications: [{ type: String, trim: true }],
+    publications: [{ type: String, trim: true }],
+    entrepreneurship: { type: String, default: '' }, // e.g., Founder of XYZ
+    
+    // Networking
+    linkedin: { type: String, default: '' },
+    github: { type: String, default: '' },
+    website: { type: String, default: '' },
     connections: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Alumni'

@@ -3,38 +3,81 @@ const User = require('../models/User');
 // Get user profile by username
 exports.getUserByUsername = async (req, res) => {
   try {
+    const User = require('../models/User');
+    const Student = require('../models/Student');
+    const Alumni = require('../models/Alumni');
+    
     const user = await User.findOne({ username: req.params.username })
-      .select('-password -connectionRequests') // Don't send sensitive data
+      .select('-password -connectionRequests')
       .populate('connections', 'name username avatarUrl role');
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ data: user });
+    // Get additional profile data based on role
+    let additionalData = {};
+    if (user.role === 'student') {
+      const studentData = await Student.findOne({ email: user.email });
+      if (studentData) {
+        additionalData = {
+          department: studentData.department,
+          year: studentData.year,
+          division: studentData.division,
+          batch: studentData.batch,
+          rollNumber: studentData.rollNumber,
+          major: studentData.major,
+          graduationYear: studentData.graduationYear,
+          specialization: studentData.specialization,
+          projects: studentData.projects,
+          desired_roles: studentData.desired_roles,
+          preferred_industries: studentData.preferred_industries,
+          higher_studies_interest: studentData.higher_studies_interest,
+          entrepreneurship_interest: studentData.entrepreneurship_interest,
+          internships: studentData.internships,
+          hackathons: studentData.hackathons,
+          research_papers: studentData.research_papers,
+          mentorship_needs: studentData.mentorship_needs,
+          preferred_location: studentData.preferred_location,
+          preferred_mode: studentData.preferred_mode,
+          certifications: studentData.certifications,
+          achievements: studentData.achievements,
+          detailed_projects: studentData.detailed_projects,
+          detailed_internships: studentData.detailed_internships
+        };
+      }
+    } else if (user.role === 'alumni') {
+      const alumniData = await Alumni.findOne({ email: user.email });
+      if (alumniData) {
+        additionalData = {
+          specialization: alumniData.specialization,
+          higher_studies: alumniData.higher_studies,
+          current_job_title: alumniData.current_job_title,
+          company: alumniData.company,
+          industry: alumniData.industry,
+          past_experience: alumniData.past_experience,
+          mentorship_interests: alumniData.mentorship_interests,
+          preferred_students: alumniData.preferred_students,
+          availability: alumniData.availability,
+          certifications: alumniData.certifications,
+          publications: alumniData.publications,
+          entrepreneurship: alumniData.entrepreneurship,
+          linkedin: alumniData.linkedin,
+          github: alumniData.github,
+          website: alumniData.website
+        };
+      }
+    }
+
+    // Merge user data with additional profile data
+    const fullProfile = { ...user.toObject(), ...additionalData };
+    res.json({ data: fullProfile });
   } catch (error) {
     console.error('Error fetching user profile:', error);
     res.status(500).json({ message: 'Error fetching user profile' });
   }
 };
 
-// Get followers of a user
-exports.getFollowers = async (req, res) => {
-  try {
-    const user = await User.findById(req.params.userId)
-      .select('followers')
-      .populate('followers', 'name username avatarUrl role bio');
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.json({ data: user.followers || [] });
-  } catch (error) {
-    console.error('Error fetching followers:', error);
-    res.status(500).json({ message: 'Error fetching followers' });
-  }
-};
 
 // Get following of a user
 exports.getFollowing = async (req, res) => {
@@ -73,7 +116,7 @@ exports.getMutualConnections = async (req, res) => {
     );
 
     const mutualConnections = await User.find({ _id: { $in: mutualIds } })
-      .select('name username avatarUrl role bio');
+      .select('name username avatarUrl role bio createdAt');
 
     res.json({ data: mutualConnections });
   } catch (error) {
@@ -123,6 +166,44 @@ exports.followUser = async (req, res) => {
   }
 };
 
+// Get mutual connections for current user (all mutual connections across their network)
+exports.getMyMutualConnections = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    const currentUser = await User.findById(currentUserId).select('following connections');
+
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get all users that current user is following
+    const followingUsers = await User.find({ _id: { $in: currentUser.following } })
+      .select('following')
+      .populate('following', 'name username avatarUrl role bio createdAt');
+
+    // Find mutual connections - users that are followed by people the current user follows
+    const mutualConnections = [];
+    const processedIds = new Set();
+
+    followingUsers.forEach(user => {
+      user.following.forEach(followedUser => {
+        if (followedUser._id.toString() !== currentUserId && 
+            !currentUser.following.includes(followedUser._id) &&
+            !currentUser.connections.includes(followedUser._id) &&
+            !processedIds.has(followedUser._id.toString())) {
+          mutualConnections.push(followedUser);
+          processedIds.add(followedUser._id.toString());
+        }
+      });
+    });
+
+    res.json({ data: mutualConnections });
+  } catch (error) {
+    console.error('Error fetching mutual connections:', error);
+    res.status(500).json({ message: 'Error fetching mutual connections' });
+  }
+};
+
 // Get suggested connections based on mutual connections
 exports.getSuggestedConnections = async (req, res) => {
   try {
@@ -154,5 +235,43 @@ exports.getSuggestedConnections = async (req, res) => {
   } catch (error) {
     console.error('Error fetching suggested connections:', error);
     res.status(500).json({ message: 'Error fetching suggested connections' });
+  }
+};
+
+// Update user presence (online/offline)
+exports.updatePresence = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { isOnline } = req.body;
+
+    await User.findByIdAndUpdate(userId, {
+      isOnline: isOnline,
+      lastSeen: new Date()
+    });
+
+    res.json({ message: 'Presence updated successfully' });
+  } catch (error) {
+    console.error('Error updating presence:', error);
+    res.status(500).json({ message: 'Error updating presence' });
+  }
+};
+
+// Get user presence status
+exports.getPresence = async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const user = await User.findById(userId).select('isOnline lastSeen');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ 
+      isOnline: user.isOnline,
+      lastSeen: user.lastSeen
+    });
+  } catch (error) {
+    console.error('Error fetching presence:', error);
+    res.status(500).json({ message: 'Error fetching presence' });
   }
 }; 

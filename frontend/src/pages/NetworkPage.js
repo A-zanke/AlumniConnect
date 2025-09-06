@@ -9,18 +9,27 @@ import { motion } from 'framer-motion';
 import { FaUserPlus, FaUserMinus, FaUsers, FaUserFriends, FaNetworkWired, FaUserCheck, FaHeart, FaUserTimes } from 'react-icons/fa';
 import { getAvatarUrl } from '../components/utils/helpers';
 
+// Helper function to format date
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric' 
+  });
+};
+
 const NetworkPage = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('followers');
+  const [activeTab, setActiveTab] = useState('following');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [connections, setConnections] = useState([]);
-  const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
+  const [mutualConnections, setMutualConnections] = useState([]);
   const [suggestedConnections, setSuggestedConnections] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [stats, setStats] = useState({
-    followers: 0,
     following: 0,
     mutualConnections: 0
   });
@@ -35,17 +44,13 @@ const NetworkPage = () => {
       
       console.log('Fetching network data for user:', user._id);
       
-      const [connectionsRes, followersRes, followingRes, suggestedRes, requestsRes] = await Promise.all([
-        connectionAPI.getConnections().catch(err => {
-          console.error('Error fetching connections:', err);
-          return { data: [] };
-        }),
-        followAPI.getFollowers(user._id).catch(err => {
-          console.error('Error fetching followers:', err);
-          return { data: [] };
-        }),
+      const [followingRes, mutualRes, suggestedRes, requestsRes] = await Promise.all([
         followAPI.getFollowing(user._id).catch(err => {
           console.error('Error fetching following:', err);
+          return { data: [] };
+        }),
+        followAPI.getMyMutualConnections().catch(err => {
+          console.error('Error fetching mutual connections:', err);
           return { data: [] };
         }),
         followAPI.getSuggestedConnections().catch(err => {
@@ -59,28 +64,24 @@ const NetworkPage = () => {
       ]);
 
       console.log('API Responses:', {
-        connections: connectionsRes.data,
-        followers: followersRes.data,
         following: followingRes.data,
+        mutual: mutualRes.data,
         suggested: suggestedRes.data,
         requests: requestsRes.data
       });
 
-      setConnections(connectionsRes.data?.data || connectionsRes.data || []);
-      setFollowers(followersRes.data?.data || followersRes.data || []);
       setFollowing(followingRes.data?.data || followingRes.data || []);
+      setMutualConnections(mutualRes.data?.data || mutualRes.data || []);
       setSuggestedConnections(suggestedRes.data?.data || suggestedRes.data || []);
       setPendingRequests(requestsRes.data?.data || requestsRes.data || []);
       
       // Calculate stats
-      const followersData = followersRes.data?.data || followersRes.data || [];
       const followingData = followingRes.data?.data || followingRes.data || [];
-      const connectionsData = connectionsRes.data?.data || connectionsRes.data || [];
+      const mutualData = mutualRes.data?.data || mutualRes.data || [];
       
       setStats({
-        followers: followersData.length || 0,
         following: followingData.length || 0,
-        mutualConnections: connectionsData.length || 0
+        mutualConnections: mutualData.length || 0
       });
 
       setError(null);
@@ -154,8 +155,8 @@ const NetworkPage = () => {
       // Update local state
       if (response.data.isFollowing) {
         // Add to following list
-        const userToAdd = followers.find(f => f._id === userId) || 
-                         suggestedConnections.find(s => s._id === userId);
+        const userToAdd = suggestedConnections.find(s => s._id === userId) || 
+                         mutualConnections.find(m => m._id === userId);
         if (userToAdd) {
           setFollowing(prev => [...prev, userToAdd]);
           setStats(prev => ({ ...prev, following: prev.following + 1 }));
@@ -229,20 +230,7 @@ const NetworkPage = () => {
       </div>
 
       {/* Network Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <motion.div
-          whileHover={{ scale: 1.02 }}
-          className="bg-white rounded-lg shadow-md p-6"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Followers</p>
-              <h3 className="text-2xl font-bold text-gray-900">{stats.followers}</h3>
-            </div>
-            <FaUsers className="text-3xl text-primary-600" />
-          </div>
-        </motion.div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <motion.div
           whileHover={{ scale: 1.02 }}
           className="bg-white rounded-lg shadow-md p-6"
@@ -274,17 +262,6 @@ const NetworkPage = () => {
       <div className="border-b border-gray-200 mb-8">
         <nav className="-mb-px flex space-x-8 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('followers')}
-            className={`${
-              activeTab === 'followers'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
-          >
-            <FaUsers className="mr-2" />
-            Followers ({stats.followers})
-          </button>
-          <button
             onClick={() => setActiveTab('following')}
             className={`${
               activeTab === 'following'
@@ -296,15 +273,15 @@ const NetworkPage = () => {
             Following ({stats.following})
           </button>
           <button
-            onClick={() => setActiveTab('connections')}
+            onClick={() => setActiveTab('mutual')}
             className={`${
-              activeTab === 'connections'
+              activeTab === 'mutual'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
           >
             <FaNetworkWired className="mr-2" />
-            Connections ({stats.mutualConnections})
+            Mutual Connections ({stats.mutualConnections})
           </button>
           <button
             onClick={() => setActiveTab('suggested')}
@@ -337,62 +314,7 @@ const NetworkPage = () => {
       </div>
 
       {/* Content based on active tab */}
-      {activeTab === 'followers' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {followers.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500">
-              <FaUsers className="text-6xl mx-auto mb-4 text-gray-300" />
-              <p className="text-xl font-medium">No followers yet</p>
-              <p className="text-sm mt-2">Start connecting with people to build your network</p>
-            </div>
-          ) : (
-            followers.map((follower) => (
-              <motion.div
-                key={follower._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
-              >
-                <div className="flex items-center mb-4">
-                  {follower.avatarUrl ? (
-                    <img
-                      src={getAvatarUrl(follower.avatarUrl)}
-                      alt={follower.name || 'User'}
-                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                    />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                      {(follower.name || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="ml-4 flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">
-                      {follower.name || 'Unknown User'}
-                    </h3>
-                    <p className="text-sm text-gray-500 truncate">@{follower.username || 'unknown'}</p>
-                    <p className="text-xs text-gray-400 capitalize">{follower.role || 'user'}</p>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleFollow(follower._id)}
-                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    <FaUserPlus className="mr-2" />
-                    Follow Back
-                  </button>
-                  <Link
-                    to={`/profile/${follower.username || follower._id}`}
-                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    View Profile
-                  </Link>
-                </div>
-              </motion.div>
-            ))
-          )}
-        </div>
-      ) : activeTab === 'following' ? (
+      {activeTab === 'following' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {following.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-500">
@@ -406,7 +328,8 @@ const NetworkPage = () => {
                 key={followedUser._id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+                onClick={() => window.location.href = `/profile/${followedUser.username || followedUser._id}`}
               >
                 <div className="flex items-center mb-4">
                   {followedUser.avatarUrl ? (
@@ -430,7 +353,10 @@ const NetworkPage = () => {
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => handleFollow(followedUser._id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFollow(followedUser._id);
+                    }}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
                   >
                     <FaUserTimes className="mr-2" />
@@ -439,6 +365,7 @@ const NetworkPage = () => {
                   <Link
                     to={`/profile/${followedUser.username || followedUser._id}`}
                     className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     View Profile
                   </Link>
@@ -447,21 +374,22 @@ const NetworkPage = () => {
             ))
           )}
         </div>
-      ) : activeTab === 'connections' ? (
+      ) : activeTab === 'mutual' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {connections.length === 0 ? (
+          {mutualConnections.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-500">
               <FaNetworkWired className="text-6xl mx-auto mb-4 text-gray-300" />
-              <p className="text-xl font-medium">No mutual connections yet</p>
-              <p className="text-sm mt-2">Connect with people to see mutual connections</p>
+              <p className="text-xl font-medium">No mutual connections found</p>
+              <p className="text-sm mt-2">Follow more people to discover mutual connections</p>
             </div>
           ) : (
-            connections.map((connection) => (
+            mutualConnections.map((connection) => (
               <motion.div
                 key={connection._id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+                onClick={() => window.location.href = `/profile/${connection.username || connection._id}`}
               >
                 <div className="flex items-center mb-4">
                   {connection.avatarUrl ? (
@@ -481,19 +409,28 @@ const NetworkPage = () => {
                     </h3>
                     <p className="text-sm text-gray-500 truncate">@{connection.username || 'unknown'}</p>
                     <p className="text-xs text-gray-400 capitalize">{connection.role || 'user'}</p>
+                    {connection.createdAt && (
+                      <p className="text-xs text-blue-500 mt-1">
+                        Joined: {formatDate(connection.createdAt)}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => handleUnfollow(connection._id)}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFollow(connection._id);
+                    }}
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
                   >
-                    <FaUserMinus className="mr-2" />
-                    Disconnect
+                    <FaUserPlus className="mr-2" />
+                    Follow
                   </button>
                   <Link
                     to={`/profile/${connection.username || connection._id}`}
                     className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     View Profile
                   </Link>

@@ -33,6 +33,42 @@ const studentSchema = new mongoose.Schema({
     major: { type: String, default: '' },
     graduationYear: { type: Number },
     skills: [{ type: String, trim: true }],
+    
+    // Academic fields for AI recommendation system
+    specialization: { type: String, default: '' },
+    projects: [{ type: String, trim: true }], // Simple list of project names
+    
+    // Career Aspirations
+    desired_roles: [{ type: String, trim: true }],
+    preferred_industries: [{ type: String, trim: true }],
+    higher_studies_interest: { 
+        type: String, 
+        enum: ['Yes', 'No', 'Maybe'],
+        default: 'Maybe'
+    },
+    entrepreneurship_interest: { 
+        type: String, 
+        enum: ['Yes', 'No', 'Maybe'],
+        default: 'Maybe'
+    },
+    
+    // Experience
+    internships: [{ type: String, trim: true }], // Simple list of internship names
+    hackathons: [{ type: String, trim: true }],
+    research_papers: [{ type: String, trim: true }],
+    
+    // Preferences
+    mentorship_needs: [{ 
+        type: String, 
+        enum: ['Career Guidance', 'Higher Studies Advice', 'Technical Skills', 'Startup Guidance'],
+        default: []
+    }],
+    preferred_location: { type: String, default: '' },
+    preferred_mode: [{ 
+        type: String, 
+        enum: ['Email', 'Video Call', 'LinkedIn'],
+        default: ['Email']
+    }],
     certifications: [{
         name: {
             type: String,
@@ -49,7 +85,7 @@ const studentSchema = new mongoose.Schema({
         credentialId: String,
         credentialUrl: String
     }],
-    projects: [{
+    detailed_projects: [{
         name: {
             type: String,
             required: true
@@ -80,7 +116,7 @@ const studentSchema = new mongoose.Schema({
         issuer: String,
         certificateUrl: String
     }],
-    internships: [{
+    detailed_internships: [{
         company: {
             type: String,
             required: true

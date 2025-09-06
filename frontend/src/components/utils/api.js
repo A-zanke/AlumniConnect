@@ -114,7 +114,7 @@ export const connectionAPI = {
   rejectRequest: (userId) => apiClient.delete(`/api/connections/${userId}/reject`),
   removeConnection: (userId) => apiClient.delete(`/api/connections/${userId}`),
   getConnectionStatus: (userId) => apiClient.get(`/api/connections/status/${userId}`),
-  getConnections: () => apiClient.get('/api/connections/followers'),
+  getConnections: () => apiClient.get('/api/connections'),
   getPendingRequests: () => apiClient.get('/api/connections/requests'),
   getSuggestedConnections: () => apiClient.get('/api/connections/suggested')
 };
@@ -145,7 +145,9 @@ export const userAPI = {
       });
     }
     return apiClient.put('/api/auth/profile', userData);
-  }
+  },
+  updatePresence: (isOnline) => apiClient.put('/api/users/presence', { isOnline }),
+  getPresence: (userId) => apiClient.get(`/api/users/${userId}/presence`)
 };
 
 // Messages API
@@ -179,9 +181,9 @@ export const sendMessage = async (userId, content, image = null) => {
 
 // Follow API
 export const followAPI = {
-  getFollowers: (userId) => apiClient.get(`/api/users/${userId}/followers`),
   getFollowing: (userId) => apiClient.get(`/api/users/${userId}/following`),
   getMutualConnections: (userId) => apiClient.get(`/api/users/${userId}/mutual`),
+  getMyMutualConnections: () => apiClient.get('/api/users/mutual/connections'),
   followUser: (userId) => apiClient.post(`/api/users/${userId}/follow`),
   getSuggestedConnections: () => apiClient.get('/api/users/suggested/connections')
 };

@@ -348,9 +348,14 @@ const getUserProfile = async (req, res) => {
 // @access Private
 const updateUserProfile = async (req, res) => {
   try {
+    const User = require('../models/User');
+    const Student = require('../models/Student');
+    const Alumni = require('../models/Alumni');
+    
     const user = await User.findById(req.user._id);
 
     if (user) {
+      // Update basic user fields
       user.name = req.body.name || user.name;
       user.email = req.body.email || user.email;
       user.bio = req.body.bio || user.bio;
@@ -379,6 +384,60 @@ const updateUserProfile = async (req, res) => {
       }
 
       const updatedUser = await user.save();
+
+      // Update role-specific fields
+      if (user.role === 'student') {
+        const studentData = await Student.findOne({ email: user.email });
+        if (studentData) {
+          // Update student-specific fields
+          if (req.body.department) studentData.department = req.body.department;
+          if (req.body.year) studentData.year = req.body.year;
+          if (req.body.division) studentData.division = req.body.division;
+          if (req.body.batch) studentData.batch = req.body.batch;
+          if (req.body.rollNumber) studentData.rollNumber = req.body.rollNumber;
+          if (req.body.major) studentData.major = req.body.major;
+          if (req.body.specialization) studentData.specialization = req.body.specialization;
+          if (req.body.projects) studentData.projects = req.body.projects;
+          if (req.body.desired_roles) studentData.desired_roles = req.body.desired_roles;
+          if (req.body.preferred_industries) studentData.preferred_industries = req.body.preferred_industries;
+          if (req.body.higher_studies_interest) studentData.higher_studies_interest = req.body.higher_studies_interest;
+          if (req.body.entrepreneurship_interest) studentData.entrepreneurship_interest = req.body.entrepreneurship_interest;
+          if (req.body.internships) studentData.internships = req.body.internships;
+          if (req.body.hackathons) studentData.hackathons = req.body.hackathons;
+          if (req.body.research_papers) studentData.research_papers = req.body.research_papers;
+          if (req.body.mentorship_needs) studentData.mentorship_needs = req.body.mentorship_needs;
+          if (req.body.preferred_location) studentData.preferred_location = req.body.preferred_location;
+          if (req.body.preferred_mode) studentData.preferred_mode = req.body.preferred_mode;
+          if (req.body.certifications) studentData.certifications = req.body.certifications;
+          if (req.body.achievements) studentData.achievements = req.body.achievements;
+          if (req.body.detailed_projects) studentData.detailed_projects = req.body.detailed_projects;
+          if (req.body.detailed_internships) studentData.detailed_internships = req.body.detailed_internships;
+          
+          await studentData.save();
+        }
+      } else if (user.role === 'alumni') {
+        const alumniData = await Alumni.findOne({ email: user.email });
+        if (alumniData) {
+          // Update alumni-specific fields
+          if (req.body.specialization) alumniData.specialization = req.body.specialization;
+          if (req.body.higher_studies) alumniData.higher_studies = req.body.higher_studies;
+          if (req.body.current_job_title) alumniData.current_job_title = req.body.current_job_title;
+          if (req.body.company) alumniData.company = req.body.company;
+          if (req.body.industry) alumniData.industry = req.body.industry;
+          if (req.body.past_experience) alumniData.past_experience = req.body.past_experience;
+          if (req.body.mentorship_interests) alumniData.mentorship_interests = req.body.mentorship_interests;
+          if (req.body.preferred_students) alumniData.preferred_students = req.body.preferred_students;
+          if (req.body.availability) alumniData.availability = req.body.availability;
+          if (req.body.certifications) alumniData.certifications = req.body.certifications;
+          if (req.body.publications) alumniData.publications = req.body.publications;
+          if (req.body.entrepreneurship) alumniData.entrepreneurship = req.body.entrepreneurship;
+          if (req.body.linkedin) alumniData.linkedin = req.body.linkedin;
+          if (req.body.github) alumniData.github = req.body.github;
+          if (req.body.website) alumniData.website = req.body.website;
+          
+          await alumniData.save();
+        }
+      }
 
       res.json({
         _id: updatedUser._id,
