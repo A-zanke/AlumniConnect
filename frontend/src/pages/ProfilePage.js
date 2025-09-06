@@ -11,7 +11,7 @@ import axios from 'axios';
 
 const ProfilePage = () => {
   const { user: currentUser, updateProfile, loading } = useAuth();
-  const { userId } = useParams();
+  const { userId, username } = useParams();
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
@@ -25,16 +25,22 @@ const ProfilePage = () => {
     socials: { linkedin: '', github: '', twitter: '' }
   });
 
-  const isOwnProfile = !userId || userId === currentUser?._id;
+  // Determine if this is the current user's own profile
+  const isOwnProfile = !userId && !username;
 
   useEffect(() => {
     if (isOwnProfile) {
       setUser(currentUser);
     } else {
       fetchUserProfile();
+    }
+  }, [userId, username, currentUser]);
+
+  useEffect(() => {
+    if (!isOwnProfile && user) {
       fetchConnectionStatus();
     }
-  }, [userId, currentUser]);
+  }, [user, currentUser, isOwnProfile]);
 
   useEffect(() => {
     if (user) {
@@ -49,8 +55,19 @@ const ProfilePage = () => {
 
   const fetchUserProfile = async () => {
     try {
-      const response = await axios.get(`/api/users/${userId}`);
-      setUser(response.data);
+      let response;
+      if (username) {
+        // Fetch by username
+        response = await axios.get(`/api/users/username/${username}`);
+      } else if (userId) {
+        // Fetch by user ID
+        response = await axios.get(`/api/users/${userId}`);
+      } else {
+        throw new Error('No user identifier provided');
+      }
+      
+      // Handle the response format - backend returns { data: user }
+      setUser(response.data.data || response.data);
     } catch (error) {
       console.error('Error fetching user profile:', error);
       toast.error('Failed to load profile');
@@ -61,7 +78,10 @@ const ProfilePage = () => {
   const fetchConnectionStatus = async () => {
     if (!currentUser || isOwnProfile) return;
     try {
-      const response = await connectionAPI.getConnectionStatus(userId);
+      const targetUserId = userId || user?._id;
+      if (!targetUserId) return;
+      
+      const response = await connectionAPI.getConnectionStatus(targetUserId);
       setConnectionStatus(response.data.status);
     } catch (error) {
       console.error('Error fetching connection status:', error);
@@ -70,24 +90,30 @@ const ProfilePage = () => {
 
   const handleConnectionAction = async (action) => {
     try {
+      const targetUserId = userId || user?._id;
+      if (!targetUserId) {
+        toast.error('User ID not found');
+        return;
+      }
+
       switch (action) {
         case 'send':
-          await connectionAPI.sendRequest(userId);
+          await connectionAPI.sendRequest(targetUserId);
           setConnectionStatus('pending');
           toast.success('Connection request sent');
           break;
         case 'accept':
-          await connectionAPI.acceptRequest(userId);
+          await connectionAPI.acceptRequest(targetUserId);
           setConnectionStatus('connected');
           toast.success('Connection accepted');
           break;
         case 'reject':
-          await connectionAPI.rejectRequest(userId);
+          await connectionAPI.rejectRequest(targetUserId);
           setConnectionStatus(null);
           toast.success('Connection request rejected');
           break;
         case 'remove':
-          await connectionAPI.removeConnection(userId);
+          await connectionAPI.removeConnection(targetUserId);
           setConnectionStatus(null);
           toast.success('Connection removed');
           break;

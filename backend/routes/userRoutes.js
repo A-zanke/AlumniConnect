@@ -1,7 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
-const { getUserByUsername } = require('../controllers/userController');
+const { 
+  getUserByUsername, 
+  getFollowers, 
+  getFollowing, 
+  getMutualConnections, 
+  followUser, 
+  getSuggestedConnections 
+} = require('../controllers/userController');
 
 // Public route to get user profile by username
 router.get('/username/:username', getUserByUsername);
@@ -24,5 +31,12 @@ router.get('/:userId', protect, async (req, res) => {
     res.status(500).json({ message: 'Error fetching user profile' });
   }
 });
+
+// Follow/Unfollow endpoints
+router.get('/:userId/followers', protect, getFollowers);
+router.get('/:userId/following', protect, getFollowing);
+router.get('/:userId/mutual', protect, getMutualConnections);
+router.post('/:userId/follow', protect, followUser);
+router.get('/suggested/connections', protect, getSuggestedConnections);
 
 module.exports = router; 

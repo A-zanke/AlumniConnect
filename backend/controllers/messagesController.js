@@ -28,6 +28,7 @@ exports.getMessages = async (req, res) => {
       senderId: msg.from,
       recipientId: msg.to,
       content: msg.content,
+      attachments: msg.attachments || [],
       timestamp: msg.createdAt
     }));
 
@@ -45,10 +46,6 @@ exports.sendMessage = async (req, res) => {
     const { content } = req.body;
     const currentUserId = req.user._id;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: 'Message content is required' });
-    }
-
     // Check if users are connected
     const currentUser = await User.findById(currentUserId);
     const recipient = await User.findById(userId);
@@ -63,12 +60,19 @@ exports.sendMessage = async (req, res) => {
       return res.status(403).json({ message: 'You can only message connected users' });
     }
 
-    // Create message
-    const message = await Message.create({
+    const messageData = {
       from: currentUserId,
       to: userId,
-      content: content.trim()
-    });
+      content: content || ''
+    };
+
+    // Handle image attachment if present
+    if (req.file) {
+      messageData.attachments = [`/uploads/messages/${req.file.filename}`];
+    }
+
+    // Create message
+    const message = await Message.create(messageData);
 
     // Create notification for recipient
     await NotificationService.createNotification({
@@ -83,6 +87,7 @@ exports.sendMessage = async (req, res) => {
       senderId: message.from,
       recipientId: message.to,
       content: message.content,
+      attachments: message.attachments || [],
       timestamp: message.createdAt
     });
   } catch (error) {

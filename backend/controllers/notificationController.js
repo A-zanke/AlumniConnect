@@ -36,7 +36,8 @@ exports.getNotifications = async (req, res) => {
       recipient: req.user._id,
     })
       .populate('sender', 'name username avatarUrl')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(50);
 
     // ✅ Convert any object content to string just in case
     const safe = notifications.map((n) => ({
@@ -45,7 +46,7 @@ exports.getNotifications = async (req, res) => {
         typeof n.content === 'string' ? n.content : JSON.stringify(n.content),
     }));
 
-    res.json(safe);
+    res.json({ data: safe });
   } catch (error) {
     console.error('Error fetching notifications:', error);
     res.status(500).json({ message: error.message });

@@ -173,16 +173,33 @@ io.on('connection', (socket) => {
   socket.on('chat:send', async (payload) => {
     try {
       const from = socket.userId;
-      const { to, content } = payload || {};
-      if (!to || !content) return;
+      const { to, content, attachments } = payload || {};
+      if (!to || (!content && !attachments)) return;
       const me = await User.findById(from).select('connections');
       if (!me) return;
       const isConnected = me.connections.some(id => id.toString() === to);
       if (!isConnected) return;
-      const msg = await Message.create({ from, to, content });
-      io.to(to).emit('chat:receive', { _id: msg._id, from, to, content, createdAt: msg.createdAt });
-      socket.emit('chat:sent', { _id: msg._id, from, to, content, createdAt: msg.createdAt });
-    } catch (e) {}
+      
+      const messageData = { from, to, content: content || '' };
+      if (attachments && attachments.length > 0) {
+        messageData.attachments = attachments;
+      }
+      
+      const msg = await Message.create(messageData);
+      const messagePayload = { 
+        _id: msg._id, 
+        from, 
+        to, 
+        content: msg.content, 
+        attachments: msg.attachments || [],
+        createdAt: msg.createdAt 
+      };
+      
+      io.to(to).emit('chat:receive', messagePayload);
+      socket.emit('chat:sent', messagePayload);
+    } catch (e) {
+      console.error('Socket chat error:', e);
+    }
   });
 
   socket.join(socket.userId);

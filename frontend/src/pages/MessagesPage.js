@@ -7,7 +7,28 @@ import { io } from 'socket.io-client';
 import { getAvatarUrl } from '../components/utils/helpers';
 import { FiSend, FiImage, FiSmile, FiMoreVertical, FiSearch, FiVideo, FiPhone } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
-// import './MessagesPage.css';
+
+// Custom CSS for better scrolling
+const customScrollbarStyles = `
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+  .message-bubble {
+    word-wrap: break-word;
+    word-break: break-word;
+  }
+`;
 
 const MessagesPage = () => {
   const { user } = useAuth();
@@ -57,7 +78,16 @@ const MessagesPage = () => {
       s.on('connect', () => {});
       s.on('chat:receive', (msg) => {
         if ((msg.from === selectedUser?._id && msg.to === user._id) || (msg.from === user._id && msg.to === selectedUser?._id)) {
-          setMessages(prev => [...prev, { senderId: msg.from, recipientId: msg.to, content: msg.content, timestamp: msg.createdAt }]);
+          setMessages(prev => [...prev, { 
+            id: msg._id,
+            senderId: msg.from, 
+            recipientId: msg.to, 
+            content: msg.content, 
+            attachments: msg.attachments || [],
+            timestamp: msg.createdAt 
+          }]);
+          // Scroll to bottom when receiving new message
+          setTimeout(scrollToBottom, 100);
         }
       });
       setSocket(s);
@@ -68,9 +98,21 @@ const MessagesPage = () => {
   // Auto-scroll to the bottom of messages
   useEffect(() => {
     if (messageContainerRef.current) {
-      messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+      const scrollToBottom = () => {
+        messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+      };
+      
+      // Use requestAnimationFrame to ensure DOM is updated
+      requestAnimationFrame(scrollToBottom);
     }
   }, [messages]);
+
+  // Auto-scroll when new message is added
+  const scrollToBottom = useCallback(() => {
+    if (messageContainerRef.current) {
+      messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+    }
+  }, []);
 
   const fetchMessagesData = useCallback(async () => {
     if (!selectedUser) return;
@@ -116,6 +158,9 @@ const MessagesPage = () => {
       setSelectedImage(null);
       setImagePreview(null);
       
+      // Scroll to bottom after sending
+      setTimeout(scrollToBottom, 100);
+      
       // Also emit to socket for real-time updates
       if (socket) {
         socket.emit('chat:send', { 
@@ -148,6 +193,13 @@ const MessagesPage = () => {
     }
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage(e);
+    }
+  };
+
   if (loading && connections.length === 0) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -162,6 +214,7 @@ const MessagesPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <style>{customScrollbarStyles}</style>
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <motion.div 
@@ -176,7 +229,7 @@ const MessagesPage = () => {
         </motion.div>
         
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
-          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-12rem)]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-8rem)]">
             {/* Contacts Sidebar */}
             <motion.div 
               initial={{ opacity: 0, x: -20 }}
@@ -261,14 +314,14 @@ const MessagesPage = () => {
             </motion.div>
             
             {/* Chat Area */}
-            <div className="lg:col-span-2 flex flex-col">
+            <div className="lg:col-span-2 flex flex-col h-full">
               {selectedUser ? (
                 <>
                   {/* Chat Header */}
                   <motion.div 
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50"
+                    className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center">
@@ -308,7 +361,8 @@ const MessagesPage = () => {
                   {/* Messages */}
                   <div
                     ref={messageContainerRef}
-                    className="flex-1 p-6 overflow-y-auto bg-gradient-to-b from-white to-gray-50 custom-scrollbar"
+                    className="flex-1 p-6 overflow-y-auto bg-gradient-to-b from-white to-gray-50 custom-scrollbar min-h-0"
+                    style={{ maxHeight: 'calc(100vh - 20rem)' }}
                   >
                     {messages.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-gray-500">
@@ -380,7 +434,7 @@ const MessagesPage = () => {
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-6 border-t border-gray-200 bg-white"
+                    className="p-6 border-t border-gray-200 bg-white flex-shrink-0"
                   >
                     {/* Image Preview */}
                     {imagePreview && (
@@ -405,7 +459,8 @@ const MessagesPage = () => {
                           type="text"
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
-                          placeholder="Type a message..."
+                          onKeyPress={handleKeyPress}
+                          placeholder="Type a message... (Press Enter to send)"
                           className="w-full px-6 py-4 pr-12 bg-gray-50 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
                         />
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-2">

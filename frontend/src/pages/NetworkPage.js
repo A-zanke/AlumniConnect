@@ -1,20 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { connectionAPI } from '../components/utils/api';
+import { connectionAPI, followAPI } from '../components/utils/api';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import { toast } from 'react-toastify';
 import NetworkGraph from '../components/network/NetworkGraph';
 import { motion } from 'framer-motion';
-import { FaUserPlus, FaUserMinus, FaUsers, FaUserFriends, FaNetworkWired, FaUserCheck } from 'react-icons/fa';
+import { FaUserPlus, FaUserMinus, FaUsers, FaUserFriends, FaNetworkWired, FaUserCheck, FaHeart, FaUserTimes } from 'react-icons/fa';
 import { getAvatarUrl } from '../components/utils/helpers';
 
 const NetworkPage = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('graph');
+  const [activeTab, setActiveTab] = useState('followers');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connections, setConnections] = useState([]);
+  const [followers, setFollowers] = useState([]);
+  const [following, setFollowing] = useState([]);
   const [suggestedConnections, setSuggestedConnections] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [stats, setStats] = useState({
@@ -26,24 +28,59 @@ const NetworkPage = () => {
   const fetchNetworkData = useCallback(async () => {
     try {
       setLoading(true);
-      const [connectionsRes, suggestedRes, requestsRes] = await Promise.all([
-        connectionAPI.getConnections(),
-        connectionAPI.getSuggestedConnections(),
-        connectionAPI.getPendingRequests()
+      if (!user?._id) {
+        console.log('No user ID available');
+        return;
+      }
+      
+      console.log('Fetching network data for user:', user._id);
+      
+      const [connectionsRes, followersRes, followingRes, suggestedRes, requestsRes] = await Promise.all([
+        connectionAPI.getConnections().catch(err => {
+          console.error('Error fetching connections:', err);
+          return { data: [] };
+        }),
+        followAPI.getFollowers(user._id).catch(err => {
+          console.error('Error fetching followers:', err);
+          return { data: [] };
+        }),
+        followAPI.getFollowing(user._id).catch(err => {
+          console.error('Error fetching following:', err);
+          return { data: [] };
+        }),
+        followAPI.getSuggestedConnections().catch(err => {
+          console.error('Error fetching suggested connections:', err);
+          return { data: [] };
+        }),
+        connectionAPI.getPendingRequests().catch(err => {
+          console.error('Error fetching pending requests:', err);
+          return { data: [] };
+        })
       ]);
 
-      setConnections(connectionsRes.data);
-      setSuggestedConnections(suggestedRes.data);
-      setPendingRequests(requestsRes.data);
+      console.log('API Responses:', {
+        connections: connectionsRes.data,
+        followers: followersRes.data,
+        following: followingRes.data,
+        suggested: suggestedRes.data,
+        requests: requestsRes.data
+      });
+
+      setConnections(connectionsRes.data?.data || connectionsRes.data || []);
+      setFollowers(followersRes.data?.data || followersRes.data || []);
+      setFollowing(followingRes.data?.data || followingRes.data || []);
+      setSuggestedConnections(suggestedRes.data?.data || suggestedRes.data || []);
+      setPendingRequests(requestsRes.data?.data || requestsRes.data || []);
       
       // Calculate stats
-      const followers = await connectionAPI.getConnections();
+      const followersData = followersRes.data?.data || followersRes.data || [];
+      const followingData = followingRes.data?.data || followingRes.data || [];
+      const connectionsData = connectionsRes.data?.data || connectionsRes.data || [];
+      
       setStats({
-        followers: followers.data.length,
-        following: connectionsRes.data.length,
-        mutualConnections: followers.data.filter(f => 
-          connectionsRes.data.some(c => c.recipientId === f.requesterId)
-        ).length
+        followers: followersData.length || 0,
+        following: followingData.length || 0,
+        mutualConnections: connectionsData.length || 0
       });
 
       setError(null);
@@ -54,11 +91,17 @@ const NetworkPage = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?._id]);
 
   useEffect(() => {
+    console.log('NetworkPage useEffect - user:', user);
+    if (user?._id) {
     fetchNetworkData();
-  }, [fetchNetworkData]);
+    } else {
+      console.log('No user available, skipping network data fetch');
+      setLoading(false);
+    }
+  }, [fetchNetworkData, user]);
 
   const handleConnect = async (userId) => {
     if (!userId || userId === user._id) {
@@ -103,6 +146,31 @@ const NetworkPage = () => {
     }
   };
 
+  const handleFollow = async (userId) => {
+    try {
+      const response = await followAPI.followUser(userId);
+      toast.success(response.data.message);
+      
+      // Update local state
+      if (response.data.isFollowing) {
+        // Add to following list
+        const userToAdd = followers.find(f => f._id === userId) || 
+                         suggestedConnections.find(s => s._id === userId);
+        if (userToAdd) {
+          setFollowing(prev => [...prev, userToAdd]);
+          setStats(prev => ({ ...prev, following: prev.following + 1 }));
+        }
+      } else {
+        // Remove from following list
+        setFollowing(prev => prev.filter(f => f._id !== userId));
+        setStats(prev => ({ ...prev, following: prev.following - 1 }));
+      }
+    } catch (error) {
+      console.error('Error following/unfollowing user:', error);
+      toast.error('Failed to follow/unfollow user');
+    }
+  };
+
   const handleUnfollow = async (userId) => {
     try {
       await connectionAPI.removeConnection(userId);
@@ -114,6 +182,18 @@ const NetworkPage = () => {
     }
   };
 
+
+  if (!user) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Please log in</h2>
+          <p className="text-gray-600">You need to be logged in to view your network.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -124,14 +204,17 @@ const NetworkPage = () => {
 
   if (error) {
     return (
-      <div className="text-red-500 text-center mt-8">
-        {error}
+      <div className="text-center mt-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+          <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Network</h3>
+          <p className="text-red-600 mb-4">{error}</p>
         <button
           onClick={fetchNetworkData}
-          className="mt-4 btn btn-primary"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
         >
-          Retry
+            Try Again
         </button>
+        </div>
       </div>
     );
   }
@@ -189,35 +272,60 @@ const NetworkPage = () => {
 
       {/* Navigation Tabs */}
       <div className="border-b border-gray-200 mb-8">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex space-x-8 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('graph')}
+            onClick={() => setActiveTab('followers')}
             className={`${
-              activeTab === 'graph'
-                ? 'border-primary-500 text-primary-600'
+              activeTab === 'followers'
+                ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium`}
+            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
           >
-            Network Graph
+            <FaUsers className="mr-2" />
+            Followers ({stats.followers})
+          </button>
+          <button
+            onClick={() => setActiveTab('following')}
+            className={`${
+              activeTab === 'following'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
+          >
+            <FaUserFriends className="mr-2" />
+            Following ({stats.following})
+          </button>
+          <button
+            onClick={() => setActiveTab('connections')}
+            className={`${
+              activeTab === 'connections'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
+          >
+            <FaNetworkWired className="mr-2" />
+            Connections ({stats.mutualConnections})
           </button>
           <button
             onClick={() => setActiveTab('suggested')}
             className={`${
               activeTab === 'suggested'
-                ? 'border-primary-500 text-primary-600'
+                ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium`}
+            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
           >
+            <FaHeart className="mr-2" />
             Suggested
           </button>
           <button
             onClick={() => setActiveTab('requests')}
             className={`${
               activeTab === 'requests'
-                ? 'border-primary-500 text-primary-600'
+                ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium relative`}
+            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium relative flex items-center`}
           >
+            <FaUserCheck className="mr-2" />
             Requests
             {pendingRequests.length > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
@@ -229,13 +337,178 @@ const NetworkPage = () => {
       </div>
 
       {/* Content based on active tab */}
-      {activeTab === 'graph' ? (
-        <NetworkGraph connections={connections} currentUser={user} />
+      {activeTab === 'followers' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {followers.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              <FaUsers className="text-6xl mx-auto mb-4 text-gray-300" />
+              <p className="text-xl font-medium">No followers yet</p>
+              <p className="text-sm mt-2">Start connecting with people to build your network</p>
+            </div>
+          ) : (
+            followers.map((follower) => (
+              <motion.div
+                key={follower._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
+              >
+                <div className="flex items-center mb-4">
+                  {follower.avatarUrl ? (
+                    <img
+                      src={getAvatarUrl(follower.avatarUrl)}
+                      alt={follower.name || 'User'}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                      {(follower.name || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate">
+                      {follower.name || 'Unknown User'}
+                    </h3>
+                    <p className="text-sm text-gray-500 truncate">@{follower.username || 'unknown'}</p>
+                    <p className="text-xs text-gray-400 capitalize">{follower.role || 'user'}</p>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleFollow(follower._id)}
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
+                    <FaUserPlus className="mr-2" />
+                    Follow Back
+                  </button>
+                  <Link
+                    to={`/profile/${follower.username || follower._id}`}
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
+                    View Profile
+                  </Link>
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
+      ) : activeTab === 'following' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {following.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              <FaUserFriends className="text-6xl mx-auto mb-4 text-gray-300" />
+              <p className="text-xl font-medium">Not following anyone yet</p>
+              <p className="text-sm mt-2">Discover and follow people you're interested in</p>
+            </div>
+          ) : (
+            following.map((followedUser) => (
+              <motion.div
+                key={followedUser._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
+              >
+                <div className="flex items-center mb-4">
+                  {followedUser.avatarUrl ? (
+                    <img
+                      src={getAvatarUrl(followedUser.avatarUrl)}
+                      alt={followedUser.name || 'User'}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                      {(followedUser.name || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate">
+                      {followedUser.name || 'Unknown User'}
+                    </h3>
+                    <p className="text-sm text-gray-500 truncate">@{followedUser.username || 'unknown'}</p>
+                    <p className="text-xs text-gray-400 capitalize">{followedUser.role || 'user'}</p>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleFollow(followedUser._id)}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
+                    <FaUserTimes className="mr-2" />
+                    Unfollow
+                  </button>
+                  <Link
+                    to={`/profile/${followedUser.username || followedUser._id}`}
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
+                    View Profile
+                  </Link>
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
+      ) : activeTab === 'connections' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {connections.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              <FaNetworkWired className="text-6xl mx-auto mb-4 text-gray-300" />
+              <p className="text-xl font-medium">No mutual connections yet</p>
+              <p className="text-sm mt-2">Connect with people to see mutual connections</p>
+            </div>
+          ) : (
+            connections.map((connection) => (
+              <motion.div
+                key={connection._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
+              >
+                <div className="flex items-center mb-4">
+                  {connection.avatarUrl ? (
+                    <img
+                      src={getAvatarUrl(connection.avatarUrl)}
+                      alt={connection.name || 'User'}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                      {(connection.name || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate">
+                      {connection.name || 'Unknown User'}
+                    </h3>
+                    <p className="text-sm text-gray-500 truncate">@{connection.username || 'unknown'}</p>
+                    <p className="text-xs text-gray-400 capitalize">{connection.role || 'user'}</p>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleUnfollow(connection._id)}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
+                    <FaUserMinus className="mr-2" />
+                    Disconnect
+                  </button>
+                  <Link
+                    to={`/profile/${connection.username || connection._id}`}
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
+                    View Profile
+                  </Link>
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
       ) : activeTab === 'requests' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {pendingRequests.length === 0 ? (
-            <div className="col-span-full text-center py-8 text-gray-500">
-              No pending connection requests
+            <div className="col-span-full text-center py-12 text-gray-500">
+              <FaUserCheck className="text-6xl mx-auto mb-4 text-gray-300" />
+              <p className="text-xl font-medium">No pending requests</p>
+              <p className="text-sm mt-2">You're all caught up!</p>
             </div>
           ) : (
             pendingRequests.map((request) => (
@@ -243,41 +516,42 @@ const NetworkPage = () => {
                 key={request._id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-lg shadow-md p-6"
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
               >
                 <div className="flex items-center mb-4">
-                  {request.requester.avatarUrl ? (
+                  {request.requester?.avatarUrl ? (
                     <img
                       src={getAvatarUrl(request.requester.avatarUrl)}
-                      alt={request.requester.name}
-                      className="h-12 w-12 rounded-full object-cover"
+                      alt={request.requester?.name || 'User'}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
                     />
                   ) : (
-                    <div className="h-12 w-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold">
-                      {request.requester.name.charAt(0).toUpperCase()}
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                      {(request.requester?.name || 'U').charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <div className="ml-4">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      {request.requester.name}
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate">
+                      {request.requester?.name || 'Unknown User'}
                     </h3>
-                    <p className="text-sm text-gray-500">@{request.requester.username}</p>
+                    <p className="text-sm text-gray-500 truncate">@{request.requester?.username || 'unknown'}</p>
+                    <p className="text-xs text-gray-400 capitalize">{request.requester?.role || 'user'}</p>
                   </div>
                 </div>
                 <div className="flex space-x-2">
                   <button
                     onClick={() => handleAcceptRequest(request._id)}
-                    className="btn btn-primary flex-1"
+                    className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
                   >
                     <FaUserCheck className="mr-2" />
                     Accept
                   </button>
                   <button
                     onClick={() => handleRejectRequest(request._id)}
-                    className="btn btn-secondary flex-1"
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
                   >
                     <FaUserMinus className="mr-2" />
-                    Delete
+                    Decline
                   </button>
                 </div>
               </motion.div>
@@ -287,8 +561,10 @@ const NetworkPage = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {suggestedConnections.length === 0 ? (
-            <div className="col-span-full text-center py-8 text-gray-500">
-              No suggested connections available
+            <div className="col-span-full text-center py-12 text-gray-500">
+              <FaHeart className="text-6xl mx-auto mb-4 text-gray-300" />
+              <p className="text-xl font-medium">No suggestions available</p>
+              <p className="text-sm mt-2">Follow more people to get personalized suggestions</p>
             </div>
           ) : (
             suggestedConnections.map((connection) => (
@@ -296,49 +572,44 @@ const NetworkPage = () => {
                 key={connection._id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-lg shadow-md p-6"
+                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
               >
                 <div className="flex items-center mb-4">
                   {connection.avatarUrl ? (
                     <img
                       src={getAvatarUrl(connection.avatarUrl)}
-                      alt={connection.name}
-                      className="h-12 w-12 rounded-full object-cover"
+                      alt={connection.name || 'User'}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
                     />
                   ) : (
-                    <div className="h-12 w-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold">
-                      {connection.name.charAt(0).toUpperCase()}
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                      {(connection.name || 'U').charAt(0).toUpperCase()}
                     </div>
                   )}
-                  <div className="ml-4">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      {connection.name}
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate">
+                      {connection.name || 'Unknown User'}
                     </h3>
-                    <p className="text-sm text-gray-500">@{connection.username}</p>
-                    <p className="text-sm text-gray-500 capitalize">{connection.role}</p>
+                    <p className="text-sm text-gray-500 truncate">@{connection.username || 'unknown'}</p>
+                    <p className="text-xs text-gray-400 capitalize">{connection.role || 'user'}</p>
+                    <p className="text-xs text-blue-500 mt-1">💡 Suggested for you</p>
                   </div>
                 </div>
+                <div className="flex space-x-2">
                 <button
-                  onClick={() => handleConnect(connection._id)}
-                  className={`btn w-full ${
-                    connection.connectionStatus === 'requested'
-                      ? 'btn-secondary'
-                      : 'btn-primary'
-                  }`}
-                  disabled={connection.connectionStatus === 'requested'}
-                >
-                  {connection.connectionStatus === 'requested' ? (
-                    <>
-                      <FaUserCheck className="mr-2" />
-                      Request Sent
-                    </>
-                  ) : (
-                    <>
+                    onClick={() => handleFollow(connection._id)}
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
                       <FaUserPlus className="mr-2" />
-                      Connect
-                    </>
-                  )}
+                    Follow
                 </button>
+                  <Link
+                    to={`/profile/${connection.username || connection._id}`}
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                  >
+                    View Profile
+                  </Link>
+                </div>
               </motion.div>
             ))
           )}

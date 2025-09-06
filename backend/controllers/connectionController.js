@@ -105,6 +105,9 @@ exports.acceptRequest = async (req, res) => {
     await me.save();
     await sender.save();
 
+    // Don't mark the original connection request notification as read
+    // Let the frontend handle this when the user clicks on it
+
     // Create notification for the sender
     await Notification.create({
       recipient: sender._id,
@@ -142,6 +145,9 @@ exports.rejectRequest = async (req, res) => {
     );
 
     await me.save();
+
+    // Don't mark the original connection request notification as read
+    // Let the frontend handle this when the user clicks on it
 
     // Create notification for the sender about rejection
     const sender = await User.findById(userId);

@@ -101,7 +101,7 @@ const Search = () => {
         if (user.username) {
             navigate(`/profile/${user.username}`);
         } else {
-            navigate(`/profile/${user._id}`);
+            navigate(`/profile/id/${user._id}`);
         }
     };
 

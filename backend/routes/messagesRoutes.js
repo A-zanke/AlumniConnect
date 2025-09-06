@@ -3,7 +3,12 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const { protect } = require('../middleware/authMiddleware');
-const Message = require('../models/Message');
+const {
+  getMessages,
+  sendMessage,
+  deleteMessage,
+  getConversations
+} = require('../controllers/messagesController');
 
 // Configure multer for image uploads
 const storage = multer.diskStorage({
@@ -31,64 +36,18 @@ const upload = multer({
     cb(new Error('Only image files are allowed!'));
   }
 });
-const User = require('../models/User');
 
-router.get('/:userId', protect, async (req, res) => {
-  const otherId = req.params.userId;
-  const me = await User.findById(req.user._id).select('connections');
-  if (!me) return res.status(401).json({ message: 'Unauthorized' });
-  const isConnected = me.connections.some(id => id.toString() === otherId);
-  if (!isConnected) return res.status(403).json({ message: 'Not connected' });
-  const messages = await Message.find({
-    $or: [ { from: me, to: otherId }, { from: otherId, to: me } ]
-  }).sort({ createdAt: 1 });
-  res.json(messages.map(m => ({
-    id: m._id,
-    senderId: m.from,
-    recipientId: m.to,
-    content: m.content,
-    attachments: m.attachments || [],
-    timestamp: m.createdAt
-  })));
-});
+// Get messages between current user and another user
+router.get('/:userId', protect, getMessages);
 
 // Send a message with optional image
-router.post('/:userId', protect, upload.single('image'), async (req, res) => {
-  try {
-    const otherId = req.params.userId;
-    const { content } = req.body;
-    const me = await User.findById(req.user._id).select('connections');
-    
-    if (!me) return res.status(401).json({ message: 'Unauthorized' });
-    
-    const isConnected = me.connections.some(id => id.toString() === otherId);
-    if (!isConnected) return res.status(403).json({ message: 'Not connected' });
+router.post('/:userId', protect, upload.single('image'), sendMessage);
 
-    const messageData = {
-      from: me._id,
-      to: otherId,
-      content: content || ''
-    };
+// Delete a message
+router.delete('/:messageId', protect, deleteMessage);
 
-    if (req.file) {
-      messageData.attachments = [`/uploads/messages/${req.file.filename}`];
-    }
-
-    const message = await Message.create(messageData);
-    
-    res.json({
-      id: message._id,
-      senderId: message.from,
-      recipientId: message.to,
-      content: message.content,
-      attachments: message.attachments || [],
-      timestamp: message.createdAt
-    });
-  } catch (error) {
-    console.error('Send message error:', error);
-    res.status(500).json({ message: error.message });
-  }
-});
+// Get conversation list for current user
+router.get('/', protect, getConversations);
 
 module.exports = router;
 

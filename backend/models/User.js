@@ -27,7 +27,9 @@ const userSchema = new mongoose.Schema({
     website: String
   },
   connections: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  connectionRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  connectionRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, { timestamps: true });
 
 // Match user entered password to hashed password in database

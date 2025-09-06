@@ -23,8 +23,16 @@ const NotificationBell = () => {
         setItems([]);
       }
     };
-    if (user) load();
+    if (user) {
+      load();
+      // Refresh notifications every 30 seconds
+      const interval = setInterval(load, 30000);
+      return () => clearInterval(interval);
+    }
   }, [user]);
+
+  // Calculate unread count
+  const unreadCount = items.filter(item => !item.read).length;
 
   useEffect(() => {
     const onClick = (e) => {
@@ -34,32 +42,75 @@ const NotificationBell = () => {
     return () => document.removeEventListener('click', onClick);
   }, []);
 
-  const goProfile = (sender) => {
+  const goProfile = async (sender, notificationId) => {
+    // Mark notification as read if it's not already read
+    if (notificationId && !items.find(item => item._id === notificationId)?.read) {
+      try {
+        await axios.put(`/api/notifications/${notificationId}/read`, {}, {
+          withCredentials: true
+        });
+        // Update local state
+        setItems(prev => prev.map(item => 
+          item._id === notificationId ? { ...item, read: true } : item
+        ));
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
+    }
+    
     if (sender?.username) {
       navigate(`/profile/${sender.username}`);
     } else if (sender?._id) {
-      navigate(`/profile/${sender._id}`);
+      navigate(`/profile/id/${sender._id}`);
     }
     setOpen(false);
   };
 
   const accept = async (userId) => {
-  try {
-    await connectionAPI.acceptRequest(userId);
-    setItems(prev => prev.filter(n => n.sender._id !== userId));
-  } catch (error) {
-    console.error('Error accepting connection request:', error);
-  }
-};
+    try {
+      await connectionAPI.acceptRequest(userId);
+      // Mark the notification as read but keep it in history
+      const notification = items.find(n => n.sender._id === userId);
+      if (notification && !notification.read) {
+        try {
+          await axios.put(`/api/notifications/${notification._id}/read`, {}, {
+            withCredentials: true
+          });
+          // Update local state to mark as read but keep in list
+          setItems(prev => prev.map(n => 
+            n.sender._id === userId ? { ...n, read: true } : n
+          ));
+        } catch (error) {
+          console.error('Error marking notification as read:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error accepting connection request:', error);
+    }
+  };
 
-const reject = async (userId) => {
-  try {
-    await connectionAPI.rejectRequest(userId);
-    setItems(prev => prev.filter(n => n.sender._id !== userId));
-  } catch (error) {
-    console.error('Error rejecting connection request:', error);
-  }
-};
+  const reject = async (userId) => {
+    try {
+      await connectionAPI.rejectRequest(userId);
+      // Mark the notification as read but keep it in history
+      const notification = items.find(n => n.sender._id === userId);
+      if (notification && !notification.read) {
+        try {
+          await axios.put(`/api/notifications/${notification._id}/read`, {}, {
+            withCredentials: true
+          });
+          // Update local state to mark as read but keep in list
+          setItems(prev => prev.map(n => 
+            n.sender._id === userId ? { ...n, read: true } : n
+          ));
+        } catch (error) {
+          console.error('Error marking notification as read:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error rejecting connection request:', error);
+    }
+  };
 
 
   return (
@@ -70,9 +121,9 @@ const reject = async (userId) => {
         title="Notifications"
       >
         <FiBell size={20} />
-        {items.length > 0 && (
+        {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs px-1">
-            {items.length}
+            {unreadCount}
           </span>
         )}
       </button>
@@ -82,7 +133,7 @@ const reject = async (userId) => {
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
-              <span className="text-sm text-gray-500">{items.length} new</span>
+              <span className="text-sm text-gray-500">{unreadCount} new</span>
             </div>
             <div className="max-h-96 overflow-y-auto">
               {items.length === 0 ? (
@@ -92,9 +143,9 @@ const reject = async (userId) => {
                 </div>
               ) : (
                 items.map((n) => (
-                  <div key={n._id} className="flex items-start gap-3 p-4 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 rounded-xl transition-all duration-200 border-b border-gray-100 last:border-b-0">
+                  <div key={n._id} className={`flex items-start gap-3 p-4 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 rounded-xl transition-all duration-200 border-b border-gray-100 last:border-b-0 ${!n.read ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}>
                     <div 
-                      onClick={() => goProfile(n.sender)} 
+                      onClick={() => goProfile(n.sender, n._id)} 
                       className="cursor-pointer transform hover:scale-105 transition-transform duration-200"
                     >
                       <Avatar name={n.sender?.name} avatarUrl={n.sender?.avatarUrl} size={48} />
@@ -103,11 +154,12 @@ const reject = async (userId) => {
                       <div className="text-sm">
                         <span
                           className="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer transition-colors duration-200"
-                          onClick={() => goProfile(n.sender)}
+                          onClick={() => goProfile(n.sender, n._id)}
                         >
                           {n.sender?.name || 'User'}
                         </span>{' '}
                         <span className="text-gray-600">{n.content || n.type}</span>
+                        {!n.read && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full inline-block"></span>}
                       </div>
                       <div className="text-xs text-gray-400 mt-1">
                         {new Date(n.createdAt).toLocaleString()}

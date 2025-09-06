@@ -177,4 +177,13 @@ export const sendMessage = async (userId, content, image = null) => {
   }
 };
 
+// Follow API
+export const followAPI = {
+  getFollowers: (userId) => apiClient.get(`/api/users/${userId}/followers`),
+  getFollowing: (userId) => apiClient.get(`/api/users/${userId}/following`),
+  getMutualConnections: (userId) => apiClient.get(`/api/users/${userId}/mutual`),
+  followUser: (userId) => apiClient.post(`/api/users/${userId}/follow`),
+  getSuggestedConnections: () => apiClient.get('/api/users/suggested/connections')
+};
+
 export default axios; // Keep exporting global axios for AuthContext compatibility
