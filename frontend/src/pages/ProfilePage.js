@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { connectionAPI } from '../components/utils/api';
+import { getAvatarUrl } from '../components/utils/helpers';
 import { FiEdit, FiMail, FiLinkedin, FiGithub, FiTwitter, FiUserPlus, FiUserCheck, FiUserX, FiMessageCircle } from 'react-icons/fi';
 import axios from 'axios';
 
@@ -202,7 +203,7 @@ const ProfilePage = () => {
                 {/* Avatar */}
                 <div className="relative mb-4 md:mb-0">
                   {user.avatarUrl ? (
-                    <img className="h-32 w-32 rounded-full border-4 border-white shadow-2xl" src={user.avatarUrl} alt={user.name} />
+                    <img className="h-32 w-32 rounded-full border-4 border-white shadow-2xl" src={getAvatarUrl(user.avatarUrl)} alt={user.name} />
                   ) : (
                     <div className="h-32 w-32 rounded-full bg-white flex items-center justify-center border-4 border-white shadow-2xl">
                       <span className="text-4xl font-bold text-indigo-600">{user.name?.charAt(0).toUpperCase()}</span>

@@ -1,9 +1,15 @@
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 // Send a connection request
 exports.sendRequest = async (req, res) => {
   try {
     const { userId } = req.body;
+    console.log('Send request - userId:', userId, 'sender:', req.user._id);
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
 
     if (req.user._id.toString() === userId) {
       return res.status(400).json({ message: "You can't connect with yourself" });
@@ -12,7 +18,21 @@ exports.sendRequest = async (req, res) => {
     const sender = await User.findById(req.user._id);
     const receiver = await User.findById(userId);
 
-    if (!receiver) return res.status(404).json({ message: 'User not found' });
+    if (!sender) {
+      return res.status(404).json({ message: 'Sender not found' });
+    }
+
+    if (!receiver) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Initialize arrays if they don't exist
+    if (!receiver.connectionRequests) {
+      receiver.connectionRequests = [];
+    }
+    if (!receiver.connections) {
+      receiver.connections = [];
+    }
 
     if (receiver.connectionRequests.includes(sender._id)) {
       return res.status(400).json({ message: 'Request already sent' });
@@ -25,8 +45,17 @@ exports.sendRequest = async (req, res) => {
     receiver.connectionRequests.push(sender._id);
     await receiver.save();
 
+    // Create notification for the receiver
+    await Notification.create({
+      recipient: receiver._id,
+      sender: sender._id,
+      type: 'connection_request',
+      content: `${sender.name} sent you a connection request`
+    });
+
     res.json({ message: 'Connection request sent' });
   } catch (error) {
+    console.error('Send request error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -35,10 +64,29 @@ exports.sendRequest = async (req, res) => {
 exports.acceptRequest = async (req, res) => {
   try {
     const { userId } = req.params;
+    console.log('Accept request - userId:', userId, 'accepter:', req.user._id);
+
     const me = await User.findById(req.user._id);
     const sender = await User.findById(userId);
 
-    if (!sender) return res.status(404).json({ message: 'User not found' });
+    if (!me) {
+      return res.status(404).json({ message: 'Current user not found' });
+    }
+
+    if (!sender) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Initialize arrays if they don't exist
+    if (!me.connectionRequests) {
+      me.connectionRequests = [];
+    }
+    if (!me.connections) {
+      me.connections = [];
+    }
+    if (!sender.connections) {
+      sender.connections = [];
+    }
 
     // Ensure request exists
     if (!me.connectionRequests.includes(sender._id)) {
@@ -57,8 +105,17 @@ exports.acceptRequest = async (req, res) => {
     await me.save();
     await sender.save();
 
+    // Create notification for the sender
+    await Notification.create({
+      recipient: sender._id,
+      sender: me._id,
+      type: 'connection_accepted',
+      content: `${me.name} accepted your connection request`
+    });
+
     res.json({ message: 'Connection request accepted' });
   } catch (error) {
+    console.error('Accept request error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -67,7 +124,18 @@ exports.acceptRequest = async (req, res) => {
 exports.rejectRequest = async (req, res) => {
   try {
     const { userId } = req.params;
+    console.log('Reject request - userId:', userId, 'rejecter:', req.user._id);
+
     const me = await User.findById(req.user._id);
+
+    if (!me) {
+      return res.status(404).json({ message: 'Current user not found' });
+    }
+
+    // Initialize arrays if they don't exist
+    if (!me.connectionRequests) {
+      me.connectionRequests = [];
+    }
 
     me.connectionRequests = me.connectionRequests.filter(
       (id) => id.toString() !== userId
@@ -75,8 +143,20 @@ exports.rejectRequest = async (req, res) => {
 
     await me.save();
 
+    // Create notification for the sender about rejection
+    const sender = await User.findById(userId);
+    if (sender) {
+      await Notification.create({
+        recipient: sender._id,
+        sender: me._id,
+        type: 'connection_rejected',
+        content: `${me.name} declined your connection request`
+      });
+    }
+
     res.json({ message: 'Connection request rejected' });
   } catch (error) {
+    console.error('Reject request error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -85,10 +165,26 @@ exports.rejectRequest = async (req, res) => {
 exports.removeConnection = async (req, res) => {
   try {
     const { userId } = req.params;
+    console.log('Remove connection - userId:', userId, 'remover:', req.user._id);
+
     const me = await User.findById(req.user._id);
     const other = await User.findById(userId);
 
-    if (!other) return res.status(404).json({ message: 'User not found' });
+    if (!me) {
+      return res.status(404).json({ message: 'Current user not found' });
+    }
+
+    if (!other) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Initialize arrays if they don't exist
+    if (!me.connections) {
+      me.connections = [];
+    }
+    if (!other.connections) {
+      other.connections = [];
+    }
 
     me.connections = me.connections.filter((id) => id.toString() !== userId);
     other.connections = other.connections.filter(
@@ -100,6 +196,7 @@ exports.removeConnection = async (req, res) => {
 
     res.json({ message: 'Connection removed' });
   } catch (error) {
+    console.error('Remove connection error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -108,32 +205,66 @@ exports.removeConnection = async (req, res) => {
 exports.getConnectionStatus = async (req, res) => {
   try {
     const { userId } = req.params;
-    const me = await User.findById(req.user._id).select('connections connectionRequests');
-    const other = await User.findById(userId).select('connections connectionRequests');
+    console.log('Get connection status - userId:', userId, 'requester:', req.user._id);
 
-    if (!me || !other) {
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    const me = await User.findById(req.user._id);
+    const other = await User.findById(userId);
+
+    if (!me) {
+      return res.status(404).json({ message: 'Current user not found' });
+    }
+
+    if (!other) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const isConnected = me.connections.some(id => id.toString() === userId) &&
-                        other.connections.some(id => id.toString() === me._id.toString());
+    // Initialize arrays if they don't exist and save if needed
+    if (!me.connections) {
+      me.connections = [];
+      await me.save();
+    }
+    if (!me.connectionRequests) {
+      me.connectionRequests = [];
+      await me.save();
+    }
+    if (!other.connections) {
+      other.connections = [];
+      await other.save();
+    }
+    if (!other.connectionRequests) {
+      other.connectionRequests = [];
+      await other.save();
+    }
+
+    const meConnections = me.connections || [];
+    const meRequests = me.connectionRequests || [];
+    const otherConnections = other.connections || [];
+    const otherRequests = other.connectionRequests || [];
+
+    const isConnected = meConnections.some(id => id.toString() === userId) &&
+                        otherConnections.some(id => id.toString() === me._id.toString());
 
     if (isConnected) {
       return res.json({ status: 'connected' });
     }
 
-    const iRequestedOther = other.connectionRequests.some(id => id.toString() === me._id.toString());
+    const iRequestedOther = otherRequests.some(id => id.toString() === me._id.toString());
     if (iRequestedOther) {
       return res.json({ status: 'requested' });
     }
 
-    const otherRequestedMe = me.connectionRequests.some(id => id.toString() === userId);
+    const otherRequestedMe = meRequests.some(id => id.toString() === userId);
     if (otherRequestedMe) {
       return res.json({ status: 'incoming' });
     }
 
     return res.json({ status: 'none' });
   } catch (error) {
+    console.error('Get connection status error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -141,9 +272,22 @@ exports.getConnectionStatus = async (req, res) => {
 // Get all connections
 exports.getConnections = async (req, res) => {
   try {
-    const me = await User.findById(req.user._id).populate('connections', 'name username avatarUrl');
-    res.json(me.connections);
+    const me = await User.findById(req.user._id);
+    
+    if (!me) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Initialize arrays if they don't exist
+    if (!me.connections) {
+      me.connections = [];
+      await me.save();
+    }
+
+    const populatedConnections = await User.populate(me, { path: 'connections', select: 'name username avatarUrl' });
+    res.json(populatedConnections.connections || []);
   } catch (error) {
+    console.error('Get connections error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -151,9 +295,22 @@ exports.getConnections = async (req, res) => {
 // Get pending requests
 exports.getPendingRequests = async (req, res) => {
   try {
-    const me = await User.findById(req.user._id).populate('connectionRequests', 'name username avatarUrl');
-    res.json(me.connectionRequests);
+    const me = await User.findById(req.user._id);
+    
+    if (!me) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Initialize arrays if they don't exist
+    if (!me.connectionRequests) {
+      me.connectionRequests = [];
+      await me.save();
+    }
+
+    const populatedRequests = await User.populate(me, { path: 'connectionRequests', select: 'name username avatarUrl' });
+    res.json(populatedRequests.connectionRequests || []);
   } catch (error) {
+    console.error('Get pending requests error:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -162,12 +319,27 @@ exports.getPendingRequests = async (req, res) => {
 exports.getSuggestedConnections = async (req, res) => {
   try {
     const me = await User.findById(req.user._id);
+    
+    if (!me) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Initialize arrays if they don't exist
+    if (!me.connections) {
+      me.connections = [];
+    }
+    if (!me.connectionRequests) {
+      me.connectionRequests = [];
+    }
+
+    const excludeIds = [me._id, ...(me.connections || []), ...(me.connectionRequests || [])];
     const users = await User.find({
-      _id: { $nin: [me._id, ...me.connections, ...me.connectionRequests] }
+      _id: { $nin: excludeIds }
     }).select('name username avatarUrl role');
 
     res.json(users);
   } catch (error) {
+    console.error('Get suggested connections error:', error);
     res.status(500).json({ message: error.message });
   }
 };

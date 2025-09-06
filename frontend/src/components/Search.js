@@ -62,7 +62,19 @@ const Search = () => {
                         statuses[user._id] = res.data?.status || res.status || 'none';
                     } catch (error) {
                         console.error('Error fetching status for user:', user._id, error);
-                        statuses[user._id] = 'none';
+                        // If it's a 500 error, it might be a temporary issue, so we'll retry once
+                        if (error.response?.status === 500) {
+                            console.log('Retrying status fetch for user:', user._id);
+                            try {
+                                const retryRes = await connectionAPI.getConnectionStatus(user._id);
+                                statuses[user._id] = retryRes.data?.status || retryRes.status || 'none';
+                            } catch (retryError) {
+                                console.error('Retry failed for user:', user._id, retryError);
+                                statuses[user._id] = 'none';
+                            }
+                        } else {
+                            statuses[user._id] = 'none';
+                        }
                     }
                 }));
                 setConnectionStatuses(statuses);
@@ -89,7 +101,7 @@ const Search = () => {
         if (user.username) {
             navigate(`/profile/${user.username}`);
         } else {
-            navigate(`/profile/id/${user._id}`);
+            navigate(`/profile/${user._id}`);
         }
     };
 
@@ -100,12 +112,13 @@ const Search = () => {
                 toast.error('Invalid user or cannot connect to yourself.');
                 return;
             }
-            await connectionAPI.followUser(userId);
+            await connectionAPI.sendRequest(userId);
             toast.success('Connection request sent!');
             setConnectionStatuses(prev => ({ ...prev, [userId]: 'requested' }));
         } catch (error) {
             console.error('Connection error:', error);
-            toast.error('Failed to send connection request');
+            const errorMessage = error.response?.data?.message || 'Failed to send connection request';
+            toast.error(errorMessage);
         }
     };
 
@@ -125,7 +138,7 @@ const Search = () => {
     // Helper for profile image fallback
     const handleImgError = (e) => {
         e.target.onerror = null;
-        e.target.src = '/default-avatar.png';
+        e.target.src = '/default-avatar.png.jpg';
     };
 
     return (
@@ -162,61 +175,68 @@ const Search = () => {
                             <div key={type}>
                                 <h2 className={`text-2xl font-semibold mb-4 capitalize text-gray-800 border-l-4 pl-3 ${type === 'alumni' ? 'border-purple-500' : type === 'teacher' ? 'border-green-500' : type === 'student' ? 'border-yellow-500' : 'border-blue-500'}`}>{typeLabels[type] || type}</h2>
                                 <div className="grid md:grid-cols-2 gap-6">
-                                    {users.map((user) => (
+                                    {users.map((user, index) => (
                                         <div
                                             key={user._id}
-                                            className={`flex items-center border-l-4 bg-white rounded-lg shadow p-4 hover:shadow-lg transition cursor-pointer border-blue-200`}
+                                            className="group flex items-center bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer border border-gray-100 hover:border-blue-300 transform hover:scale-[1.02] hover:-translate-y-1"
+                                            style={{ animationDelay: `${index * 100}ms` }}
+                                            onClick={() => handleProfileClick(user)}
                                         >
-                                            <Link to={`/profile/${user.username}`}>
-                                                <img
-                                                    src={user.avatarUrl || '/default-avatar.png'}
-                                                    alt={user.name}
-                                                    onError={handleImgError}
-                                                    className="w-16 h-16 rounded-full object-cover border mr-4"
-                                                />
-                                            </Link>
-                                            <div className="flex-1">
-                                                <h3 className="text-xl font-bold text-blue-800">{user.name} <span className="text-gray-500 text-base">@{user.username}</span></h3>
-                                                <div className="flex flex-wrap gap-2 mt-1">
-                                                    {user.skills && user.skills.map((skill, idx) => (
-                                                        <span key={idx} className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">{skill}</span>
-                                                    ))}
+                                            <div className="p-4">
+                                                <div className="relative">
+                                                    <img
+                                                        src={user.avatarUrl || '/default-avatar.png.jpg'}
+                                                        alt={user.name}
+                                                        onError={handleImgError}
+                                                        className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg group-hover:scale-110 transition-transform duration-300"
+                                                    />
+                                                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white"></div>
                                                 </div>
-                                                <p className="text-gray-600 mt-1">
-                                                    {user.position || user.department || user.major || ''}
-                                                </p>
                                             </div>
-                                            <button
-                                                style={{
-                                                    padding: '8px 16px',
-                                                    borderRadius: '24px',
-                                                    border: connectionStatuses[user._id] === 'connected' ? '1px solid #666666' : '1px solid #0a66c2',
-                                                    backgroundColor: connectionStatuses[user._id] === 'connected' ? 'white' : '#0a66c2',
-                                                    color: connectionStatuses[user._id] === 'connected' ? '#666666' : 'white',
-                                                    fontWeight: '600',
-                                                    fontSize: '14px',
-                                                    cursor: connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'connected' ? 'not-allowed' : 'pointer',
-                                                    transition: 'all 0.2s ease',
-                                                    opacity: connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'connected' ? 0.6 : 1
-                                                }}
-                                                disabled={connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'connected'}
-                                                onClick={e => handleConnect(e, user._id)}
-                                                onMouseOver={(e) => {
-                                                    if (connectionStatuses[user._id] !== 'pending' && connectionStatuses[user._id] !== 'requested' && connectionStatuses[user._id] !== 'connected') {
-                                                        e.target.style.backgroundColor = '#004182';
-                                                    }
-                                                }}
-                                                onMouseOut={(e) => {
-                                                    if (connectionStatuses[user._id] !== 'pending' && connectionStatuses[user._id] !== 'requested' && connectionStatuses[user._id] !== 'connected') {
-                                                        e.target.style.backgroundColor = '#0a66c2';
-                                                    }
-                                                }}
-                                            >
-                                                {connectionStatuses[user._id] === 'pending' ? 'Pending'
-                                                    : connectionStatuses[user._id] === 'requested' ? 'Requested'
-                                                    : connectionStatuses[user._id] === 'connected' ? 'Connected'
-                                                    : 'Connect'}
-                                            </button>
+                                            <div className="flex-1 p-4 pr-6">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
+                                                        {user.name}
+                                                    </h3>
+                                                    <span className="text-sm text-gray-500">@{user.username}</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2 mb-3">
+                                                    {user.skills && user.skills.slice(0, 3).map((skill, idx) => (
+                                                        <span key={idx} className="bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 px-3 py-1 rounded-full text-xs font-medium">
+                                                            {skill}
+                                                        </span>
+                                                    ))}
+                                                    {user.skills && user.skills.length > 3 && (
+                                                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-medium">
+                                                            +{user.skills.length - 3} more
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-gray-600 text-sm mb-3">
+                                                    {user.position || user.department || user.major || 'No position specified'}
+                                                </p>
+                                                <div className="flex items-center text-xs text-gray-500">
+                                                    <span className="capitalize bg-gray-100 px-2 py-1 rounded-full">{user.role}</span>
+                                                </div>
+                                            </div>
+                                            <div className="p-4">
+                                                <button
+                                                    className={`px-6 py-3 rounded-full font-semibold text-sm transition-all duration-200 transform hover:scale-105 ${
+                                                        connectionStatuses[user._id] === 'connected' 
+                                                            ? 'bg-gray-100 text-gray-600 border border-gray-300 cursor-not-allowed' 
+                                                            : connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'pending'
+                                                            ? 'bg-yellow-100 text-yellow-700 border border-yellow-300 cursor-not-allowed'
+                                                            : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
+                                                    }`}
+                                                    disabled={connectionStatuses[user._id] === 'pending' || connectionStatuses[user._id] === 'requested' || connectionStatuses[user._id] === 'connected'}
+                                                    onClick={e => handleConnect(e, user._id)}
+                                                >
+                                                    {connectionStatuses[user._id] === 'pending' ? '⏳ Pending'
+                                                        : connectionStatuses[user._id] === 'requested' ? '📤 Requested'
+                                                        : connectionStatuses[user._id] === 'connected' ? '✅ Connected'
+                                                        : '🔗 Connect'}
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

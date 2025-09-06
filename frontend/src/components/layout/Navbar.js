@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { FiMenu, FiX, FiBell, FiMessageSquare, FiUser, FiLogOut, FiSearch, FiHome, FiCalendar, FiUsers, FiMessageCircle } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import NotificationBell from '../NotificationBell';
+import { getAvatarUrl } from '../utils/helpers';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -158,7 +159,7 @@ const Navbar = () => {
                     {user.avatarUrl ? (
                       <motion.img
                         className="h-10 w-10 rounded-full object-cover shadow-lg"
-                        src={user.avatarUrl}
+                        src={getAvatarUrl(user.avatarUrl)}
                         alt={user.name}
                         whileHover={{ scale: 1.1 }}
                       />
@@ -329,7 +330,7 @@ const Navbar = () => {
                   {user.avatarUrl ? (
                     <img
                       className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 shadow"
-                      src={user.avatarUrl}
+                      src={getAvatarUrl(user.avatarUrl)}
                       alt={user.name}
                     />
                   ) : (

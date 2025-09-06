@@ -27,7 +27,7 @@ const NetworkPage = () => {
     try {
       setLoading(true);
       const [connectionsRes, suggestedRes, requestsRes] = await Promise.all([
-        connectionAPI.getFollowing(),
+        connectionAPI.getConnections(),
         connectionAPI.getSuggestedConnections(),
         connectionAPI.getPendingRequests()
       ]);
@@ -37,7 +37,7 @@ const NetworkPage = () => {
       setPendingRequests(requestsRes.data);
       
       // Calculate stats
-      const followers = await connectionAPI.getFollowers();
+      const followers = await connectionAPI.getConnections();
       setStats({
         followers: followers.data.length,
         following: connectionsRes.data.length,
@@ -83,7 +83,7 @@ const NetworkPage = () => {
 
   const handleAcceptRequest = async (connectionId) => {
     try {
-      await connectionAPI.acceptFollowRequest(connectionId);
+      await connectionAPI.acceptRequest(connectionId);
       toast.success('Connection request accepted!');
       fetchNetworkData();
     } catch (error) {
@@ -94,7 +94,7 @@ const NetworkPage = () => {
 
   const handleRejectRequest = async (connectionId) => {
     try {
-      await connectionAPI.rejectFollowRequest(connectionId);
+      await connectionAPI.rejectRequest(connectionId);
       toast.success('Connection request rejected');
       fetchNetworkData();
     } catch (error) {
@@ -105,7 +105,7 @@ const NetworkPage = () => {
 
   const handleUnfollow = async (userId) => {
     try {
-      await connectionAPI.unfollowUser(userId);
+      await connectionAPI.removeConnection(userId);
       toast.success('Successfully unfollowed');
       fetchNetworkData();
     } catch (error) {

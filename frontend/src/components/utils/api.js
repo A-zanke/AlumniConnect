@@ -110,11 +110,8 @@ export const eventsAPI = {
 // Connection API - FIXED VERSION
 export const connectionAPI = {
   sendRequest: (userId) => apiClient.post('/api/connections', { userId }),
-  followUser: (userId) => apiClient.post('/api/connections', { userId }),
-  acceptRequest: (requestId) => apiClient.put(`/api/connections/${requestId}/accept`),
-  acceptFollowRequest: (requestId) => apiClient.put(`/api/connections/${requestId}/accept`),
-  rejectRequest: (requestId) => apiClient.delete(`/api/connections/${requestId}/reject`),
-  rejectFollowRequest: (requestId) => apiClient.delete(`/api/connections/${requestId}/reject`),
+  acceptRequest: (userId) => apiClient.put(`/api/connections/${userId}/accept`),
+  rejectRequest: (userId) => apiClient.delete(`/api/connections/${userId}/reject`),
   removeConnection: (userId) => apiClient.delete(`/api/connections/${userId}`),
   getConnectionStatus: (userId) => apiClient.get(`/api/connections/status/${userId}`),
   getConnections: () => apiClient.get('/api/connections/followers'),
@@ -158,6 +155,24 @@ export const fetchMessages = async (userId) => {
     return response.data;
   } catch (error) {
     console.error('Error fetching messages:', error);
+    throw error;
+  }
+};
+
+export const sendMessage = async (userId, content, image = null) => {
+  try {
+    const formData = new FormData();
+    formData.append('content', content);
+    if (image) {
+      formData.append('image', image);
+    }
+    
+    const response = await apiClient.post(`/api/messages/${userId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error sending message:', error);
     throw error;
   }
 };

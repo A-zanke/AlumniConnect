@@ -25,7 +25,9 @@ const userSchema = new mongoose.Schema({
     twitter: String,
     github: String,
     website: String
-  }
+  },
+  connections: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  connectionRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, { timestamps: true });
 
 // Match user entered password to hashed password in database

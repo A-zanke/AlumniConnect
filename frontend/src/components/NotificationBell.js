@@ -35,14 +35,17 @@ const NotificationBell = () => {
   }, []);
 
   const goProfile = (sender) => {
-    const u = sender?.username || sender?._id;
-    if (u) navigate(`/profile/${sender.username || ''}` || `/profile/${u}`);
+    if (sender?.username) {
+      navigate(`/profile/${sender.username}`);
+    } else if (sender?._id) {
+      navigate(`/profile/${sender._id}`);
+    }
     setOpen(false);
   };
 
   const accept = async (userId) => {
   try {
-    await connectionAPI.acceptFollowRequest(userId);
+    await connectionAPI.acceptRequest(userId);
     setItems(prev => prev.filter(n => n.sender._id !== userId));
   } catch (error) {
     console.error('Error accepting connection request:', error);
@@ -51,7 +54,7 @@ const NotificationBell = () => {
 
 const reject = async (userId) => {
   try {
-    await connectionAPI.rejectFollowRequest(userId);
+    await connectionAPI.rejectRequest(userId);
     setItems(prev => prev.filter(n => n.sender._id !== userId));
   } catch (error) {
     console.error('Error rejecting connection request:', error);
@@ -75,46 +78,61 @@ const reject = async (userId) => {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 rounded-xl shadow-lg bg-white border border-cyan-100 z-50">
-          <div className="p-2">
-            {items.length === 0 ? (
-              <div className="p-4 text-gray-500 text-center">No notifications</div>
-            ) : (
-              items.map((n) => (
-                <div key={n._id} className="flex items-start gap-3 p-3 hover:bg-cyan-50 rounded-lg">
-                  <div onClick={() => goProfile(n.sender)} style={{ cursor:'pointer' }}>
-                    <Avatar name={n.sender?.name} avatarUrl={n.sender?.avatarUrl} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div className="text-sm">
-                      <span
-                        className="font-semibold hover:text-cyan-600 cursor-pointer"
-                        onClick={() => goProfile(n.sender)}
-                      >
-                        {n.sender?.name || 'User'}
-                      </span>{' '}
-                      <span className="text-gray-600">{n.content || n.type}</span>
-                    </div>
-                    {n.type === 'connection_request' && (
-                      <div className="mt-2 flex gap-2">
-                        <button 
-                          className="px-3 py-1 bg-cyan-600 text-white rounded-md text-sm hover:bg-cyan-700" 
-                          onClick={() => accept(n.sender._id)}
-                        >
-                          Accept
-                        </button>
-                        <button 
-                          className="px-3 py-1 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50" 
-                          onClick={() => reject(n.sender._id)}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    )}
-                  </div>
+        <div className="absolute right-0 mt-2 w-96 rounded-2xl shadow-2xl bg-white border border-gray-200 z-50 animate-in slide-in-from-top-2 duration-200">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+              <span className="text-sm text-gray-500">{items.length} new</span>
+            </div>
+            <div className="max-h-96 overflow-y-auto">
+              {items.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  <div className="text-4xl mb-2">🔔</div>
+                  <p>No notifications yet</p>
                 </div>
-              ))
-            )}
+              ) : (
+                items.map((n) => (
+                  <div key={n._id} className="flex items-start gap-3 p-4 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 rounded-xl transition-all duration-200 border-b border-gray-100 last:border-b-0">
+                    <div 
+                      onClick={() => goProfile(n.sender)} 
+                      className="cursor-pointer transform hover:scale-105 transition-transform duration-200"
+                    >
+                      <Avatar name={n.sender?.name} avatarUrl={n.sender?.avatarUrl} size={48} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm">
+                        <span
+                          className="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer transition-colors duration-200"
+                          onClick={() => goProfile(n.sender)}
+                        >
+                          {n.sender?.name || 'User'}
+                        </span>{' '}
+                        <span className="text-gray-600">{n.content || n.type}</span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {new Date(n.createdAt).toLocaleString()}
+                      </div>
+                      {n.type === 'connection_request' && (
+                        <div className="mt-3 flex gap-2">
+                          <button 
+                            className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg text-sm font-medium hover:from-green-600 hover:to-green-700 transform hover:scale-105 transition-all duration-200 shadow-md" 
+                            onClick={() => accept(n.sender._id)}
+                          >
+                            ✓ Accept
+                          </button>
+                          <button 
+                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transform hover:scale-105 transition-all duration-200" 
+                            onClick={() => reject(n.sender._id)}
+                          >
+                            ✗ Decline
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -54,11 +54,17 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
   skip: (req) => {
+    // Disable rate limit entirely in development for easier local testing
+    if (process.env.NODE_ENV !== 'production') return true;
+
     if (req.method === 'OPTIONS') return true;
     const p = req.path || '';
 
     // Skip all /api/admin/* requests
     if (p.startsWith('/api/admin')) return true;
+
+    // Skip all auth routes
+    if (p.startsWith('/api/auth')) return true;
 
     // Skip POSTs for whitelisted paths
     if (req.method === 'POST' && AUTH_OTP_PATHS.has(p)) return true;
@@ -116,6 +122,13 @@ app.use('/uploads', (req, res, next) => {
   next();
 }, express.static(uploadsDir));
 
+// Serve message images
+app.use('/uploads/messages', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  next();
+}, express.static(path.join(__dirname, 'uploads/messages')));
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../frontend/build')));
@@ -140,7 +153,6 @@ http.listen(PORT, '0.0.0.0', () => {
 // Socket.IO basic chat
 const jwt = require('jsonwebtoken');
 const User = require('./models/User');
-const Connection = require('./models/Connection');
 const Message = require('./models/Message');
 
 io.use(async (socket, next) => {
@@ -163,13 +175,10 @@ io.on('connection', (socket) => {
       const from = socket.userId;
       const { to, content } = payload || {};
       if (!to || !content) return;
-      const allowed = await Connection.findOne({
-        $or: [
-          { requesterId: from, recipientId: to, status: 'accepted' },
-          { requesterId: to, recipientId: from, status: 'accepted' }
-        ]
-      });
-      if (!allowed) return;
+      const me = await User.findById(from).select('connections');
+      if (!me) return;
+      const isConnected = me.connections.some(id => id.toString() === to);
+      if (!isConnected) return;
       const msg = await Message.create({ from, to, content });
       io.to(to).emit('chat:receive', { _id: msg._id, from, to, content, createdAt: msg.createdAt });
       socket.emit('chat:sent', { _id: msg._id, from, to, content, createdAt: msg.createdAt });
