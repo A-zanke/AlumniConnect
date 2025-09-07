@@ -172,7 +172,7 @@ exports.followUser = async (req, res) => {
   }
 };
 
-// Get mutual connections for current user (all mutual connections across their network)
+// Get mutual connections for current user (friends-of-friends suggestions)
 exports.getMyMutualConnections = async (req, res) => {
   try {
     const currentUserId = req.user._id?.toString();
@@ -185,29 +185,35 @@ exports.getMyMutualConnections = async (req, res) => {
     const myFollowing = Array.isArray(currentUser.following) ? currentUser.following.map(id => id.toString()) : [];
     const myConnections = Array.isArray(currentUser.connections) ? currentUser.connections.map(id => id.toString()) : [];
 
-    if (myFollowing.length === 0) {
+    // First-level neighbors: anyone I follow or am connected to
+    const firstLevelIds = Array.from(new Set([...(myFollowing || []), ...(myConnections || [])]));
+    if (firstLevelIds.length === 0) {
       return res.json({ data: [] });
     }
 
-    // Fetch the lists of who myFollowing users follow
-    const followingUsers = await User.find({ _id: { $in: myFollowing } })
-      .select('following')
-      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio createdAt');
+    // For each neighbor, look at who they follow; if empty, fallback to their connections
+    const neighbors = await User.find({ _id: { $in: firstLevelIds } })
+      .select('following connections')
+      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio createdAt')
+      .populate('connections', 'name username avatarUrl role email department year industry current_job_title bio createdAt');
 
     const mutualMap = new Map();
-    followingUsers.forEach(fu => {
-      const fuFollowing = Array.isArray(fu.following) ? fu.following : [];
-      fuFollowing.forEach(followedUser => {
-        const followedId = followedUser?._id?.toString();
-        if (!followedId) return;
-        // Exclude myself, already following, already connections
+    neighbors.forEach(neighbor => {
+      let outward = Array.isArray(neighbor.following) ? neighbor.following : [];
+      if (!outward || outward.length === 0) {
+        outward = Array.isArray(neighbor.connections) ? neighbor.connections : [];
+      }
+      outward.forEach(candidate => {
+        const candId = candidate?._id?.toString();
+        if (!candId) return;
         if (
-          followedId !== currentUserId &&
-          !myFollowing.includes(followedId) &&
-          !myConnections.includes(followedId) &&
-          !mutualMap.has(followedId)
+          candId !== currentUserId &&
+          !myFollowing.includes(candId) &&
+          !myConnections.includes(candId) &&
+          !firstLevelIds.includes(candId) &&
+          !mutualMap.has(candId)
         ) {
-          mutualMap.set(followedId, followedUser);
+          mutualMap.set(candId, candidate);
         }
       });
     });
