@@ -1,12 +1,10 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-// Create a separate axios instance for API calls that won't interfere with AuthContext
 const apiClient = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000'
 });
 
-// Add interceptors only to the API client, not global axios
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -22,8 +20,6 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     const { response } = error;
-    
-    // Only handle errors for non-auth routes
     if (response && response.status === 401 && !error.config.url.includes('/api/auth/')) {
       localStorage.removeItem('token');
       if (!window.location.pathname.includes('/login')) {
@@ -31,16 +27,41 @@ apiClient.interceptors.response.use(
         toast.error('Session expired. Please login again.');
       }
     }
-    
     if (response && response.status === 500) {
       toast.error('Server error. Please try again later.');
     }
-    
     return Promise.reject(error);
   }
 );
 
-// Posts API
+const appendToFormData = (formData, key, value) => {
+  if (value === undefined || value === null) return;
+
+  if (key === 'image') {
+    formData.append('image', value);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      if (item === undefined || item === null) return;
+      if (typeof item === 'object') {
+        formData.append(key, JSON.stringify(item));
+      } else {
+        formData.append(key, item);
+      }
+    });
+    return;
+  }
+
+  if (typeof value === 'object') {
+    formData.append(key, JSON.stringify(value));
+    return;
+  }
+
+  formData.append(key, value);
+};
+
 export const postsAPI = {
   getPosts: () => apiClient.get('/api/posts'),
   getPost: (id) => apiClient.get(`/api/posts/${id}`),
@@ -66,86 +87,36 @@ export const postsAPI = {
   deleteComment: (postId, commentId) => apiClient.delete(`/api/posts/${postId}/comment/${commentId}`)
 };
 
-// Events API
 export const eventsAPI = {
-  getEvents: (upcomingOnly = false) => apiClient.get('/api/events', {
-    params: { upcoming: upcomingOnly }
-  }),
+  getEvents: (upcomingOnly = false) =>
+    apiClient.get('/api/events', { params: { upcoming: upcomingOnly } }),
+  getMyEvents: () => apiClient.get('/api/events/mine'),
   getEvent: (id) => apiClient.get(`/api/events/${id}`),
   createEvent: (eventData) => {
-    if (eventData.image) {
-      const formData = new FormData();
-      Object.keys(eventData).forEach(key => {
-        if (key === 'image') {
-          formData.append('image', eventData.image);
-        } else if (key === 'target_audience' && typeof eventData[key] === 'object') {
-          // Handle nested target_audience object
-          Object.keys(eventData[key]).forEach(subKey => {
-            if (Array.isArray(eventData[key][subKey])) {
-              eventData[key][subKey].forEach(item => {
-                formData.append(`${key}[${subKey}]`, item);
-              });
-            } else {
-              formData.append(`${key}[${subKey}]`, eventData[key][subKey]);
-            }
-          });
-        } else if (Array.isArray(eventData[key])) {
-          // Handle arrays
-          eventData[key].forEach(item => {
-            formData.append(key, item);
-          });
-        } else {
-          formData.append(key, eventData[key]);
-        }
-      });
-      return apiClient.post('/api/events', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-    }
-    return apiClient.post('/api/events', eventData);
+    const formData = new FormData();
+    Object.keys(eventData).forEach((key) => {
+      appendToFormData(formData, key, eventData[key]);
+    });
+    return apiClient.post('/api/events', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
   },
   updateEvent: (id, eventData) => {
-    if (eventData.image) {
-      const formData = new FormData();
-      Object.keys(eventData).forEach(key => {
-        if (key === 'image') {
-          formData.append('image', eventData.image);
-        } else if (key === 'target_audience' && typeof eventData[key] === 'object') {
-          // Handle nested target_audience object
-          Object.keys(eventData[key]).forEach(subKey => {
-            if (Array.isArray(eventData[key][subKey])) {
-              eventData[key][subKey].forEach(item => {
-                formData.append(`${key}[${subKey}]`, item);
-              });
-            } else {
-              formData.append(`${key}[${subKey}]`, eventData[key][subKey]);
-            }
-          });
-        } else if (Array.isArray(eventData[key])) {
-          // Handle arrays
-          eventData[key].forEach(item => {
-            formData.append(key, item);
-          });
-        } else {
-          formData.append(key, eventData[key]);
-        }
-      });
-      return apiClient.put(`/api/events/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-    }
-    return apiClient.put(`/api/events/${id}`, eventData);
+    const formData = new FormData();
+    Object.keys(eventData).forEach((key) => {
+      appendToFormData(formData, key, eventData[key]);
+    });
+    return apiClient.put(`/api/events/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
   },
   deleteEvent: (id) => apiClient.delete(`/api/events/${id}`),
   rsvpEvent: (id) => apiClient.post(`/api/events/${id}/rsvp`),
-  
-  // Admin functions for event approval
-  getPendingEvents: () => apiClient.get('/api/events/admin/pending'),
+  getPendingEvents: () => apiClient.get('/api/admin/events/pending'),
   approveEvent: (id) => apiClient.put(`/api/events/${id}/approve`),
   rejectEvent: (id) => apiClient.put(`/api/events/${id}/reject`)
 };
 
-// Connection API - FIXED VERSION
 export const connectionAPI = {
   sendRequest: (userId) => apiClient.post('/api/connections', { userId }),
   acceptRequest: (userId) => apiClient.put(`/api/connections/${userId}/accept`),
@@ -157,11 +128,10 @@ export const connectionAPI = {
   getSuggestedConnections: () => apiClient.get('/api/connections/suggested')
 };
 
-// User API - Using apiClient but keeping same endpoints for compatibility
 export const userAPI = {
-  register: (userData) => axios.post('/api/auth/register', userData), // Keep using global axios for auth
-  login: (credentials) => axios.post('/api/auth/login', credentials), // Keep using global axios for auth
-  logout: () => axios.post('/api/auth/logout'), // Keep using global axios for auth
+  register: (userData) => axios.post('/api/auth/register', userData),
+  login: (credentials) => axios.post('/api/auth/login', credentials),
+  logout: () => axios.post('/api/auth/logout'),
   getProfile: () => apiClient.get('/api/auth/profile'),
   getUserByUsername: (username) => apiClient.get(`/api/users/username/${username}`),
   getUserById: (userId) => apiClient.get(`/api/users/${userId}`),
@@ -188,7 +158,6 @@ export const userAPI = {
   getPresence: (userId) => apiClient.get(`/api/users/${userId}/presence`)
 };
 
-// Messages API
 export const fetchMessages = async (userId) => {
   try {
     const response = await apiClient.get(`/api/messages/${userId}`);
@@ -206,7 +175,6 @@ export const sendMessage = async (userId, content, image = null) => {
     if (image) {
       formData.append('image', image);
     }
-    
     const response = await apiClient.post(`/api/messages/${userId}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
@@ -217,7 +185,6 @@ export const sendMessage = async (userId, content, image = null) => {
   }
 };
 
-// Follow API
 export const followAPI = {
   getFollowing: (userId) => apiClient.get(`/api/users/${userId}/following`),
   getMutualConnections: (userId) => apiClient.get(`/api/users/${userId}/mutual`),
@@ -226,4 +193,4 @@ export const followAPI = {
   getSuggestedConnections: () => apiClient.get('/api/users/suggested/connections')
 };
 
-export default axios; // Keep exporting global axios for AuthContext compatibility
+export default axios;

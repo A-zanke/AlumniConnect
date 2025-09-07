@@ -1,22 +1,21 @@
 const express = require('express');
 const path = require('path');
 const multer = require('multer');
-const { protect, teacherOrAlumni, adminOnly } = require('../middleware/auth');
-const { 
-  createEvent, 
-  listEvents, 
-  approveEvent, 
+const { protect, teacherOrAlumni, admin: adminOnly } = require('../middleware/auth');
+const {
+  createEvent,
+  listEvents,
+  listMyEvents,
+  approveEvent,
   rejectEvent,
-  getEventById, 
-  rsvpEvent, 
-  updateEvent, 
-  deleteEvent,
-  listPending 
+  getEventById,
+  rsvpEvent,
+  updateEvent,
+  deleteEvent
 } = require('../controllers/eventsController');
 
 const router = express.Router();
 
-// Multer storage for event images
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadsDir = path.join(__dirname, '../uploads');
@@ -29,19 +28,21 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Public routes
+// Important: specific routes BEFORE param routes to avoid conflicts
 router.get('/', protect, listEvents);
+router.get('/mine', protect, listMyEvents);
 router.get('/:eventId', protect, getEventById);
-router.post('/:eventId/rsvp', protect, rsvpEvent);
 
-// Teacher/Alumni routes
 router.post('/', protect, teacherOrAlumni, upload.single('image'), createEvent);
 router.put('/:id', protect, teacherOrAlumni, upload.single('image'), updateEvent);
 router.delete('/:id', protect, teacherOrAlumni, deleteEvent);
 
-// Admin routes for event approval
-router.get('/admin/pending', protect, adminOnly, listPending);
+router.post('/:eventId/rsvp', protect, rsvpEvent);
+
+// Admin approvals
 router.put('/:eventId/approve', protect, adminOnly, approveEvent);
 router.put('/:eventId/reject', protect, adminOnly, rejectEvent);
+router.post('/:eventId/approve', protect, adminOnly, approveEvent);
+router.post('/:eventId/reject', protect, adminOnly, rejectEvent);
 
 module.exports = router;

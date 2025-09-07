@@ -116,11 +116,11 @@ const EventDetailsPage = () => {
             </div>
             <div className="flex flex-col items-end space-y-2">
               <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                event?.status === 'active' || event?.approved ? 'bg-green-100 text-green-800' : 
-                event?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                event?.status === 'active' || event?.approved ? 'bg-green-100 text-green-800' :
+                event?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                 'bg-red-100 text-red-800'
               }`}>
-                {event?.status === 'active' || event?.approved ? 'Active' : 
+                {event?.status === 'active' || event?.approved ? 'Active' :
                  event?.status === 'pending' ? 'Pending Approval' : 'Rejected'}
               </span>
               <span className="badge badge-primary">{event.category || 'Event'}</span>
@@ -132,12 +132,6 @@ const EventDetailsPage = () => {
             <p className="mt-2 text-gray-600">{event.description}</p>
           </div>
 
-          <div className="mt-6">
-            <h2 className="text-xl font-semibold text-gray-900">Organizer</h2>
-            <p className="mt-2 text-gray-600">Organized by {organizerName}</p>
-          </div>
-
-          {/* Target Audience Information */}
           {(event.target_roles && event.target_roles.length > 0) && (
             <div className="mt-6">
               <h2 className="text-xl font-semibold text-gray-900">Target Audience</h2>
@@ -146,23 +140,32 @@ const EventDetailsPage = () => {
                   <span className="font-medium">Roles: </span>
                   <span className="text-gray-600">{event.target_roles.join(', ')}</span>
                 </div>
-                
+
                 {event.target_student_combinations && event.target_student_combinations.length > 0 && (
                   <div>
                     <span className="font-medium">Student Combinations: </span>
                     <span className="text-gray-600">
-                      {event.target_student_combinations.map(combo => 
+                      {event.target_student_combinations.map(combo =>
                         `${combo.department} Year ${combo.year}`
                       ).join(', ')}
                     </span>
                   </div>
                 )}
-                
+
+                {event.target_teacher_departments && event.target_teacher_departments.length > 0 && (
+                  <div>
+                    <span className="font-medium">Teacher Departments: </span>
+                    <span className="text-gray-600">
+                      {event.target_teacher_departments.join(', ')}
+                    </span>
+                  </div>
+                )}
+
                 {event.target_alumni_combinations && event.target_alumni_combinations.length > 0 && (
                   <div>
                     <span className="font-medium">Alumni Combinations: </span>
                     <span className="text-gray-600">
-                      {event.target_alumni_combinations.map(combo => 
+                      {event.target_alumni_combinations.map(combo =>
                         `${combo.department} ${combo.graduation_year}`
                       ).join(', ')}
                     </span>
