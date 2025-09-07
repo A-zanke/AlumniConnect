@@ -78,6 +78,22 @@ export const eventsAPI = {
       Object.keys(eventData).forEach(key => {
         if (key === 'image') {
           formData.append('image', eventData.image);
+        } else if (key === 'target_audience' && typeof eventData[key] === 'object') {
+          // Handle nested target_audience object
+          Object.keys(eventData[key]).forEach(subKey => {
+            if (Array.isArray(eventData[key][subKey])) {
+              eventData[key][subKey].forEach(item => {
+                formData.append(`${key}[${subKey}]`, item);
+              });
+            } else {
+              formData.append(`${key}[${subKey}]`, eventData[key][subKey]);
+            }
+          });
+        } else if (Array.isArray(eventData[key])) {
+          // Handle arrays
+          eventData[key].forEach(item => {
+            formData.append(key, item);
+          });
         } else {
           formData.append(key, eventData[key]);
         }
@@ -94,6 +110,22 @@ export const eventsAPI = {
       Object.keys(eventData).forEach(key => {
         if (key === 'image') {
           formData.append('image', eventData.image);
+        } else if (key === 'target_audience' && typeof eventData[key] === 'object') {
+          // Handle nested target_audience object
+          Object.keys(eventData[key]).forEach(subKey => {
+            if (Array.isArray(eventData[key][subKey])) {
+              eventData[key][subKey].forEach(item => {
+                formData.append(`${key}[${subKey}]`, item);
+              });
+            } else {
+              formData.append(`${key}[${subKey}]`, eventData[key][subKey]);
+            }
+          });
+        } else if (Array.isArray(eventData[key])) {
+          // Handle arrays
+          eventData[key].forEach(item => {
+            formData.append(key, item);
+          });
         } else {
           formData.append(key, eventData[key]);
         }
@@ -104,7 +136,13 @@ export const eventsAPI = {
     }
     return apiClient.put(`/api/events/${id}`, eventData);
   },
-  deleteEvent: (id) => apiClient.delete(`/api/events/${id}`)
+  deleteEvent: (id) => apiClient.delete(`/api/events/${id}`),
+  rsvpEvent: (id) => apiClient.post(`/api/events/${id}/rsvp`),
+  
+  // Admin functions for event approval
+  getPendingEvents: () => apiClient.get('/api/events/admin/pending'),
+  approveEvent: (id) => apiClient.put(`/api/events/${id}/approve`),
+  rejectEvent: (id) => apiClient.put(`/api/events/${id}/reject`)
 };
 
 // Connection API - FIXED VERSION

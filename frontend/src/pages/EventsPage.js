@@ -6,12 +6,13 @@ import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
-import { FiEdit, FiTrash2, FiCalendar, FiMapPin, FiLink, FiUsers } from 'react-icons/fi';
+import { FiEdit, FiTrash2, FiCalendar, FiMapPin, FiLink, FiUsers, FiCheck, FiX, FiPlus, FiMinus } from 'react-icons/fi';
 import axios from 'axios';
 
 const years = [1, 2, 3, 4];
-const roles = ['student', 'teacher', 'alumni', 'staff'];
+const roles = ['student', 'teacher', 'alumni'];
 const DEFAULT_DEPARTMENTS = ['CSE', 'AI-DS', 'Civil', 'Mechanical', 'Electrical', 'ETC'];
+const graduationYears = [2020, 2021, 2022, 2023, 2024, 2025];
 
 const safeFormat = (value, fmt) => {
   try {
@@ -24,9 +25,11 @@ const safeFormat = (value, fmt) => {
 
 const EventsPage = () => {
   const [events, setEvents] = useState([]);
+  const [pendingEvents, setPendingEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUpcoming, setShowUpcoming] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [activeTab, setActiveTab] = useState('events');
   const { user, canCreateContent } = useAuth();
   const [editingEvent, setEditingEvent] = useState(null);
 
@@ -40,16 +43,14 @@ const EventsPage = () => {
     category: 'other',
     isVirtual: false,
     meetingLink: '',
-    audienceType: 'college',
-    targetDepartments: [],
-    targetYears: [],
-    targetRoles: [],
-    targetGraduationYears: []
+    target_roles: [],
+    target_student_combinations: [],
+    target_alumni_combinations: []
   });
   const [eventImage, setEventImage] = useState(null);
   const [error, setError] = useState(null);
 
-  // Departments (fallback if 404)
+  // Fetch departments from registration/profile schema
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
@@ -77,9 +78,21 @@ const EventsPage = () => {
     }
   }, [showUpcoming]);
 
+  const fetchPendingEvents = useCallback(async () => {
+    try {
+      const data = await eventsAPI.getPendingEvents();
+      setPendingEvents(Array.isArray(data.data) ? data.data : []);
+    } catch (err) {
+      console.error('Error fetching pending events:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEventsData();
-  }, [fetchEventsData]);
+    if (user?.role?.toLowerCase() === 'admin') {
+      fetchPendingEvents();
+    }
+  }, [fetchEventsData, fetchPendingEvents, user]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -89,12 +102,58 @@ const EventsPage = () => {
     });
   };
 
-  const handleArrayChange = (name, value) => {
+  const handleRoleChange = (role) => {
     setFormData(prev => ({
       ...prev,
-      [name]: prev[name].includes(value)
-        ? prev[name].filter(item => item !== value)
-        : [...prev[name], value]
+      target_roles: prev.target_roles.includes(role)
+        ? prev.target_roles.filter(r => r !== role)
+        : [...prev.target_roles, role]
+    }));
+  };
+
+  const addStudentCombination = () => {
+    setFormData(prev => ({
+      ...prev,
+      target_student_combinations: [...prev.target_student_combinations, { department: '', year: '' }]
+    }));
+  };
+
+  const removeStudentCombination = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      target_student_combinations: prev.target_student_combinations.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateStudentCombination = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      target_student_combinations: prev.target_student_combinations.map((combo, i) => 
+        i === index ? { ...combo, [field]: value } : combo
+      )
+    }));
+  };
+
+  const addAlumniCombination = () => {
+    setFormData(prev => ({
+      ...prev,
+      target_alumni_combinations: [...prev.target_alumni_combinations, { department: '', graduation_year: '' }]
+    }));
+  };
+
+  const removeAlumniCombination = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      target_alumni_combinations: prev.target_alumni_combinations.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateAlumniCombination = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      target_alumni_combinations: prev.target_alumni_combinations.map((combo, i) => 
+        i === index ? { ...combo, [field]: value } : combo
+      )
     }));
   };
 
@@ -108,11 +167,9 @@ const EventsPage = () => {
       category: 'other',
       isVirtual: false,
       meetingLink: '',
-      audienceType: 'college',
-      targetDepartments: [],
-      targetYears: [],
-      targetRoles: [],
-      targetGraduationYears: []
+      target_roles: [],
+      target_student_combinations: [],
+      target_alumni_combinations: []
     });
     setEventImage(null);
     setEditingEvent(null);
@@ -124,18 +181,9 @@ const EventsPage = () => {
       const eventData = {
         title: formData.title,
         description: formData.description,
-        audience:
-          formData.audienceType === 'college'
-            ? 'college'
-            : formData.audienceType === 'department'
-            ? 'department'
-            : formData.audienceType === 'year'
-            ? 'year'
-            : 'custom',
-        departmentScope: formData.targetDepartments,
-        yearScope: formData.targetYears,
-        graduationYearScope: formData.targetGraduationYears,
-        roleScope: formData.targetRoles.map(r => r.toLowerCase()),
+        target_roles: formData.target_roles,
+        target_student_combinations: formData.target_student_combinations.filter(combo => combo.department && combo.year),
+        target_alumni_combinations: formData.target_alumni_combinations.filter(combo => combo.department && combo.graduation_year),
         location: formData.isVirtual ? undefined : formData.location,
         startAt: formData.date ? new Date(formData.date).toISOString() : null,
         endAt: formData.endDate ? new Date(formData.endDate).toISOString() : (formData.date ? new Date(formData.date).toISOString() : null),
@@ -144,6 +192,11 @@ const EventsPage = () => {
 
       if (!eventData.startAt || !eventData.endAt) {
         toast.error('Please provide valid start and end date/time');
+        return;
+      }
+
+      if (eventData.target_roles.length === 0) {
+        toast.error('Please select at least one target role');
         return;
       }
 
@@ -158,9 +211,11 @@ const EventsPage = () => {
       resetForm();
       setShowCreateForm(false);
       fetchEventsData();
+      if (user?.role?.toLowerCase() === 'admin') {
+        fetchPendingEvents();
+      }
     } catch (error) {
       console.error('Error saving event:', error);
-      // Log the error's response data for more context
       console.error('Error details:', error.response?.data);
       toast.error(error?.response?.data?.message || 'Failed to save event');
     }
@@ -177,11 +232,9 @@ const EventsPage = () => {
       category: event?.category || 'other',
       isVirtual: event?.isVirtual || false,
       meetingLink: event?.meetingLink || '',
-      audienceType: event?.audience || 'college',
-      targetDepartments: event?.departmentScope || [],
-      targetYears: event?.yearScope || [],
-      targetRoles: event?.roleScope || [],
-      targetGraduationYears: event?.graduationYearScope || []
+      target_roles: event?.target_roles || [],
+      target_student_combinations: event?.target_student_combinations || [],
+      target_alumni_combinations: event?.target_alumni_combinations || []
     });
     setShowCreateForm(true);
   };
@@ -192,6 +245,9 @@ const EventsPage = () => {
         await eventsAPI.deleteEvent(eventId);
         toast.success('Event deleted successfully');
         fetchEventsData();
+        if (user?.role?.toLowerCase() === 'admin') {
+          fetchPendingEvents();
+        }
       } catch (error) {
         console.error('Error deleting event:', error);
         toast.error('Failed to delete event');
@@ -199,9 +255,121 @@ const EventsPage = () => {
     }
   };
 
+  const handleApproveEvent = async (eventId) => {
+    try {
+      await eventsAPI.approveEvent(eventId);
+      toast.success('Event approved successfully');
+      fetchPendingEvents();
+      fetchEventsData();
+    } catch (error) {
+      console.error('Error approving event:', error);
+      toast.error('Failed to approve event');
+    }
+  };
+
+  const handleRejectEvent = async (eventId) => {
+    if (window.confirm('Are you sure you want to reject this event?')) {
+      try {
+        await eventsAPI.rejectEvent(eventId);
+        toast.success('Event rejected successfully');
+        fetchPendingEvents();
+      } catch (error) {
+        console.error('Error rejecting event:', error);
+        toast.error('Failed to reject event');
+      }
+    }
+  };
+
   const canEditEvent = (event) => {
     const organizerId = typeof event?.organizer === 'object' ? event?.organizer?._id : event?.organizer;
     return user && (user._id === organizerId || user.role?.toLowerCase() === 'admin');
+  };
+
+  const renderEventCard = (event) => {
+    const title = event?.title || '';
+    const startStr = safeFormat(event?.startAt || event?.date, 'PPP');
+    const timeStr = safeFormat(event?.startAt || event?.date, 'p');
+    const organizerName = typeof event?.organizer === 'object' ? (event?.organizer?.name || 'Unknown') : 'Unknown';
+
+    return (
+      <div key={event?._id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
+        <div className="relative">
+          {event?.imageUrl ? (
+            <img src={event.imageUrl} alt={title} className="w-full h-48 object-cover" />
+          ) : (
+            <div className="w-full h-48 bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-500 flex items-center justify-center">
+              <span className="text-white text-lg font-medium text-center px-4">{title}</span>
+            </div>
+          )}
+          <div className="absolute top-4 left-4">
+            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+              event?.status === 'active' || event?.approved ? 'bg-green-100 text-green-800' : 
+              event?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+              'bg-red-100 text-red-800'
+            }`}>
+              {event?.status === 'active' || event?.approved ? 'Active' : 
+               event?.status === 'pending' ? 'Pending Approval' : 'Rejected'}
+            </span>
+          </div>
+          {canEditEvent(event) && (
+            <div className="absolute top-4 right-4 flex space-x-2">
+              <button onClick={() => handleEdit(event)} className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors">
+                <FiEdit size={14} />
+              </button>
+              <button onClick={() => handleDelete(event?._id)} className="p-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors">
+                <FiTrash2 size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6">
+          <div className="flex justify-between items-start mb-3">
+            <h3 className="text-xl font-bold text-gray-900 line-clamp-2">{title}</h3>
+            <span className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-1 rounded-full capitalize">
+              {event?.category || 'other'}
+            </span>
+          </div>
+
+          <div className="space-y-2 text-sm text-gray-600 mb-4">
+            <div className="flex items-center">
+              <FiCalendar className="mr-2 text-indigo-500" />
+              {(startStr && timeStr) ? `${startStr} at ${timeStr}` : 'Date TBD'}
+            </div>
+            <div className="flex items-center">
+              {event?.isVirtual ? (
+                <>
+                  <FiLink className="mr-2 text-indigo-500" />
+                  Virtual Event
+                </>
+              ) : (
+                <>
+                  <FiMapPin className="mr-2 text-indigo-500" />
+                  {event?.location || 'On Campus'}
+                </>
+              )}
+            </div>
+            <div className="flex items-center">
+              <FiUsers className="mr-2 text-indigo-500" />
+              Organized by {organizerName}
+            </div>
+          </div>
+
+          <p className="text-gray-700 line-clamp-3 mb-6">{event?.description || ''}</p>
+
+          <div className="flex justify-between items-center">
+            <Link to={`/events/${event?._id}`} className="text-indigo-600 hover:text-indigo-700 font-semibold transition-colors">
+              View Details →
+            </Link>
+            {user && (event?.status === 'active' || event?.approved) && (
+              <button className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105">
+                Attend
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -262,6 +430,36 @@ const EventsPage = () => {
           )}
         </div>
       </div>
+
+      {/* Admin Tabs */}
+      {user?.role?.toLowerCase() === 'admin' && (
+        <div className="mb-8">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('events')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'events'
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Active Events ({events.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('pending')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'pending'
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Pending Approval ({pendingEvents.length})
+              </button>
+            </nav>
+          </div>
+        </div>
+      )}
 
       {showCreateForm && (
         <div className="bg-gradient-to-br from-white via-blue-50 to-indigo-50 rounded-2xl shadow-2xl p-8 mb-8 border border-indigo-100">
@@ -388,73 +586,123 @@ const EventsPage = () => {
                   Target Audience
                 </label>
 
-                <div className="mb-4">
-                  <select
-                    name="audienceType"
-                    value={formData.audienceType}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200"
-                  >
-                    <option value="college">Entire College</option>
-                    <option value="department">Specific Departments</option>
-                    <option value="year">Specific Years</option>
-                    <option value="role">Specific Roles</option>
-                    <option value="custom">Custom Filter</option>
-                  </select>
+                {/* Role Selection */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-600 mb-3">Select Target Roles (Multiple allowed)</label>
+                  <div className="flex gap-4">
+                    {roles.map(role => (
+                      <label key={role} className="flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.target_roles.includes(role)}
+                          onChange={() => handleRoleChange(role)}
+                          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700 capitalize">{role}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
-                {(formData.audienceType === 'department' || formData.audienceType === 'custom') && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-600 mb-2">Target Departments</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {departments.map(dept => (
-                        <label key={dept} className="flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.targetDepartments.includes(dept)}
-                            onChange={() => handleArrayChange('targetDepartments', dept)}
-                            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">{dept}</span>
-                        </label>
+                {/* Student Combinations */}
+                {formData.target_roles.includes('student') && (
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-sm font-medium text-gray-600">Student Department-Year Combinations</label>
+                      <button
+                        type="button"
+                        onClick={addStudentCombination}
+                        className="flex items-center px-3 py-1 text-sm bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors"
+                      >
+                        <FiPlus size={14} className="mr-1" />
+                        Add Combination
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {formData.target_student_combinations.map((combo, index) => (
+                        <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <select
+                            value={combo.department}
+                            onChange={(e) => updateStudentCombination(index, 'department', e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            required
+                          >
+                            <option value="">Select Department</option>
+                            {departments.map(dept => (
+                              <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={combo.year}
+                            onChange={(e) => updateStudentCombination(index, 'year', parseInt(e.target.value))}
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            required
+                          >
+                            <option value="">Select Year</option>
+                            {years.map(year => (
+                              <option key={year} value={year}>Year {year}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeStudentCombination(index)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                          >
+                            <FiMinus size={16} />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {(formData.audienceType === 'year' || formData.audienceType === 'custom') && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-600 mb-2">Target Years</label>
-                    <div className="flex gap-4">
-                      {years.map(year => (
-                        <label key={year} className="flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.targetYears.includes(year)}
-                            onChange={() => handleArrayChange('targetYears', year)}
-                            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">Year {year}</span>
-                        </label>
-                      ))}
+                {/* Alumni Combinations */}
+                {formData.target_roles.includes('alumni') && (
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-sm font-medium text-gray-600">Alumni Department-Graduation Year Combinations</label>
+                      <button
+                        type="button"
+                        onClick={addAlumniCombination}
+                        className="flex items-center px-3 py-1 text-sm bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors"
+                      >
+                        <FiPlus size={14} className="mr-1" />
+                        Add Combination
+                      </button>
                     </div>
-                  </div>
-                )}
-
-                {(formData.audienceType === 'role' || formData.audienceType === 'custom') && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-600 mb-2">Target Roles</label>
-                    <div className="flex gap-4">
-                      {roles.map(role => (
-                        <label key={role} className="flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={formData.targetRoles.includes(role)}
-                            onChange={() => handleArrayChange('targetRoles', role)}
-                            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                          />
-                          <span className="ml-2 text-sm text-gray-700 capitalize">{role}</span>
-                        </label>
+                    <div className="space-y-3">
+                      {formData.target_alumni_combinations.map((combo, index) => (
+                        <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <select
+                            value={combo.department}
+                            onChange={(e) => updateAlumniCombination(index, 'department', e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            required
+                          >
+                            <option value="">Select Department</option>
+                            {departments.map(dept => (
+                              <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={combo.graduation_year}
+                            onChange={(e) => updateAlumniCombination(index, 'graduation_year', parseInt(e.target.value))}
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            required
+                          >
+                            <option value="">Select Graduation Year</option>
+                            {graduationYears.map(year => (
+                              <option key={year} value={year}>{year}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeAlumniCombination(index)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                          >
+                            <FiMinus size={16} />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -492,97 +740,93 @@ const EventsPage = () => {
         </div>
       )}
 
-      {(!events || events.length === 0) ? (
-        <div className="text-center py-12">
-          <h3 className="text-lg font-medium text-gray-900">No events found</h3>
-          <p className="mt-2 text-gray-600">
-            {showUpcoming ? 'There are no upcoming events scheduled.' : 'No events have been created yet.'}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {events.map((event) => {
-            const title = event?.title || '';
-            const startStr = safeFormat(event?.startAt || event?.date, 'PPP');
-            const timeStr = safeFormat(event?.startAt || event?.date, 'p');
-            const organizerName = typeof event?.organizer === 'object' ? (event?.organizer?.name || 'Unknown') : 'Unknown';
+      {/* Events List */}
+      {activeTab === 'events' && (
+        <>
+          {(!events || events.length === 0) ? (
+            <div className="text-center py-12">
+              <h3 className="text-lg font-medium text-gray-900">No events found</h3>
+              <p className="mt-2 text-gray-600">
+                {showUpcoming ? 'There are no upcoming events scheduled.' : 'No events have been created yet.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {events.map(renderEventCard)}
+            </div>
+          )}
+        </>
+      )}
 
-            return (
-              <div key={event?._id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
-                <div className="relative">
-                  {event?.imageUrl ? (
-                    <img src={event.imageUrl} alt={title} className="w-full h-48 object-cover" />
-                  ) : (
-                    <div className="w-full h-48 bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-500 flex items-center justify-center">
-                      <span className="text-white text-lg font-medium text-center px-4">{title}</span>
-                    </div>
-                  )}
-                  <div className="absolute top-4 left-4">
-                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${event?.approved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                      {event?.approved ? 'Approved' : 'Pending Approval'}
-                    </span>
-                  </div>
-                  {canEditEvent(event) && (
-                    <div className="absolute top-4 right-4 flex space-x-2">
-                      <button onClick={() => handleEdit(event)} className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors">
-                        <FiEdit size={14} />
-                      </button>
-                      <button onClick={() => handleDelete(event?._id)} className="p-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors">
-                        <FiTrash2 size={14} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-6">
-                  <div className="flex justify-between items-start mb-3">
-                    <h3 className="text-xl font-bold text-gray-900 line-clamp-2">{title}</h3>
-                    <span className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-1 rounded-full capitalize">
-                      {event?.category || 'other'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-sm text-gray-600 mb-4">
-                    <div className="flex items-center">
-                      <FiCalendar className="mr-2 text-indigo-500" />
-                      {(startStr && timeStr) ? `${startStr} at ${timeStr}` : 'Date TBD'}
-                    </div>
-                    <div className="flex items-center">
-                      {event?.isVirtual ? (
-                        <>
-                          <FiLink className="mr-2 text-indigo-500" />
-                          Virtual Event
-                        </>
-                      ) : (
-                        <>
-                          <FiMapPin className="mr-2 text-indigo-500" />
-                          {event?.location || 'On Campus'}
-                        </>
-                      )}
-                    </div>
-                    <div className="flex items-center">
-                      <FiUsers className="mr-2 text-indigo-500" />
-                      Organized by {organizerName}
-                    </div>
-                  </div>
-
-                  <p className="text-gray-700 line-clamp-3 mb-6">{event?.description || ''}</p>
-
-                  <div className="flex justify-between items-center">
-                    <Link to={`/events/${event?._id}`} className="text-indigo-600 hover:text-indigo-700 font-semibold transition-colors">
-                      View Details →
-                    </Link>
-                    {user && event?.approved && (
-                      <button className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105">
-                        Attend
-                      </button>
+      {/* Pending Events (Admin Only) */}
+      {activeTab === 'pending' && user?.role?.toLowerCase() === 'admin' && (
+        <>
+          {(!pendingEvents || pendingEvents.length === 0) ? (
+            <div className="text-center py-12">
+              <h3 className="text-lg font-medium text-gray-900">No pending events</h3>
+              <p className="mt-2 text-gray-600">All events have been reviewed.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {pendingEvents.map(event => (
+                <div key={event?._id} className="bg-white rounded-2xl shadow-lg overflow-hidden border-2 border-yellow-200">
+                  <div className="relative">
+                    {event?.imageUrl ? (
+                      <img src={event.imageUrl} alt={event?.title} className="w-full h-48 object-cover" />
+                    ) : (
+                      <div className="w-full h-48 bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 flex items-center justify-center">
+                        <span className="text-white text-lg font-medium text-center px-4">{event?.title}</span>
+                      </div>
                     )}
+                    <div className="absolute top-4 left-4">
+                      <span className="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                        Pending Approval
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-gray-900 mb-3">{event?.title}</h3>
+                    <p className="text-gray-700 line-clamp-3 mb-4">{event?.description}</p>
+                    
+                    <div className="space-y-2 text-sm text-gray-600 mb-4">
+                      <div className="flex items-center">
+                        <FiUsers className="mr-2 text-indigo-500" />
+                        Organized by {typeof event?.organizer === 'object' ? event?.organizer?.name : 'Unknown'}
+                      </div>
+                      <div className="flex items-center">
+                        <FiCalendar className="mr-2 text-indigo-500" />
+                        {safeFormat(event?.startAt, 'PPP p')}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <Link to={`/events/${event?._id}`} className="text-indigo-600 hover:text-indigo-700 font-semibold transition-colors">
+                        View Details →
+                      </Link>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleApproveEvent(event?._id)}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center"
+                        >
+                          <FiCheck className="mr-1" size={16} />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleRejectEvent(event?._id)}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center"
+                        >
+                          <FiX className="mr-1" size={16} />
+                          Reject
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

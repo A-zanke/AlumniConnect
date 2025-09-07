@@ -51,6 +51,15 @@ const admin = (req, res, next) => {
   }
 };
 
+// Admin only middleware (alias for consistency)
+const adminOnly = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(403).json({ message: 'Not authorized as admin' });
+  }
+};
+
 // Teacher or alumni only middleware
 const teacherOrAlumni = (req, res, next) => {
   if (req.user && (req.user.role === 'teacher' || req.user.role === 'alumni' || req.user.role === 'admin')) {
@@ -93,4 +102,4 @@ const auth = (req, res, next) => {
     }
 };
 
-module.exports = { protect, admin, teacherOrAlumni, auth };
+module.exports = { protect, admin, adminOnly, teacherOrAlumni, auth };
