@@ -125,7 +125,8 @@ export const connectionAPI = {
   getConnectionStatus: (userId) => apiClient.get(`/api/connections/status/${userId}`),
   getConnections: () => apiClient.get('/api/connections'),
   getPendingRequests: () => apiClient.get('/api/connections/requests'),
-  getSuggestedConnections: () => apiClient.get('/api/connections/suggested')
+  getSuggestedConnections: () => apiClient.get('/api/connections/suggested'),
+  getRequestHistory: () => apiClient.get('/api/connections/requests/history')
 };
 
 export const userAPI = {
