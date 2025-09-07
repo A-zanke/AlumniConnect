@@ -97,9 +97,32 @@ exports.acceptRequest = async (req, res) => {
       return res.status(400).json({ message: 'No request from this user' });
     }
 
-    // Add connections
-    me.connections.push(sender._id);
-    sender.connections.push(me._id);
+    // Add connections (bidirectional)
+    if (!me.connections.some(id => id.toString() === sender._id.toString())) {
+      me.connections.push(sender._id);
+    }
+    if (!sender.connections.some(id => id.toString() === me._id.toString())) {
+      sender.connections.push(me._id);
+    }
+
+    // Also sync follow graph so Network page counts/lists work
+    if (!me.following) me.following = [];
+    if (!sender.followers) sender.followers = [];
+    if (!sender.following) sender.following = [];
+    if (!me.followers) me.followers = [];
+
+    if (!me.following.some(id => id.toString() === sender._id.toString())) {
+      me.following.push(sender._id);
+    }
+    if (!sender.followers.some(id => id.toString() === me._id.toString())) {
+      sender.followers.push(me._id);
+    }
+    if (!sender.following.some(id => id.toString() === me._id.toString())) {
+      sender.following.push(me._id);
+    }
+    if (!me.followers.some(id => id.toString() === sender._id.toString())) {
+      me.followers.push(sender._id);
+    }
 
     // Remove from pending
     me.connectionRequests = me.connectionRequests.filter(
@@ -212,6 +235,17 @@ exports.removeConnection = async (req, res) => {
     other.connections = other.connections.filter(
       (id) => id.toString() !== me._id.toString()
     );
+
+    // Also remove follow relationships to keep graphs consistent
+    if (!me.following) me.following = [];
+    if (!me.followers) me.followers = [];
+    if (!other.following) other.following = [];
+    if (!other.followers) other.followers = [];
+
+    me.following = me.following.filter(id => id.toString() !== userId);
+    me.followers = me.followers.filter(id => id.toString() !== userId);
+    other.following = other.following.filter(id => id.toString() !== me._id.toString());
+    other.followers = other.followers.filter(id => id.toString() !== me._id.toString());
 
     await me.save();
     await other.save();

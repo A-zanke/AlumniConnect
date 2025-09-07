@@ -83,14 +83,19 @@ exports.getUserByUsername = async (req, res) => {
 exports.getFollowing = async (req, res) => {
   try {
     const user = await User.findById(req.params.userId)
-      .select('following')
-      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio');
+      .select('following connections')
+      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio')
+      .populate('connections', 'name username avatarUrl role email department year industry current_job_title bio');
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const following = Array.isArray(user.following) ? user.following : [];
+    let following = Array.isArray(user.following) ? user.following : [];
+    // Fallback: if following is empty but connections exist, surface connections as following for UI
+    if ((!following || following.length === 0) && Array.isArray(user.connections) && user.connections.length > 0) {
+      following = user.connections;
+    }
     res.json({ data: following });
   } catch (error) {
     console.error('Error fetching following:', error);
