@@ -74,7 +74,7 @@ async function getUserByUsername(req, res) {
   }
 }
 
-// Get following of a user
+// Get following of a user (with fallback to connections)
 async function getFollowing(req, res) {
   try {
     const user = await User.findById(req.params.userId)
@@ -97,8 +97,73 @@ async function getFollowing(req, res) {
   }
 }
 
-// Get my mutual connections (friends-of-friends, with fallback to connections)
-exports.getMyMutualConnections = async (req, res) => {
+// Mutual connections with a specific target user (intersection)
+async function getMutualConnections(req, res) {
+  try {
+    const currentUserId = req.user._id;
+    const targetUserId = req.params.userId;
+
+    const currentUser = await User.findById(currentUserId).select('following');
+    const targetUser = await User.findById(targetUserId).select('following');
+
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const mutualIds = (currentUser.following || []).filter(id =>
+      (targetUser.following || []).some(targetId => targetId.toString() === id.toString())
+    );
+
+    const mutualConnections = await User.find({ _id: { $in: mutualIds } })
+      .select('name username avatarUrl role bio createdAt email department year industry current_job_title');
+
+    res.json({ data: mutualConnections });
+  } catch (error) {
+    console.error('Error fetching mutual connections:', error);
+    res.status(500).json({ message: 'Error fetching mutual connections' });
+  }
+}
+
+// Follow/Unfollow a user
+async function followUser(req, res) {
+  try {
+    const currentUserId = req.user._id;
+    const targetUserId = req.params.userId;
+
+    if (currentUserId.toString() === targetUserId.toString()) {
+      return res.status(400).json({ message: 'Cannot follow yourself' });
+    }
+
+    const currentUser = await User.findById(currentUserId);
+    const targetUser = await User.findById(targetUserId);
+
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const isFollowing = (currentUser.following || []).some(id => id.toString() === targetUserId.toString());
+
+    if (isFollowing) {
+      currentUser.following = (currentUser.following || []).filter(id => id.toString() !== targetUserId.toString());
+      targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
+      await currentUser.save();
+      await targetUser.save();
+      res.json({ message: 'Unfollowed successfully', isFollowing: false });
+    } else {
+      currentUser.following = [...(currentUser.following || []), targetUserId];
+      targetUser.followers = [...(targetUser.followers || []), currentUserId];
+      await currentUser.save();
+      await targetUser.save();
+      res.json({ message: 'Followed successfully', isFollowing: true });
+    }
+  } catch (error) {
+    console.error('Error following/unfollowing user:', error);
+    res.status(500).json({ message: 'Error following/unfollowing user' });
+  }
+}
+
+// Get my mutual connections (friends-of-friends with fallback to connections)
+async function getMyMutualConnections(req, res) {
   try {
     const currentUserId = req.user._id?.toString();
     const currentUser = await User.findById(currentUserId).select('following connections');
@@ -110,13 +175,11 @@ exports.getMyMutualConnections = async (req, res) => {
     const myFollowing = Array.isArray(currentUser.following) ? currentUser.following.map(id => id.toString()) : [];
     const myConnections = Array.isArray(currentUser.connections) ? currentUser.connections.map(id => id.toString()) : [];
 
-    // First-level neighbors: anyone I follow or am connected to
     const firstLevelIds = Array.from(new Set([...(myFollowing || []), ...(myConnections || [])]));
     if (firstLevelIds.length === 0) {
       return res.json({ data: [] });
     }
 
-    // For each neighbor, look at who they follow; if empty, fallback to their connections
     const neighbors = await User.find({ _id: { $in: firstLevelIds } })
       .select('following connections')
       .populate('following', 'name username avatarUrl role email department year industry current_job_title bio createdAt')
@@ -149,101 +212,15 @@ exports.getMyMutualConnections = async (req, res) => {
     console.error('Error fetching mutual connections:', error);
     res.status(500).json({ message: 'Error fetching mutual connections' });
   }
-};
-
-
-// Follow/Unfollow a user
-async function followUser(req, res) {
-  try {
-    const currentUserId = req.user._id;
-    const targetUserId = req.params.userId;
-
-    if (currentUserId.toString() === targetUserId.toString()) {
-      return res.status(400).json({ message: 'Cannot follow yourself' });
-    }
-
-    const currentUser = await User.findById(currentUserId);
-    const targetUser = await User.findById(targetUserId);
-
-    if (!currentUser || !targetUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const isFollowing = (currentUser.following || []).map(id => id.toString()).includes(targetUserId.toString());
-
-    if (isFollowing) {
-      currentUser.following = (currentUser.following || []).filter(id => id.toString() !== targetUserId.toString());
-      targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
-      await currentUser.save();
-      await targetUser.save();
-      res.json({ message: 'Unfollowed successfully', isFollowing: false });
-    } else {
-      currentUser.following = [...(currentUser.following || []), targetUserId];
-      targetUser.followers = [...(targetUser.followers || []), currentUserId];
-      await currentUser.save();
-      await targetUser.save();
-      res.json({ message: 'Followed successfully', isFollowing: true });
-    }
-  } catch (error) {
-    console.error('Error following/unfollowing user:', error);
-    res.status(500).json({ message: 'Error following/unfollowing user' });
-  }
 }
 
-// My mutual connections (friends-of-friends suggestions)
-async function getMyMutualConnections(req, res) {
-  try {
-    const currentUserId = req.user._id?.toString();
-    const currentUser = await User.findById(currentUserId).select('following connections');
-
-    if (!currentUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const myFollowing = Array.isArray(currentUser.following) ? currentUser.following.map(id => id.toString()) : [];
-    const myConnections = Array.isArray(currentUser.connections) ? currentUser.connections.map(id => id.toString()) : [];
-
-    if (myFollowing.length === 0) {
-      return res.json({ data: [] });
-    }
-
-    // Load for each person I follow: who they follow
-    const followingUsers = await User.find({ _id: { $in: myFollowing } })
-      .select('following')
-      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio createdAt');
-
-    const mutualMap = new Map();
-    followingUsers.forEach(fu => {
-      const fuFollowing = Array.isArray(fu.following) ? fu.following : [];
-      fuFollowing.forEach(followedUser => {
-        const followedId = followedUser?._id?.toString();
-        if (!followedId) return;
-        if (
-          followedId !== currentUserId &&
-          !myFollowing.includes(followedId) &&
-          !myConnections.includes(followedId) &&
-          !mutualMap.has(followedId)
-        ) {
-          mutualMap.set(followedId, followedUser);
-        }
-      });
-    });
-
-    const mutualConnections = Array.from(mutualMap.values());
-    res.json({ data: mutualConnections });
-  } catch (error) {
-    console.error('Error fetching mutual connections:', error);
-    res.status(500).json({ message: 'Error fetching mutual connections' });
-  }
-}
-
-// Suggested connections (kept as-is; used by AI tab)
+// Suggested connections (friends-of-friends excluding followed/connected)
 async function getSuggestedConnections(req, res) {
   try {
     const currentUserId = req.user._id;
     const currentUser = await User.findById(currentUserId).select('following connections');
 
-    const followingUsers = await User.find({ _id: { $in: currentUser.following } })
+    const followingUsers = await User.find({ _id: { $in: currentUser.following || [] } })
       .select('following')
       .populate('following', 'name username avatarUrl role bio');
 

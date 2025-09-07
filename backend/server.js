@@ -95,7 +95,8 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const messagesRoutes = require('./routes/messagesRoutes');
 const avatarRoutes = require('./routes/avatarRoutes');
-
+const forumRoutes = require('./routes/forumRoutes');
+app.use('/api/forum', forumRoutes);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

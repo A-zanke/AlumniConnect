@@ -1,268 +1,148 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import Spinner from '../components/ui/Spinner';
-import { toast } from 'react-toastify';
+import React, { useEffect, useState } from 'react';
+import { forumAPI } from '../components/utils/forumApi';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FiPlus, FiSearch, FiFilter } from 'react-icons/fi';
+import CreatePostModal from '../components/forum/CreatePostModal';
+import PostCard from '../components/forum/PostCard';
+import Guidelines from '../components/forum/Guidelines';
+import Leaderboard from '../components/forum/Leaderboard';
+
+const CATEGORIES = ['All','Career','Higher Studies','Internships','Hackathons','Projects','Alumni Queries'];
+const SORTS = [
+  { key: 'recent', label: 'Most Recent' },
+  { key: 'upvoted', label: 'Most Upvoted' },
+  { key: 'unanswered', label: 'Unanswered' }
+];
 
 const ForumPage = () => {
-  const { user, canCreateContent } = useAuth();
+  const [posts, setPosts] = useState([]);
+  const [q, setQ] = useState('');
+  const [category, setCategory] = useState('All');
+  const [sort, setSort] = useState('recent');
+  const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [topics, setTopics] = useState([]);
-  const [showNewTopicForm, setShowNewTopicForm] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    category: 'general',
-  });
 
-  useEffect(() => {
-    const fetchTopics = async () => {
-      try {
-        setLoading(true);
-        // This endpoint should be implemented in your backend
-        // For now, we'll use mock data
-        setTopics([
-          {
-            _id: '1',
-            title: 'Welcome to the Alumni Forum',
-            content: 'This is a place to discuss various topics related to our alumni community.',
-            category: 'announcements',
-            author: {
-              _id: '1',
-              name: 'Forum Admin',
-              username: 'admin',
-              avatarUrl: null,
-            },
-            createdAt: new Date().toISOString(),
-            repliesCount: 5,
-            viewsCount: 120,
-          },
-          {
-            _id: '2',
-            title: 'Job opportunities in tech industry',
-            content: 'Looking for software developers with 3+ years of experience.',
-            category: 'jobs',
-            author: {
-              _id: '2',
-              name: 'Jane Smith',
-              username: 'jsmith',
-              avatarUrl: null,
-            },
-            createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-            repliesCount: 8,
-            viewsCount: 95,
-          },
-        ]);
-      } catch (error) {
-        console.error('Error fetching forum topics:', error);
-        toast.error('Failed to load forum topics');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTopics();
-  }, []);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value,
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const fetchPosts = async () => {
     try {
-      // This endpoint should be implemented in your backend
-      // const response = await forumAPI.createTopic(formData);
-      
-      // For now, simulate adding a new topic
-      const newTopic = {
-        _id: Date.now().toString(),
-        title: formData.title,
-        content: formData.content,
-        category: formData.category,
-        author: {
-          _id: user._id,
-          name: user.name,
-          username: user.username,
-          avatarUrl: user.avatarUrl,
-        },
-        createdAt: new Date().toISOString(),
-        repliesCount: 0,
-        viewsCount: 0,
-      };
-      
-      setTopics([newTopic, ...topics]);
-      
-      // Reset form
-      setFormData({
-        title: '',
-        content: '',
-        category: 'general',
-      });
-      
-      setShowNewTopicForm(false);
-      toast.success('Topic created successfully!');
-    } catch (error) {
-      console.error('Error creating topic:', error);
-      toast.error('Failed to create topic');
+      setLoading(true);
+      const params = {};
+      if (q) params.q = q;
+      if (category && category !== 'All') params.category = category;
+      if (sort) {
+        if (sort === 'upvoted') params.sort = 'upvoted';
+        if (sort === 'unanswered') params.filter = 'unanswered';
+      }
+      const res = await forumAPI.listPosts(params);
+      setPosts(res.data?.data || []);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (loading && topics.length === 0) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
+  useEffect(() => { fetchPosts(); }, []); // initial
+  useEffect(() => { fetchPosts(); }, [q, category, sort]); // reactive
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="theme-card p-6 mb-6 float-in">
-        <h1 className="text-2xl font-extrabold gradient-text">Student Forum</h1>
-        <p className="text-gray-600">Target posts by role, branch, and year</p>
-      </div>
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Forum</h1>
-          <p className="mt-2 text-gray-600">Discuss ideas and share knowledge with fellow alumni</p>
+      {/* Stylish gradient guidelines with animation */}
+      <Guidelines />
+
+      {/* Search + Filters */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+        {/* Rounded glowing search bar */}
+        <div className="flex-1 relative">
+          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500" />
+          <input
+            className="w-full pl-12 pr-4 py-3 rounded-full bg-white border border-indigo-100 shadow-sm focus:ring-4 focus:ring-indigo-100 transition outline-none placeholder-gray-400 hover:shadow-md"
+            placeholder="Search posts, tags or @username"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-transparent hover:ring-indigo-200 transition" />
         </div>
-        
-        {canCreateContent() && (
-          <button
-            onClick={() => setShowNewTopicForm(!showNewTopicForm)}
-            className="mt-4 md:mt-0 btn btn-primary"
-          >
-            {showNewTopicForm ? 'Cancel' : 'New Topic'}
-          </button>
-        )}
-      </div>
-      
-      {showNewTopicForm && (
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Create New Topic</h2>
-          
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="title" className="form-label">Title</label>
-              <input
-                id="title"
-                name="title"
-                type="text"
-                value={formData.title}
-                onChange={handleChange}
-                className="form-input"
-                required
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="category" className="form-label">Category</label>
+        {/* Modern pill-shaped filters */}
+        <div className="flex flex-wrap gap-2">
+          <div className="relative">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-indigo-100 bg-white shadow-sm">
+              <FiFilter className="text-indigo-600" />
               <select
-                id="category"
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-                className="form-input"
-                required
+                className="bg-transparent outline-none text-sm"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
               >
-                <option value="general">General Discussion</option>
-                <option value="announcements">Announcements</option>
-                <option value="jobs">Job Opportunities</option>
-                <option value="events">Events</option>
-                <option value="networking">Networking</option>
-                <option value="advice">Career Advice</option>
+                {SORTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </div>
-            
-            <div>
-              <label htmlFor="content" className="form-label">Content</label>
-              <textarea
-                id="content"
-                name="content"
-                value={formData.content}
-                onChange={handleChange}
-                rows={6}
-                className="form-input"
-                required
-              />
+          </div>
+          <div className="relative">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-indigo-100 bg-white shadow-sm">
+              <span className="text-indigo-600 text-sm">Category</span>
+              <select
+                className="bg-transparent outline-none text-sm"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-            
-            <div className="flex justify-end">
-              <button type="submit" className="btn btn-primary">
-                Create Topic
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-      
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="p-4 bg-gray-50 border-b border-gray-200">
-          <div className="grid grid-cols-12 gap-4 text-sm font-medium text-gray-500">
-            <div className="col-span-6 sm:col-span-7">Topic</div>
-            <div className="col-span-2 text-center hidden sm:block">Replies</div>
-            <div className="col-span-2 text-center hidden sm:block">Views</div>
-            <div className="col-span-6 sm:col-span-1 text-right">Created</div>
           </div>
         </div>
-        
-        <div className="divide-y divide-gray-200">
-          {topics.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              <p>No topics found</p>
-              {canCreateContent() && (
-                <button
-                  onClick={() => setShowNewTopicForm(true)}
-                  className="mt-4 btn btn-outline"
-                >
-                  Create the first topic
-                </button>
-              )}
-            </div>
-          ) : (
-            topics.map((topic) => (
-              <div key={topic._id} className="p-4 hover:bg-gray-50">
-                <div className="grid grid-cols-12 gap-4">
-                  <div className="col-span-6 sm:col-span-7">
-                    <Link to={`/forum/${topic._id}`} className="block">
-                      <h3 className="text-lg font-semibold text-gray-900 hover:text-primary-600">
-                        {topic.title}
-                      </h3>
-                      <p className="mt-1 text-sm text-gray-600 line-clamp-1">
-                        {topic.content}
-                      </p>
-                      <div className="mt-2 flex items-center">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800 capitalize">
-                          {topic.category}
-                        </span>
-                        <span className="ml-2 text-xs text-gray-500 flex items-center">
-                          by {topic.author.name}
-                        </span>
-                      </div>
-                    </Link>
-                  </div>
-                  <div className="col-span-2 text-center hidden sm:flex sm:items-center sm:justify-center">
-                    <span className="text-gray-900 font-medium">{topic.repliesCount}</span>
-                  </div>
-                  <div className="col-span-2 text-center hidden sm:flex sm:items-center sm:justify-center">
-                    <span className="text-gray-900 font-medium">{topic.viewsCount}</span>
-                  </div>
-                  <div className="col-span-6 sm:col-span-1 text-right flex items-center justify-end">
-                    <span className="text-xs text-gray-500">
-                      {new Date(topic.createdAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
       </div>
+
+      {/* Content */}
+      <AnimatePresence mode="wait">
+        {loading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="text-gray-500 p-6"
+          >
+            Loading posts...
+          </motion.div>
+        ) : posts.length === 0 ? (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="flex flex-col items-center justify-center bg-white rounded-2xl border border-indigo-50 shadow p-8 text-center"
+          >
+            <div className="text-6xl mb-2">🤔</div>
+            <div className="text-xl font-semibold text-gray-900">No posts yet</div>
+            <div className="text-gray-600 mt-1">Start the conversation by creating the first post 🚀</div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="list"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6"
+          >
+            {posts.map((p, idx) => (
+              <motion.div
+                key={p._id}
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.03 }}
+              >
+                <PostCard post={p} onChanged={fetchPosts} />
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Leaderboard */}
+      <div className="mt-10">
+        <Leaderboard />
+      </div>
+
+      {/* Floating Create Post Button */}
+      <button
+        onClick={() => setShowCreate(true)}
+        className="fixed z-50 bottom-6 right-6 h-14 w-14 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition"
+        aria-label="New Post"
+      >
+        <FiPlus className="text-2xl" />
+      </button>
+
+      {/* Create Post Modal */}
+      {showCreate && <CreatePostModal onClose={() => setShowCreate(false)} onCreated={fetchPosts} />}
     </div>
   );
 };
