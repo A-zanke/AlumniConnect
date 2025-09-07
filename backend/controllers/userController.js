@@ -84,13 +84,14 @@ exports.getFollowing = async (req, res) => {
   try {
     const user = await User.findById(req.params.userId)
       .select('following')
-      .populate('following', 'name username avatarUrl role bio');
+      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio');
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ data: user.following || [] });
+    const following = Array.isArray(user.following) ? user.following : [];
+    res.json({ data: following });
   } catch (error) {
     console.error('Error fetching following:', error);
     res.status(500).json({ message: 'Error fetching following' });
@@ -169,34 +170,44 @@ exports.followUser = async (req, res) => {
 // Get mutual connections for current user (all mutual connections across their network)
 exports.getMyMutualConnections = async (req, res) => {
   try {
-    const currentUserId = req.user._id;
+    const currentUserId = req.user._id?.toString();
     const currentUser = await User.findById(currentUserId).select('following connections');
 
     if (!currentUser) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Get all users that current user is following
-    const followingUsers = await User.find({ _id: { $in: currentUser.following } })
+    const myFollowing = Array.isArray(currentUser.following) ? currentUser.following.map(id => id.toString()) : [];
+    const myConnections = Array.isArray(currentUser.connections) ? currentUser.connections.map(id => id.toString()) : [];
+
+    if (myFollowing.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    // Fetch the lists of who myFollowing users follow
+    const followingUsers = await User.find({ _id: { $in: myFollowing } })
       .select('following')
-      .populate('following', 'name username avatarUrl role bio createdAt');
+      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio createdAt');
 
-    // Find mutual connections - users that are followed by people the current user follows
-    const mutualConnections = [];
-    const processedIds = new Set();
-
-    followingUsers.forEach(user => {
-      user.following.forEach(followedUser => {
-        if (followedUser._id.toString() !== currentUserId && 
-            !currentUser.following.includes(followedUser._id) &&
-            !currentUser.connections.includes(followedUser._id) &&
-            !processedIds.has(followedUser._id.toString())) {
-          mutualConnections.push(followedUser);
-          processedIds.add(followedUser._id.toString());
+    const mutualMap = new Map();
+    followingUsers.forEach(fu => {
+      const fuFollowing = Array.isArray(fu.following) ? fu.following : [];
+      fuFollowing.forEach(followedUser => {
+        const followedId = followedUser?._id?.toString();
+        if (!followedId) return;
+        // Exclude myself, already following, already connections
+        if (
+          followedId !== currentUserId &&
+          !myFollowing.includes(followedId) &&
+          !myConnections.includes(followedId) &&
+          !mutualMap.has(followedId)
+        ) {
+          mutualMap.set(followedId, followedUser);
         }
       });
     });
 
+    const mutualConnections = Array.from(mutualMap.values());
     res.json({ data: mutualConnections });
   } catch (error) {
     console.error('Error fetching mutual connections:', error);

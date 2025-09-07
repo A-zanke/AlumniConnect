@@ -306,7 +306,7 @@ exports.getConnections = async (req, res) => {
       await me.save();
     }
 
-    const populatedConnections = await User.populate(me, { path: 'connections', select: 'name username avatarUrl' });
+    const populatedConnections = await User.populate(me, { path: 'connections', select: 'name username avatarUrl email department year industry current_job_title' });
     res.json(populatedConnections.connections || []);
   } catch (error) {
     console.error('Get connections error:', error);
