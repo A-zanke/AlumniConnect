@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Connection = require('../models/Connection');
 
 // Send a connection request
 exports.sendRequest = async (req, res) => {
@@ -44,6 +45,9 @@ exports.sendRequest = async (req, res) => {
 
     receiver.connectionRequests.push(sender._id);
     await receiver.save();
+
+    // Record request in Connection history (pending)
+    await Connection.create({ requesterId: sender._id, recipientId: receiver._id, status: 'pending' });
 
     // Create notification for the receiver
     await Notification.create({
@@ -105,6 +109,12 @@ exports.acceptRequest = async (req, res) => {
     await me.save();
     await sender.save();
 
+    // Update history status to accepted
+    await Connection.findOneAndUpdate(
+      { requesterId: sender._id, recipientId: me._id, status: 'pending' },
+      { status: 'accepted' }
+    );
+
     // Don't mark the original connection request notification as read
     // Let the frontend handle this when the user clicks on it
 
@@ -145,6 +155,12 @@ exports.rejectRequest = async (req, res) => {
     );
 
     await me.save();
+
+    // Update history status to rejected
+    await Connection.findOneAndUpdate(
+      { requesterId: userId, recipientId: me._id, status: 'pending' },
+      { status: 'rejected' }
+    );
 
     // Don't mark the original connection request notification as read
     // Let the frontend handle this when the user clicks on it
@@ -313,8 +329,14 @@ exports.getPendingRequests = async (req, res) => {
       await me.save();
     }
 
-    const populatedRequests = await User.populate(me, { path: 'connectionRequests', select: 'name username avatarUrl' });
-    res.json(populatedRequests.connectionRequests || []);
+    const populatedRequests = await User.populate(me, { path: 'connectionRequests', select: 'name username avatarUrl role' });
+    // Return normalized objects with requester info and ids for UI
+    const response = (populatedRequests.connectionRequests || []).map((u) => ({
+      _id: u._id,
+      requester: u,
+      status: 'pending'
+    }));
+    res.json(response);
   } catch (error) {
     console.error('Get pending requests error:', error);
     res.status(500).json({ message: error.message });
