@@ -5,6 +5,7 @@ import Avatar from './ui/Avatar';
 import { useAuth } from '../context/AuthContext';
 import { connectionAPI } from './utils/api';
 import axios from 'axios';
+import { useNotifications } from '../context/NotificationContext';
 
 const NotificationBell = () => {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ const NotificationBell = () => {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const ref = useRef(null);
+  const { fetchNotifications } = useNotifications();
 
   useEffect(() => {
     const load = async () => {
@@ -68,7 +70,11 @@ const NotificationBell = () => {
 
   const accept = async (userId) => {
     try {
-      await connectionAPI.acceptRequest(userId);
+      // Resolve pending connection by id (new API contract)
+      const reqs = await connectionAPI.getRequests();
+      const pending = (reqs.data?.data || []).find(r => r.status === 'pending' && r.requesterId?._id === userId);
+      if (!pending) return;
+      await connectionAPI.acceptById(pending._id);
       // Mark the notification as read but keep it in history
       const notification = items.find(n => n.sender._id === userId);
       if (notification && !notification.read) {
@@ -77,13 +83,14 @@ const NotificationBell = () => {
             withCredentials: true
           });
           // Update local state to mark as read but keep in list
-          setItems(prev => prev.map(n => 
-            n.sender._id === userId ? { ...n, read: true } : n
-          ));
+          setItems(prev => prev.map(n => n.sender._id === userId ? { ...n, read: true } : n));
         } catch (error) {
           console.error('Error marking notification as read:', error);
         }
       }
+      // Refresh global notifications and trigger network refresh to update lists
+      await fetchNotifications();
+      window.dispatchEvent(new CustomEvent('network:refresh'));
     } catch (error) {
       console.error('Error accepting connection request:', error);
     }
@@ -91,7 +98,10 @@ const NotificationBell = () => {
 
   const reject = async (userId) => {
     try {
-      await connectionAPI.rejectRequest(userId);
+      const reqs = await connectionAPI.getRequests();
+      const pending = (reqs.data?.data || []).find(r => r.status === 'pending' && r.requesterId?._id === userId);
+      if (!pending) return;
+      await connectionAPI.rejectById(pending._id);
       // Mark the notification as read but keep it in history
       const notification = items.find(n => n.sender._id === userId);
       if (notification && !notification.read) {
@@ -100,13 +110,13 @@ const NotificationBell = () => {
             withCredentials: true
           });
           // Update local state to mark as read but keep in list
-          setItems(prev => prev.map(n => 
-            n.sender._id === userId ? { ...n, read: true } : n
-          ));
+          setItems(prev => prev.map(n => n.sender._id === userId ? { ...n, read: true } : n));
         } catch (error) {
           console.error('Error marking notification as read:', error);
         }
       }
+      await fetchNotifications();
+      window.dispatchEvent(new CustomEvent('network:refresh'));
     } catch (error) {
       console.error('Error rejecting connection request:', error);
     }
@@ -164,17 +174,17 @@ const NotificationBell = () => {
                       <div className="text-xs text-gray-400 mt-1">
                         {new Date(n.createdAt).toLocaleString()}
                       </div>
-                      {n.type === 'connection_request' && (
+                      {n.type === 'connection_request' && !n.read && (
                         <div className="mt-3 flex gap-2">
                           <button 
                             className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg text-sm font-medium hover:from-green-600 hover:to-green-700 transform hover:scale-105 transition-all duration-200 shadow-md" 
-                            onClick={() => accept(n.sender._id)}
+                            onClick={(e) => { e.stopPropagation(); accept(n.sender._id); }}
                           >
                             ✓ Accept
                           </button>
                           <button 
                             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transform hover:scale-105 transition-all duration-200" 
-                            onClick={() => reject(n.sender._id)}
+                            onClick={(e) => { e.stopPropagation(); reject(n.sender._id); }}
                           >
                             ✗ Decline
                           </button>

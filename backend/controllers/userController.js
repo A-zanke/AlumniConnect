@@ -237,6 +237,37 @@ async function getMyMutualConnections(req, res) {
   }
 }
 
+// Mutual connections between current user and a specific userId
+async function getMutualConnections(req, res) {
+  try {
+    const currentUserId = req.user._id?.toString();
+    const otherUserId = req.params.userId;
+
+    if (!otherUserId) {
+      return res.status(400).json({ message: 'userId is required' });
+    }
+
+    const [me, other] = await Promise.all([
+      User.findById(currentUserId).select('connections'),
+      User.findById(otherUserId).select('connections')
+    ]);
+
+    if (!me || !other) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const mySet = new Set((me.connections || []).map(id => id.toString()));
+    const mutualIds = (other.connections || []).filter(id => mySet.has(id.toString()));
+    const mutualUsers = await User.find({ _id: { $in: mutualIds } })
+      .select('name username avatarUrl role email department year industry current_job_title bio createdAt');
+
+    res.json({ data: mutualUsers });
+  } catch (error) {
+    console.error('Error fetching mutual connections with user:', error);
+    res.status(500).json({ message: 'Error fetching mutual connections' });
+  }
+}
+
 // Suggested connections (kept as-is; used by AI tab)
 async function getSuggestedConnections(req, res) {
   try {
