@@ -6,9 +6,9 @@ import { followAPI, userAPI } from '../utils/api';
 import { useAuth } from '../../context/AuthContext';
 
 const roleGradientMap = {
-  student: 'from-indigo-600 via-purple-600 to-cyan-600',
-  teacher: 'from-purple-700 via-pink-600 to-rose-500',
-  alumni: 'from-emerald-600 via-teal-600 to-cyan-600'
+  student: 'from-slate-900 via-slate-700 to-slate-500',
+  teacher: 'from-stone-900 via-stone-700 to-stone-500',
+  alumni: 'from-zinc-900 via-zinc-700 to-zinc-500'
 };
 
 const ProfileHeader = ({ user, coverGradient = undefined }) => {
@@ -17,6 +17,8 @@ const ProfileHeader = ({ user, coverGradient = undefined }) => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(Array.isArray(user.followers) ? user.followers.length : 0);
   const [followingCount, setFollowingCount] = useState(Array.isArray(user.following) ? user.following.length : 0);
+  const [showFollowing, setShowFollowing] = useState(false);
+  const [followingList, setFollowingList] = useState([]);
 
   const isOwn = currentUser?._id === user?._id;
 
@@ -29,6 +31,16 @@ const ProfileHeader = ({ user, coverGradient = undefined }) => {
     setFollowersCount(Array.isArray(user.followers) ? user.followers.length : 0);
     setFollowingCount(Array.isArray(user.following) ? user.following.length : 0);
   }, [currentUser, user]);
+
+  const loadFollowing = async () => {
+    try {
+      const res = await followAPI.getFollowing(user._id);
+      const data = res?.data?.data || [];
+      setFollowingList(Array.isArray(data) ? data : []);
+    } catch (_) {
+      setFollowingList([]);
+    }
+  };
 
   const handleFollowToggle = async () => {
     if (!user?._id || isOwn) return;
@@ -53,7 +65,7 @@ const ProfileHeader = ({ user, coverGradient = undefined }) => {
   }, [user]);
 
   return (
-    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden mb-6 border border-indigo-100 dark:bg-gray-900 dark:border-gray-800">
+    <div className="bg-white rounded-3xl shadow-2xl overflow-hidden mb-6 border border-stone-200 dark:bg-gray-900 dark:border-gray-800">
       <div className="relative">
         <div className={`h-48 bg-gradient-to-r ${coverGradient || roleGradientMap[(user?.role || '').toLowerCase()] || roleGradientMap.student}`}></div>
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/40 to-transparent p-6">
@@ -89,13 +101,13 @@ const ProfileHeader = ({ user, coverGradient = undefined }) => {
                 <>
                   <button
                     onClick={() => navigate(`/messages?user=${user?._id}`)}
-                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                    className="flex items-center px-4 py-2 rounded-xl transition-colors bg-white/20 text-white hover:bg-white/30 border border-white/30"
                   >
                     <FiMessageCircle className="mr-2" /> Message
                   </button>
                   <button
                     onClick={handleFollowToggle}
-                    className={`flex items-center px-4 py-2 rounded-xl transition-colors ${isFollowing ? 'bg-gray-200 text-gray-900 hover:bg-gray-300' : 'bg-white/20 text-white hover:bg-white/30 border border-white/30'}`}
+                    className={`flex items-center px-4 py-2 rounded-xl transition-colors ${isFollowing ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:opacity-90'}`}
                   >
                     {isFollowing ? <FiUserCheck className="mr-2" /> : <FiUserPlus className="mr-2" />} {isFollowing ? 'Following' : 'Follow'}
                   </button>
@@ -116,7 +128,12 @@ const ProfileHeader = ({ user, coverGradient = undefined }) => {
         )}
         <div className="flex items-center gap-4 text-sm">
           <span className="text-gray-700 dark:text-gray-200"><strong>{followersCount}</strong> Followers</span>
-          <span className="text-gray-700 dark:text-gray-200"><strong>{followingCount}</strong> Following</span>
+          <button
+            className="text-gray-700 dark:text-gray-200 hover:underline"
+            onClick={async () => { await loadFollowing(); setShowFollowing(true); }}
+          >
+            <strong>{followingCount}</strong> Following
+          </button>
         </div>
       </div>
 
@@ -137,6 +154,45 @@ const ProfileHeader = ({ user, coverGradient = undefined }) => {
               <FiGlobe className="mr-2" /> Website
             </a>
           ) : null}
+        </div>
+      )}
+
+      {showFollowing && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <h4 className="font-semibold">Following</h4>
+              <button className="text-sm px-3 py-1 rounded-lg border" onClick={() => setShowFollowing(false)}>Close</button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {followingList.length === 0 ? (
+                <div className="p-4 text-sm text-gray-600 dark:text-gray-300">No following to show.</div>
+              ) : (
+                <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+                  {followingList.map((u) => (
+                    <li key={u._id} className="p-3 flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
+                        {u?.name?.[0]?.toUpperCase?.()}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium">{u.name}</div>
+                        <div className="text-xs text-gray-500">@{u.username}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowFollowing(false);
+                          navigate(`/profile/${u.username || u._id}`);
+                        }}
+                        className="text-indigo-600 hover:underline text-sm"
+                      >
+                        View
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

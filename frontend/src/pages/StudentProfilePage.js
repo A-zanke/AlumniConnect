@@ -2,10 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ProfileHeader from '../components/profile/ProfileHeader';
 import ProfileTabs from '../components/profile/ProfileTabs';
-import SkillsBadges from '../components/profile/SkillsBadges';
 import ConnectionsPreview from '../components/profile/ConnectionsPreview';
-import PostsFeed from '../components/profile/PostsFeed';
 import { userAPI } from '../components/utils/api';
+import TagsInput from '../components/ui/TagsInput';
 
 const StudentProfilePage = () => {
   const { userId, username } = useParams();
@@ -71,7 +70,7 @@ const StudentProfilePage = () => {
       <div className="lg:col-span-2 space-y-6">
         {(user.bio || editing) && (
           <div className="rounded-2xl shadow bg-white dark:bg-gray-900">
-            <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
+            <div className="px-4 py-2 bg-gradient-to-r from-slate-800 to-slate-600 text-white rounded-t-2xl">
               <h3 className="text-lg font-semibold">About</h3>
             </div>
             <div className="p-6">
@@ -80,21 +79,30 @@ const StudentProfilePage = () => {
               ) : (
                 <p className="text-gray-700 dark:text-gray-200 leading-relaxed">{user.bio}</p>
               )}
+              <div className="mt-4">
+                {editing ? (
+                  <TagsInput label="Skills" value={draft.skills || []} onChange={(vals)=>setDraft(d=>({ ...d, skills: vals }))} chipColor="indigo" />
+                ) : (
+                  Array.isArray(user.skills) && user.skills.length > 0 && (
+                    <Chips label="Skills" items={user.skills} />
+                  )
+                )}
+              </div>
             </div>
           </div>
         )}
 
         <div className="rounded-2xl shadow bg-white dark:bg-gray-900">
-          <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
+          <div className="px-4 py-2 bg-gradient-to-r from-slate-800 to-slate-600 text-white rounded-t-2xl">
             <h3 className="text-lg font-semibold">Academic & Goals</h3>
           </div>
           <div className="p-6 space-y-4">
             {editing ? (
               <>
                 <LabeledInput label="Specialization" value={draft.specialization} onChange={(v)=>setDraft(d=>({ ...d, specialization: v }))} />
-                <LabeledInput label="Projects (comma separated)" value={(draft.projects||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, projects: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
-                <LabeledInput label="Desired Roles (comma separated)" value={(draft.desired_roles||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, desired_roles: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
-                <LabeledInput label="Preferred Industries (comma separated)" value={(draft.preferred_industries||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, preferred_industries: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
+                <TagsInput label="Projects" value={draft.projects || []} onChange={(vals)=>setDraft(d=>({ ...d, projects: vals }))} chipColor="blue" />
+                <TagsInput label="Desired Roles" value={draft.desired_roles || []} onChange={(vals)=>setDraft(d=>({ ...d, desired_roles: vals }))} chipColor="green" />
+                <TagsInput label="Preferred Industries" value={draft.preferred_industries || []} onChange={(vals)=>setDraft(d=>({ ...d, preferred_industries: vals }))} chipColor="purple" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <SelectInput label="Higher Studies" value={draft.higher_studies_interest} onChange={(v)=>setDraft(d=>({ ...d, higher_studies_interest: v }))} options={["Yes","No","Maybe"]} />
                   <SelectInput label="Entrepreneurship" value={draft.entrepreneurship_interest} onChange={(v)=>setDraft(d=>({ ...d, entrepreneurship_interest: v }))} options={["Yes","No","Maybe"]} />
@@ -116,15 +124,15 @@ const StudentProfilePage = () => {
         </div>
 
         <div className="rounded-2xl shadow bg-white dark:bg-gray-900">
-          <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
+          <div className="px-4 py-2 bg-gradient-to-r from-slate-800 to-slate-600 text-white rounded-t-2xl">
             <h3 className="text-lg font-semibold">Experience</h3>
           </div>
           <div className="p-6 space-y-4">
             {editing ? (
               <>
-                <LabeledInput label="Internships (comma separated)" value={(draft.internships||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, internships: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
-                <LabeledInput label="Hackathons (comma separated)" value={(draft.hackathons||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, hackathons: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
-                <LabeledInput label="Research Papers (comma separated)" value={(draft.research_papers||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, research_papers: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
+                <TagsInput label="Internships" value={draft.internships || []} onChange={(vals)=>setDraft(d=>({ ...d, internships: vals }))} chipColor="indigo" />
+                <TagsInput label="Hackathons" value={draft.hackathons || []} onChange={(vals)=>setDraft(d=>({ ...d, hackathons: vals }))} chipColor="blue" />
+                <TagsInput label="Research Papers" value={draft.research_papers || []} onChange={(vals)=>setDraft(d=>({ ...d, research_papers: vals }))} chipColor="purple" />
               </>
             ) : (
               <>
@@ -138,12 +146,12 @@ const StudentProfilePage = () => {
 
         {(user.mentorship_needs?.length > 0 || editing) && (
           <div className="rounded-2xl shadow bg-white dark:bg-gray-900">
-            <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
+            <div className="px-4 py-2 bg-gradient-to-r from-slate-800 to-slate-600 text-white rounded-t-2xl">
               <h3 className="text-lg font-semibold">Mentorship Needs</h3>
             </div>
             <div className="p-6">
               {editing ? (
-                <LabeledInput label="Mentorship Needs (comma separated)" value={(draft.mentorship_needs||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, mentorship_needs: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
+                <TagsInput label="Mentorship Needs" value={draft.mentorship_needs || []} onChange={(vals)=>setDraft(d=>({ ...d, mentorship_needs: vals }))} chipColor="green" />
               ) : (
                 <Chips items={user.mentorship_needs} />
               )}
@@ -152,69 +160,22 @@ const StudentProfilePage = () => {
         )}
       </div>
       <div className="space-y-6">
-        <SkillsBadges skills={user.skills} />
-        <ConnectionsPreview userId={user._id} />
-      </div>
-    </div>
-  );
-
-  const Skills = (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2 space-y-6">
-        <SkillsBadges skills={user.skills} />
-      </div>
-      <div className="space-y-6">
-        <ConnectionsPreview userId={user._id} />
-      </div>
-    </div>
-  );
-
-  const Experience = (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2 space-y-6">
-        <div className="rounded-2xl shadow bg-white dark:bg-gray-900">
-          <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-            <h3 className="text-lg font-semibold">Experience</h3>
-          </div>
-          <div className="p-6 space-y-4">
-            {user.projects?.length > 0 && <Chips label="Projects" items={user.projects} />}
-            {user.internships?.length > 0 && <Chips label="Internships" items={user.internships} />}
-            {user.hackathons?.length > 0 && <Chips label="Hackathons" items={user.hackathons} />}
-            {user.research_papers?.length > 0 && <Chips label="Research Papers" items={user.research_papers} />}
-          </div>
-        </div>
-      </div>
-      <div className="space-y-6">
-        <ConnectionsPreview userId={user._id} />
-      </div>
-    </div>
-  );
-
-  const Posts = (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2">
-        <PostsFeed userId={user._id} />
-      </div>
-      <div className="space-y-6">
         <ConnectionsPreview userId={user._id} />
       </div>
     </div>
   );
 
   const tabs = [
-    { id: 'about', label: 'About', content: About },
-    { id: 'skills', label: 'Skills', content: Skills },
-    { id: 'experience', label: 'Experience', content: Experience },
-    { id: 'posts', label: 'Posts', content: Posts }
+    { id: 'about', label: 'About', content: About }
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-stone-50 via-amber-50 to-sky-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 py-8">
       <div className="container">
         <ProfileHeader user={{ ...user }} />
         <div className="flex justify-end mb-4 gap-2">
           {!editing ? (
-            <button onClick={startEdit} className="px-4 py-2 rounded-xl bg-indigo-600 text-white">Edit Profile</button>
+            <button onClick={startEdit} className="px-4 py-2 rounded-xl bg-slate-800 text-white">Edit Profile</button>
           ) : (
             <>
               <button onClick={()=>setEditing(false)} className="px-4 py-2 rounded-xl border">Cancel</button>

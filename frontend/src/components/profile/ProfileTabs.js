@@ -5,8 +5,8 @@ const TabButton = ({ id, activeId, onClick, children }) => (
     onClick={() => onClick(id)}
     className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
       activeId === id
-        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200'
-        : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+        ? 'bg-stone-800 text-white shadow'
+        : 'text-gray-700 hover:bg-stone-100 dark:text-gray-300 dark:hover:bg-gray-800'
     }`}
   >
     {children}
@@ -15,7 +15,7 @@ const TabButton = ({ id, activeId, onClick, children }) => (
 
 const ProfileTabs = ({ tabs, activeId, onChange }) => {
   return (
-    <div className="bg-white/60 dark:bg-gray-900/60 rounded-3xl shadow-xl p-2 md:p-4 border border-indigo-100 dark:border-gray-800">
+    <div className="bg-white/80 dark:bg-gray-900/60 rounded-3xl shadow-xl p-2 md:p-4 border border-stone-200 dark:border-gray-800">
       <div className="flex flex-wrap gap-2 mb-4">
         {tabs.map(t => (
           <TabButton key={t.id} id={t.id} activeId={activeId} onClick={onChange}>{t.label}</TabButton>

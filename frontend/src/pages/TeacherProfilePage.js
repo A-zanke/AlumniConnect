@@ -6,6 +6,7 @@ import SkillsBadges from '../components/profile/SkillsBadges';
 import ConnectionsPreview from '../components/profile/ConnectionsPreview';
 import PostsFeed from '../components/profile/PostsFeed';
 import { userAPI } from '../components/utils/api';
+import TagsInput from '../components/ui/TagsInput';
 
 const TeacherProfilePage = () => {
   const { userId, username } = useParams();
@@ -87,7 +88,7 @@ const TeacherProfilePage = () => {
         </Section>
         <Section title="Mentorship">
           {editing ? (
-            <LabeledInput label="Mentorship Interests (comma separated)" value={(draft.mentorship_interests||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, mentorship_interests: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
+            <TagsInput label="Mentorship Interests" value={draft.mentorship_interests || []} onChange={(vals)=>setDraft(d=>({ ...d, mentorship_interests: vals }))} chipColor="green" />
           ) : (
             <Chips items={user.mentorship_interests || ['Career Guidance', 'Technical Mentoring', 'Research Collaboration']} />
           )}
@@ -145,12 +146,12 @@ const TeacherProfilePage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-stone-50 via-amber-50 to-sky-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 py-8">
       <div className="container">
         <ProfileHeader user={{ ...user }} />
         <div className="flex justify-end mb-4 gap-2">
           {!editing ? (
-            <button onClick={startEdit} className="px-4 py-2 rounded-xl bg-purple-600 text-white">Edit Profile</button>
+            <button onClick={startEdit} className="px-4 py-2 rounded-xl bg-slate-800 text-white">Edit Profile</button>
           ) : (
             <>
               <button onClick={()=>setEditing(false)} className="px-4 py-2 rounded-xl border">Cancel</button>

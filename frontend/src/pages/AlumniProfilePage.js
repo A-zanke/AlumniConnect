@@ -5,6 +5,7 @@ import ProfileTabs from '../components/profile/ProfileTabs';
 import ConnectionsPreview from '../components/profile/ConnectionsPreview';
 import PostsFeed from '../components/profile/PostsFeed';
 import { userAPI } from '../components/utils/api';
+import TagsInput from '../components/ui/TagsInput';
 
 const AlumniProfilePage = () => {
   const { userId, username } = useParams();
@@ -68,7 +69,7 @@ const AlumniProfilePage = () => {
           )}
           <div className="mt-2">
             {editing ? (
-              <LabeledInput label="Skills (comma separated)" value={(draft.skills||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, skills: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
+              <TagsInput label="Skills" value={draft.skills || []} onChange={(vals)=>setDraft(d=>({ ...d, skills: vals }))} chipColor="purple" />
             ) : (
               Array.isArray(user.skills) && user.skills.length > 0 && <Chips label="Skills" items={user.skills} color="purple" />
             )}
@@ -96,9 +97,9 @@ const AlumniProfilePage = () => {
         <Section title="Mentorship & Achievements">
           {editing ? (
             <>
-              <LabeledInput label="Mentorship Interests (comma separated)" value={(draft.mentorship_interests||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, mentorship_interests: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
-              <LabeledInput label="Certifications (comma separated)" value={(draft.certifications||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, certifications: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
-              <LabeledInput label="Publications (comma separated)" value={(draft.publications||[]).join(', ')} onChange={(v)=>setDraft(d=>({ ...d, publications: v.split(',').map(x=>x.trim()).filter(Boolean) }))} />
+              <TagsInput label="Mentorship Interests" value={draft.mentorship_interests || []} onChange={(vals)=>setDraft(d=>({ ...d, mentorship_interests: vals }))} chipColor="green" />
+              <TagsInput label="Certifications" value={draft.certifications || []} onChange={(vals)=>setDraft(d=>({ ...d, certifications: vals }))} chipColor="yellow" />
+              <TagsInput label="Publications" value={draft.publications || []} onChange={(vals)=>setDraft(d=>({ ...d, publications: vals }))} chipColor="indigo" />
             </>
           ) : (
             <>
@@ -167,12 +168,12 @@ const AlumniProfilePage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-stone-50 via-amber-50 to-sky-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 py-8">
       <div className="container">
         <ProfileHeader user={{ ...user }} />
         <div className="flex justify-end mb-4 gap-2">
           {!editing ? (
-            <button onClick={startEdit} className="px-4 py-2 rounded-xl bg-emerald-600 text-white">Edit Profile</button>
+            <button onClick={startEdit} className="px-4 py-2 rounded-xl bg-slate-800 text-white">Edit Profile</button>
           ) : (
             <>
               <button onClick={()=>setEditing(false)} className="px-4 py-2 rounded-xl border">Cancel</button>
