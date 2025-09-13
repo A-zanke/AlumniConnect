@@ -35,11 +35,16 @@ const AlumniProfilePage = () => {
   const About = (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
-        {user.bio && (
-          <Section title="About">
-            <p className="text-gray-700 dark:text-gray-200 leading-relaxed">{user.bio}</p>
-          </Section>
-        )}
+        <Section title="About">
+          {user.bio && (
+            <p className="text-gray-700 dark:text-gray-200 leading-relaxed mb-4">{user.bio}</p>
+          )}
+          {Array.isArray(user.skills) && user.skills.length > 0 && (
+            <div className="mt-2">
+              <Chips label="Skills" items={user.skills} color="purple" />
+            </div>
+          )}
+        </Section>
 
         <Section title="Career">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

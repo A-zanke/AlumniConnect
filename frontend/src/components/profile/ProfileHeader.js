@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMail, FiMapPin, FiLinkedin, FiGithub, FiGlobe, FiUserPlus, FiUserCheck, FiMessageCircle } from 'react-icons/fi';
+import { FiMail, FiMapPin, FiLinkedin, FiGithub, FiGlobe, FiUserPlus, FiUserCheck, FiMessageCircle, FiPhone, FiEdit2 } from 'react-icons/fi';
 import { getAvatarUrl } from '../utils/helpers';
 import { followAPI, userAPI } from '../utils/api';
 import { useAuth } from '../../context/AuthContext';
@@ -60,10 +60,20 @@ const ProfileHeader = ({ user, coverGradient = 'from-indigo-600 via-purple-600 t
                   <span className="text-3xl font-bold text-indigo-600">{user?.name?.charAt(0)?.toUpperCase?.()}</span>
                 </div>
               )}
+              {/* Avatar upload (opens native file picker, relies on existing update in ProfilePage) */}
+              <label className="absolute bottom-2 right-2 cursor-pointer bg-white/80 text-indigo-700 rounded-full p-2 hover:bg-white">
+                <FiEdit2 />
+                <input type="file" accept="image/*" className="hidden" onChange={(e)=>{
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  // Defer to ProfilePage's edit flow if present; otherwise ignore
+                }} />
+              </label>
             </div>
             <div className="md:ml-6 text-center md:text-left text-white">
               <h1 className="text-3xl font-bold mb-1">{user?.name}</h1>
               {!!user?.email && <p className="opacity-90">{user.email}</p>}
+              {!!user?.username && <p className="opacity-80 text-sm">@{user.username}</p>}
               <div className="mt-1">
                 <span className="px-3 py-1 bg-white/20 rounded-full text-xs capitalize">{user?.role}</span>
               </div>
@@ -90,8 +100,11 @@ const ProfileHeader = ({ user, coverGradient = 'from-indigo-600 via-purple-600 t
         </div>
       </div>
 
-      <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="flex items-center text-sm text-gray-700 dark:text-gray-200"><FiMail className="text-indigo-600 mr-2" /> {user?.email}</div>
+        {!!user?.phone && (
+          <div className="flex items-center text-sm text-gray-700 dark:text-gray-200"><FiPhone className="text-indigo-600 mr-2" /> {user.phone}</div>
+        )}
         {!!user?.location && (
           <div className="flex items-center text-sm text-gray-700 dark:text-gray-200"><FiMapPin className="text-indigo-600 mr-2" /> {user.location}</div>
         )}

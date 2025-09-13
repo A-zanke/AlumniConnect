@@ -81,9 +81,8 @@ export const postsAPI = {
     return apiClient.post('/api/posts', postData);
   },
   deletePost: (id) => apiClient.delete(`/api/posts/${id}`),
-  likePost: (id) => apiClient.put(`/api/posts/${id}/like`),
-  unlikePost: (id) => apiClient.put(`/api/posts/${id}/unlike`),
-  commentOnPost: (id, text) => apiClient.post(`/api/posts/${id}/comment`, { text }),
+  likePost: (id) => apiClient.post(`/api/posts/${id}/like`),
+  commentOnPost: (id, content) => apiClient.post(`/api/posts/${id}/comment`, { content }),
   deleteComment: (postId, commentId) => apiClient.delete(`/api/posts/${postId}/comment/${commentId}`)
 };
 

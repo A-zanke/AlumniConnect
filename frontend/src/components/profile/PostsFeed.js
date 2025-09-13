@@ -8,6 +8,7 @@ const PostsFeed = ({ userId }) => {
   const { user, canCreateContent } = useAuth();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [commentDrafts, setCommentDrafts] = useState({});
 
   const isOwn = user?._id === userId;
 
@@ -37,6 +38,25 @@ const PostsFeed = ({ userId }) => {
     } catch (_) {}
   };
 
+  const addComment = async (postId) => {
+    const content = (commentDrafts[postId] || '').trim();
+    if (!content) return;
+    try {
+      await postsAPI.commentOnPost(postId, content);
+      setCommentDrafts(prev => ({ ...prev, [postId]: '' }));
+      // Optimistic update: increment comments length if available
+      setPosts(prev => prev.map(p => p._id === postId ? { ...p, comments: Array.isArray(p.comments) ? [...p.comments, { _tmp: true }] : [{ _tmp: true }] } : p));
+    } catch (_) {}
+  };
+
+  const share = async (postId) => {
+    try {
+      const url = window.location.href;
+      await navigator.clipboard.writeText(url);
+      // Optional: toast success if toast available
+    } catch (_) {}
+  };
+
   return (
     <div className="space-y-4">
       {(isOwn || canCreateContent()) && (
@@ -53,9 +73,18 @@ const PostsFeed = ({ userId }) => {
               <div className="text-sm text-slate-500 dark:text-slate-400">{new Date(post.createdAt).toLocaleString()}</div>
               <div className="mt-3 whitespace-pre-wrap">{post.content}</div>
               <div className="flex gap-6 mt-4 text-slate-500 dark:text-slate-400">
-                <button onClick={() => like(post._id)} className="hover:text-indigo-600"> <FaThumbsUp /> {post.likes || 0}</button>
-                <button className="hover:text-indigo-600"> <FaComment /> {Array.isArray(post.comments) ? post.comments.length : 0}</button>
-                <button className="hover:text-indigo-600"> <FaShare /> </button>
+                <button onClick={() => like(post._id)} className="hover:text-indigo-600"><FaThumbsUp /> {post.likes || 0}</button>
+                <span className=""><FaComment /> {Array.isArray(post.comments) ? post.comments.length : 0}</span>
+                <button onClick={() => share(post._id)} className="hover:text-indigo-600"><FaShare /></button>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={commentDrafts[post._id] || ''}
+                  onChange={(e)=>setCommentDrafts(prev=>({ ...prev, [post._id]: e.target.value }))}
+                  placeholder="Write a comment..."
+                  className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
+                />
+                <button onClick={() => addComment(post._id)} className="px-3 py-2 bg-indigo-600 text-white rounded-lg">Comment</button>
               </div>
             </div>
           ))}
