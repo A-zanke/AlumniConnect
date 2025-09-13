@@ -23,6 +23,7 @@ const PostSchema = new mongoose.Schema({
     content: { type: String, required: true, trim: true },
     createdAt: { type: Date, default: Date.now }
   }],
+  shares: { type: Number, default: 0 },
   mentions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   // Moderation
   approved: { type: Boolean, default: true }

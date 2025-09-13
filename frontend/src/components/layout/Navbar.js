@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { FiMenu, FiX, FiBell, FiMessageSquare, FiUser, FiLogOut, FiSearch, FiHome, FiCalendar, FiUsers, FiMessageCircle } from 'react-icons/fi';
+import { FiMenu, FiX, FiBell, FiMessageSquare, FiUser, FiLogOut, FiSearch, FiHome, FiCalendar, FiUsers, FiMessageCircle, FiRss } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import NotificationBell from '../NotificationBell';
 import { getAvatarUrl } from '../utils/helpers';
@@ -37,6 +37,7 @@ const Navbar = () => {
     { to: '/events', label: 'Events', icon: FiCalendar },
     { to: '/about', label: 'About', icon: FiUsers },
     { to: '/forum', label: 'Forum', icon: FiMessageCircle },
+    ...(user ? [{ to: '/feed', label: 'Feed', icon: FiRss }] : []),
     ...(user ? [{ to: '/network', label: 'Network', icon: FiUsers }] : []),
     ...(user && (user.role || '').toLowerCase() === 'admin' ? [{ to: '/admin', label: 'Admin', icon: FiUser }] : [])
   ];

@@ -17,6 +17,7 @@ import NetworkPage from './pages/NetworkPage';
 import MessagesPage from './pages/MessagesPage';
 import ForumPage from './pages/ForumPage';
 import ProfilePage from './pages/ProfilePage';
+import FeedPage from './pages/FeedPage';
 import NotFoundPage from './pages/NotFoundPage';
 import SearchPage from './pages/SearchPage';
 
@@ -57,6 +58,14 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ForumPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/feed"
+                  element={
+                    <PrivateRoute>
+                      <FeedPage />
                     </PrivateRoute>
                   }
                 />

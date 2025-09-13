@@ -134,8 +134,77 @@ exports.addComment = async (req, res) => {
     post.comments.push({ userId: req.user._id, content });
     await post.save();
 
-    res.json({ success: true });
+    // Return the updated post with populated comments
+    const updatedPost = await Post.findById(post._id)
+      .populate('userId', 'name avatarUrl role')
+      .populate('comments.userId', 'name avatarUrl role')
+      .populate('mentions', 'name avatarUrl');
+
+    res.json({ 
+      success: true, 
+      comments: updatedPost.comments,
+      commentsCount: updatedPost.comments.length 
+    });
   } catch {
     res.status(500).json({ message: 'Error adding comment' });
+  }
+};
+
+exports.sharePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    post.shares += 1;
+    await post.save();
+
+    res.json({ shares: post.shares });
+  } catch {
+    res.status(500).json({ message: 'Error sharing post' });
+  }
+};
+
+exports.getFeed = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate('connections', '_id');
+    const connectionIds = user.connections.map(conn => conn._id);
+    
+    // Get posts from user's connections and user themselves
+    const posts = await Post.find({
+      $or: [
+        { userId: { $in: connectionIds } },
+        { userId: req.user._id }
+      ],
+      visibility: { $in: ['public', 'connections'] }
+    })
+    .sort({ createdAt: -1 })
+    .populate('userId', 'name avatarUrl role')
+    .populate('comments.userId', 'name avatarUrl role')
+    .populate('mentions', 'name avatarUrl')
+    .limit(50);
+
+    const shaped = posts.map(p => ({
+      _id: p._id,
+      user: {
+        _id: p.userId._id,
+        name: p.userId.name,
+        avatarUrl: p.userId.avatarUrl ? `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${p.userId.avatarUrl}` : null,
+        role: p.userId.role
+      },
+      content: p.content,
+      media: (p.media || []).map(m => ({ ...m, url: `${process.env.BACKEND_PUBLIC_URL || 'http://localhost:5000'}${m.url}` })),
+      likes: p.likes,
+      likesCount: p.likes.length,
+      comments: p.comments,
+      commentsCount: p.comments.length,
+      shares: p.shares,
+      createdAt: p.createdAt,
+      isLiked: p.likes.some(likeId => likeId.toString() === req.user._id.toString())
+    }));
+
+    res.json(shaped);
+  } catch (error) {
+    console.error('getFeed error:', error);
+    res.status(500).json({ message: 'Error fetching feed' });
   }
 };

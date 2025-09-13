@@ -4,10 +4,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
-import { connectionAPI, userAPI } from '../components/utils/api';
+import { connectionAPI, userAPI, postsAPI } from '../components/utils/api';
 import { getAvatarUrl } from '../components/utils/helpers';
 import { FiEdit, FiMail, FiUserPlus, FiUserCheck, FiUserX, FiMessageCircle, FiX } from 'react-icons/fi';
 import { motion } from "framer-motion";
+import PostCard from '../components/posts/PostCard';
+import CreatePost from '../components/posts/PostComposer';
 
 const COMMON_SKILLS = [
   'JavaScript','TypeScript','React','Node.js','Express','MongoDB','SQL','PostgreSQL','Python','Django','Flask','Java','Spring','C++','C#','Go','Rust','Next.js','Tailwind CSS','HTML','CSS','Sass','Kotlin','Swift','AWS','GCP','Azure','Docker','Kubernetes','Git','Figma','UI/UX','Machine Learning','Deep Learning','NLP'
@@ -24,6 +26,8 @@ const ProfilePage = () => {
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [skillInput, setSkillInput] = useState('');
+  const [userPosts, setUserPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
@@ -79,6 +83,12 @@ const ProfilePage = () => {
       fetchConnectionStatus();
     }
   }, [user, currentUser, isOwnProfile]);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserPosts();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -147,6 +157,19 @@ const ProfilePage = () => {
       setConnectionStatus(response.data?.status || 'none');
     } catch (error) {
       console.error('Error fetching connection status:', error);
+    }
+  };
+
+  const fetchUserPosts = async () => {
+    if (!user) return;
+    try {
+      setPostsLoading(true);
+      const response = await postsAPI.getUserPosts(user._id);
+      setUserPosts(response.data?.data || []);
+    } catch (error) {
+      console.error('Error fetching user posts:', error);
+    } finally {
+      setPostsLoading(false);
     }
   };
 
@@ -861,6 +884,54 @@ const ProfilePage = () => {
                     </div>
                   </motion.div>
                 )}
+
+                {/* Posts Section */}
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
+                  <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
+                    <h3 className="text-lg font-semibold">Posts</h3>
+                  </div>
+                  <div className="p-6">
+                    {/* Create Post (only for own profile and if user can create posts) */}
+                    {isOwnProfile && (user?.role === 'teacher' || user?.role === 'alumni' || user?.role === 'admin') && (
+                      <div className="mb-6">
+                        <CreatePost onPosted={fetchUserPosts} />
+                      </div>
+                    )}
+
+                    {/* User Posts */}
+                    {postsLoading ? (
+                      <div className="flex justify-center items-center py-8">
+                        <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="ml-2 text-gray-600">Loading posts...</span>
+                      </div>
+                    ) : userPosts.length > 0 ? (
+                      <div className="space-y-4">
+                        {userPosts.map((post) => (
+                          <PostCard 
+                            key={post._id} 
+                            post={post} 
+                            onUpdate={fetchUserPosts}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <span className="text-2xl">📝</span>
+                        </div>
+                        <h4 className="text-lg font-semibold text-gray-900 mb-2">No Posts Yet</h4>
+                        <p className="text-gray-600">
+                          {isOwnProfile 
+                            ? (user?.role === 'student' 
+                                ? "Students cannot create posts, but you can view posts from your connections in the Feed."
+                                : "Share your thoughts, experiences, or updates with your connections!")
+                              : "This user hasn't shared any posts yet."
+                          }
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
               </div>
 
               {/* Contact Sidebar */}
