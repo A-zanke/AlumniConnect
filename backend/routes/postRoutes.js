@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { getUserPosts, createPost, getPosts, likePost, addComment } = require('../controllers/postsController');
+const { getUserPosts, createPost, getPosts, likePost, addComment, sharePost, getFeed } = require('../controllers/postsController');
 const { protect, roleMiddleware } = require('../middleware/authMiddleware');
 
 const storage = multer.diskStorage({
@@ -12,9 +12,11 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } });
 
 router.get('/', protect, getPosts);
+router.get('/feed', protect, getFeed);
 router.get('/user/:userId', protect, getUserPosts);
 router.post('/', protect, roleMiddleware('teacher','alumni','admin'), upload.array('media', 5), createPost);
-router.post('/:postId/like', protect, likePost);
+router.put('/:postId/like', protect, likePost);
 router.post('/:postId/comment', protect, addComment);
+router.put('/:postId/share', protect, sharePost);
 
 module.exports = router;
