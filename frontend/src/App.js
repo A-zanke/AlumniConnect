@@ -15,7 +15,7 @@ import EventsPage from './pages/EventsPage';
 import EventDetailsPage from './pages/EventDetailsPage';
 import NetworkPage from './pages/NetworkPage';
 import MessagesPage from './pages/MessagesPage';
-import ForumPage from './pages/ForumPage';
+import UnifiedForumPage from './pages/UnifiedForumPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import SearchPage from './pages/SearchPage';
@@ -55,8 +55,8 @@ function App() {
                 <Route
                   path="/forum"
                   element={
-                    <PrivateRoute>
-                      <ForumPage />
+                    <PrivateRoute roles={['student']}>
+                      <UnifiedForumPage />
                     </PrivateRoute>
                   }
                 />
