@@ -5,7 +5,13 @@ import { getAvatarUrl } from '../utils/helpers';
 import { followAPI, userAPI } from '../utils/api';
 import { useAuth } from '../../context/AuthContext';
 
-const ProfileHeader = ({ user, coverGradient = 'from-indigo-600 via-purple-600 to-cyan-600' }) => {
+const roleGradientMap = {
+  student: 'from-indigo-600 via-purple-600 to-cyan-600',
+  teacher: 'from-purple-700 via-pink-600 to-rose-500',
+  alumni: 'from-emerald-600 via-teal-600 to-cyan-600'
+};
+
+const ProfileHeader = ({ user, coverGradient = undefined }) => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const [isFollowing, setIsFollowing] = useState(false);
@@ -49,7 +55,7 @@ const ProfileHeader = ({ user, coverGradient = 'from-indigo-600 via-purple-600 t
   return (
     <div className="bg-white rounded-3xl shadow-2xl overflow-hidden mb-6 border border-indigo-100 dark:bg-gray-900 dark:border-gray-800">
       <div className="relative">
-        <div className={`h-48 bg-gradient-to-r ${coverGradient}`}></div>
+        <div className={`h-48 bg-gradient-to-r ${coverGradient || roleGradientMap[(user?.role || '').toLowerCase()] || roleGradientMap.student}`}></div>
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/40 to-transparent p-6">
           <div className="flex flex-col md:flex-row items-center md:items-end">
             <div className="relative mb-4 md:mb-0">

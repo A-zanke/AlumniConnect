@@ -360,6 +360,7 @@ const updateUserProfile = async (req, res) => {
       user.email = req.body.email || user.email;
       user.bio = req.body.bio || user.bio;
       user.location = req.body.location || user.location;
+      user.phone = req.body.phone || user.phone;
       user.college = req.body.college || user.college;
       user.specialization = req.body.specialization || user.specialization;
       user.graduationYear = req.body.graduationYear || user.graduationYear;
@@ -448,6 +449,7 @@ const updateUserProfile = async (req, res) => {
         bio: updatedUser.bio,
         avatarUrl: updatedUser.avatarUrl,
         location: updatedUser.location,
+        phone: updatedUser.phone,
         college: updatedUser.college,
         specialization: updatedUser.specialization,
         graduationYear: updatedUser.graduationYear,

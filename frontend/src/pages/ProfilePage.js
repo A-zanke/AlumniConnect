@@ -65,6 +65,10 @@ const ProfilePage = () => {
 
   useEffect(() => {
     if (isOwnProfile) {
+      const me = currentUser;
+      if (me?.role === 'student') navigate(`/student/${me._id}`, { replace: true });
+      else if (me?.role === 'teacher') navigate(`/teacher/${me._id}`, { replace: true });
+      else if (me?.role === 'alumni') navigate(`/alumni/${me._id}`, { replace: true });
       setUser(currentUser);
     } else {
       fetchUserProfile();
