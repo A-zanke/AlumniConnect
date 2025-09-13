@@ -17,6 +17,9 @@ import NetworkPage from './pages/NetworkPage';
 import MessagesPage from './pages/MessagesPage';
 import ForumPage from './pages/ForumPage';
 import ProfilePage from './pages/ProfilePage';
+import StudentProfilePage from './pages/StudentProfilePage';
+import TeacherProfilePage from './pages/TeacherProfilePage';
+import AlumniProfilePage from './pages/AlumniProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import SearchPage from './pages/SearchPage';
 
@@ -81,6 +84,31 @@ function App() {
                   element={
                     <PrivateRoute>
                       <ProfilePage />
+                    </PrivateRoute>
+                  }
+                />
+                {/* Role based profile routes */}
+                <Route
+                  path="/student/:userId"
+                  element={
+                    <PrivateRoute>
+                      <StudentProfilePage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/teacher/:userId"
+                  element={
+                    <PrivateRoute>
+                      <TeacherProfilePage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/alumni/:userId"
+                  element={
+                    <PrivateRoute>
+                      <AlumniProfilePage />
                     </PrivateRoute>
                   }
                 />

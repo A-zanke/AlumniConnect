@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { FiMenu, FiX, FiBell, FiMessageSquare, FiUser, FiLogOut, FiSearch, FiHome, FiCalendar, FiUsers, FiMessageCircle } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import NotificationBell from '../NotificationBell';
+import DarkModeToggle from '../ui/DarkModeToggle';
 import { getAvatarUrl } from '../utils/helpers';
 
 const Navbar = () => {
@@ -122,6 +123,10 @@ const Navbar = () => {
             >
               <FiSearch size={22} className="text-indigo-600 group-hover:text-purple-600 transition-colors duration-300" />
             </motion.button>
+
+            <div className="ml-2">
+              <DarkModeToggle />
+            </div>
 
             {user ? (
               <motion.div
