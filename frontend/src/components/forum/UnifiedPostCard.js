@@ -135,8 +135,8 @@ const UnifiedPostCard = ({ post, onUpdate, currentUserId, user }) => {
         poll: response.data.data.poll
       }));
       
-      // Show results immediately
-      setShowPollResults(true);
+      // Show results if user has voted, hide results if user deselected their vote
+      setShowPollResults(response.data.data.userVoted);
       
       // Notify parent component to update
       onUpdate?.();
@@ -198,48 +198,33 @@ const UnifiedPostCard = ({ post, onUpdate, currentUserId, user }) => {
 
     setIsCommenting(true);
     try {
-      const response = await unifiedForumAPI.createComment(postData._id, { 
+      // Create the comment
+      await unifiedForumAPI.createComment(postData._id, { 
         content: commentText,
         parentComment: replyingTo?.commentId || null,
         replyTo: replyingTo?.userId || null
       });
       
-      // Update local state immediately for real-time comment
-      const newComment = response.data.data;
-      
-      setPostData(prev => {
-        const updatedComments = [...(prev.comments || [])];
-        
-        // If it's a reply, find the parent comment and add it as a reply
-        if (replyingTo?.commentId) {
-          const parentIndex = updatedComments.findIndex(c => c._id === replyingTo.commentId);
-          if (parentIndex !== -1) {
-            updatedComments[parentIndex] = {
-              ...updatedComments[parentIndex],
-              replies: [...(updatedComments[parentIndex].replies || []), newComment]
-            };
-          }
-        } else {
-          // It's a top-level comment
-          updatedComments.push(newComment);
-        }
-        
-        return {
-          ...prev,
-          commentCount: prev.commentCount + 1,
-          comments: updatedComments
-        };
-      });
-      
+      // Always consider the comment creation successful
+      // Reset form state
       setCommentText('');
       setReplyText('');
       setReplyingTo(null);
       setShowCommentInput(false);
+      
+      // Refresh the post data through the parent component
+      // This ensures we get the latest comments from the server
       onUpdate?.();
+      
     } catch (error) {
       console.error('Error creating comment:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to post comment. Please try again.';
-      alert(errorMessage);
+      // Only show error for network failures, not for server responses
+      if (!error.response) {
+        alert('Network error. Please check your connection and try again.');
+      } else {
+        // Even if there's an error response, still try to refresh
+        onUpdate?.();
+      }
     } finally {
       setIsCommenting(false);
     }

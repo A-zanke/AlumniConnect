@@ -348,6 +348,8 @@ exports.createComment = async (req, res) => {
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
     }
+    
+    // No authorization check needed here - any authenticated user can comment on any post
 
     // Handle media attachments for comments
     const mediaAttachments = [];
@@ -530,7 +532,46 @@ exports.votePoll = async (req, res) => {
       return res.status(400).json({ message: 'Poll has expired' });
     }
 
-    // Check if user has already voted
+    // Check if user has already voted for this specific option
+    const hasVotedForThisOption = post.poll.options[optionIndex].votes.some(
+      voterId => voterId.toString() === userId.toString()
+    );
+
+    // If user already voted for this option, remove the vote (deselection)
+    if (hasVotedForThisOption) {
+      // Remove user from this option's votes
+      post.poll.options[optionIndex].votes = post.poll.options[optionIndex].votes.filter(
+        voterId => voterId.toString() !== userId.toString()
+      );
+      
+      // Remove user from voters list
+      post.poll.voters = post.poll.voters.filter(
+        voterId => voterId.toString() !== userId.toString()
+      );
+      
+      await post.save();
+      
+      // Calculate results with percentages
+      const results = post.poll.options.map((option, index) => ({
+        index,
+        text: option.text,
+        votes: option.votes.length,
+        percentage: post.poll.voters.length > 0 ? 
+          Math.round((option.votes.length / post.poll.voters.length) * 100) : 0
+      }));
+      
+      return res.json({
+        success: true,
+        data: {
+          poll: post.poll,
+          results,
+          totalVotes: post.poll.voters.length,
+          userVoted: false
+        }
+      });
+    }
+    
+    // Check if user has already voted for a different option
     const hasVoted = post.poll.voters.some(voterId => voterId.toString() === userId.toString());
     if (hasVoted && !post.poll.allowMultipleVotes) {
       return res.status(400).json({ message: 'You have already voted in this poll' });

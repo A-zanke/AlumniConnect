@@ -70,7 +70,8 @@ export const unifiedForumAPI = {
       }
     });
     return apiClient.post(`/api/unified-forum/posts/${postId}/comments`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      validateStatus: status => status >= 200 && status < 300 // Accept any success status code
     });
   },
   
