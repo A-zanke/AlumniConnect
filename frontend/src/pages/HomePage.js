@@ -1016,11 +1016,15 @@ const HomePage = () => {
             >
               {/* Map Placeholder */}
               <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-4 border border-white/20 h-80 relative overflow-hidden group">
-                <div className="w-full h-full bg-gradient-to-br from-slate-700 via-slate-600 to-slate-800 rounded-2xl flex items-center justify-center relative">
+                < div className="w-full h-full bg-gradient-to-br from-slate-700 via-slate-600 to-slate-800 rounded-2xl flex items-center justify-center relative">
                   <div className="text-center text-white">
                     <iframe 
                     title="College Map"
                     src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3752.779073968298!2d75.31929637499815!3d19.849298681521073!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bdb988c254eb873%3A0x4388791935b718e6!2sMaharashtra%20Institute%20Of%20Technology!5e0!3m2!1sen!2sin!4v1758467474904!5m2!1sen!2sin" 
+                    onClick={() =>
+                    window.open(
+                   'https://www.google.com/maps/place/Marathwada+Institute+of+Technology/@19.872857,75.342857,17z',
+                   '_blank')}
                     
                     width="600" 
                     height="450" 
@@ -1039,9 +1043,8 @@ const HomePage = () => {
                     <p className="text-xl font-semibold">Interactive Map</p>
                     <p className="text-sm text-slate-300">Replace with Google Maps integration</p>
                   </div>
-                  {/* Decorative Elements */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-teal-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                </div>
+                 </div>
+                 
               </div>
 
               {/* Contact Details */}
@@ -1093,41 +1096,6 @@ const HomePage = () => {
           </div>
         </div>
       </section>
-
-      {/* College Map Section */}
-<section
-  style={{
-    display: 'flex',
-    justifyContent: 'center',
-    margin: '40px 0'
-  }}
->
-  <div
-    style={{
-      cursor: 'pointer',
-      borderRadius: '18px',
-      overflow: 'hidden',
-      boxShadow: '0 4px 24px rgba(0,0,0,0.12)'
-    }}
-    title="View on Google Maps"
-    onClick={() =>
-      window.open(
-        'https://www.google.com/maps/place/Marathwada+Institute+of+Technology/@19.872857,75.342857,17z',
-        '_blank'
-      )
-    }
-  >
-    <img
-      src="https://maps.googleapis.com/maps/api/staticmap?center=Marathwada+Institute+of+Technology,Aurangabad&zoom=16&size=600x300&maptype=roadmap&markers=color:red%7Clabel:M%7C19.872857,75.342857"
-      alt="MIT College Location Map"
-      style={{ width: 600, height: 300, display: 'block' }}
-      onError={e => {
-        e.target.src =
-          'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Map_marker.svg/1200px-Map_marker.svg.png';
-      }}
-    />
-  </div>
-</section>
       
     </div>
   );
