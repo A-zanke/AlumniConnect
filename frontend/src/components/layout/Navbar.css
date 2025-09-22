@@ -1,0 +1,60 @@
+
+/* Sticky, animated, glassmorphism navbar */
+.navbar-root {
+  position: sticky;
+  top: 0;
+  width: 100vw;
+  background: rgba(20,20,20,0.95);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  height: 64px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: background 0.3s, box-shadow 0.3s, border-radius 0.3s;
+}
+.navbar-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #fff;
+  margin-left: 12px;
+  letter-spacing: 1px;
+}
+.navbar-root.navbar-glass {
+  background: rgba(255,255,255,0.7);
+  box-shadow: 0 8px 32px 0 rgba(31,38,135,0.17);
+  backdrop-filter: blur(12px);
+  border-radius: 0 0 24px 24px;
+  transition: background 0.3s, box-shadow 0.3s, border-radius 0.3s;
+}
+.navbar-logo {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.navbar-logo:hover {
+  transform: scale(1.05);
+}
+.navbar-links {
+  display: flex;
+  gap: 24px;
+}
+.navbar-link {
+  color: #fff;
+  font-weight: 500;
+  text-decoration: none;
+  font-size: 1.1rem;
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+.navbar-link:hover {
+  background: rgba(255,255,255,0.12);
+  color: #ffd700;
+}
+.navbar-link.active {
+  color: #ffd700;
+  background: rgba(255,255,255,0.18);
+}
