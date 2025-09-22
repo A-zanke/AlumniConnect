@@ -6,15 +6,45 @@ import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { connectionAPI, userAPI } from '../components/utils/api';
 import { getAvatarUrl } from '../components/utils/helpers';
-import { FiEdit, FiMail, FiUserPlus, FiUserCheck, FiUserX, FiMessageCircle, FiX } from 'react-icons/fi';
-import { motion } from "framer-motion";
+// Feather icons (Fi = Feather Icons)
+import {
+  FiUser,
+  FiInfo,
+  FiAward,
+  FiUsers,
+  FiSettings,
+  FiMessageCircle,
+  FiUserX,
+  FiUserCheck,
+  FiUserPlus,
+  FiChevronRight,
+  FiLogOut,
+  FiMail,
+  FiBriefcase,
+  FiExternalLink,
+  FiLinkedin,
+  FiGithub,
+  FiGlobe,
+  FiSave,
+  FiEdit,
+  FiX,
+  FiFileText,
+  FiPlus,
+  FiShare,
+  FiTrash2,
+} from "react-icons/fi";
+import { FaGraduationCap } from "react-icons/fa";
+
+import { motion, AnimatePresence } from "framer-motion";
+
+import axios from 'axios';
 
 const COMMON_SKILLS = [
   'JavaScript','TypeScript','React','Node.js','Express','MongoDB','SQL','PostgreSQL','Python','Django','Flask','Java','Spring','C++','C#','Go','Rust','Next.js','Tailwind CSS','HTML','CSS','Sass','Kotlin','Swift','AWS','GCP','Azure','Docker','Kubernetes','Git','Figma','UI/UX','Machine Learning','Deep Learning','NLP'
 ];
 
 const ProfilePage = () => {
-  const { user: currentUser, updateProfile } = useAuth();
+  const { user: currentUser, updateProfile, logout } = useAuth();
   const { userId, username } = useParams();
   const navigate = useNavigate();
 
@@ -24,6 +54,11 @@ const ProfilePage = () => {
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [skillInput, setSkillInput] = useState('');
+  const [activeSection, setActiveSection] = useState('overview');
+  const [connections, setConnections] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [showCreatePost, setShowCreatePost] = useState(false);
+  
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
@@ -61,17 +96,22 @@ const ProfilePage = () => {
     website: ''
   });
 
+  const [postData, setPostData] = useState({
+    content: '',
+    audience: 'public',
+    media: null
+  });
+
   const isOwnProfile = !userId && !username;
 
   useEffect(() => {
     if (isOwnProfile) {
       setUser(currentUser);
+      fetchUserConnections();
+      fetchUserPosts();
     } else {
       fetchUserProfile();
     }
-    // Remove any legacy yellow banner if rendered elsewhere (no-op here)
-    const banner = document.querySelector('[data-profile-alert]');
-    if (banner?.parentNode) banner.parentNode.removeChild(banner);
   }, [userId, username, currentUser]);
 
   useEffect(() => {
@@ -150,34 +190,60 @@ const ProfilePage = () => {
     }
   };
 
-  const handleConnectionAction = async (action) => {
+  const fetchUserConnections = async () => {
+    if (!currentUser) return;
     try {
-      const targetUserId = userId || user?._id;
-      if (!targetUserId) {
+      const response = await connectionAPI.getConnections();
+      setConnections(response.data?.connections || []);
+    } catch (error) {
+      console.error('Error fetching connections:', error);
+    }
+  };
+
+  const fetchUserPosts = async () => {
+    if (!currentUser) return;
+    try {
+      const response = await axios.get('/api/posts/user-posts');
+      setPosts(response.data?.posts || []);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+    }
+  };
+
+  const handleConnectionAction = async (action, targetUserId = null) => {
+    try {
+      const userId = targetUserId || user?._id;
+      if (!userId) {
         toast.error('User ID not found');
         return;
       }
 
       switch (action) {
         case 'send':
-          await connectionAPI.sendRequest(targetUserId);
+          await connectionAPI.sendRequest(userId);
           setConnectionStatus('pending');
           toast.success('Connection request sent');
           break;
         case 'accept':
-          await connectionAPI.acceptRequest(targetUserId);
+          await connectionAPI.acceptRequest(userId);
           setConnectionStatus('connected');
           toast.success('Connection accepted');
           break;
         case 'reject':
-          await connectionAPI.rejectRequest(targetUserId);
+          await connectionAPI.rejectRequest(userId);
           setConnectionStatus(null);
           toast.success('Connection request rejected');
           break;
         case 'remove':
-          await connectionAPI.removeConnection(targetUserId);
-          setConnectionStatus(null);
-          toast.success('Connection removed');
+          await connectionAPI.removeConnection(userId);
+          if (isOwnProfile) {
+            // Remove from connections list
+            setConnections(prev => prev.filter(conn => conn._id !== userId));
+            toast.success('Connection removed');
+          } else {
+            setConnectionStatus(null);
+            toast.success('Connection removed');
+          }
           break;
         default:
           break;
@@ -198,7 +264,6 @@ const ProfilePage = () => {
     }
   };
 
-  // Skills chips with suggestions
   const normalizedSkills = useMemo(
     () => (formData.skills || []).map(s => s.trim()).filter(Boolean),
     [formData.skills]
@@ -246,13 +311,11 @@ const ProfilePage = () => {
     }));
   };
 
-  // Helper for arrays
   const handleArrayFieldChange = (fieldName, value) => {
     const arrayValue = value.split(',').map(item => item.trim()).filter(item => item);
     setFormData(prev => ({ ...prev, [fieldName]: arrayValue }));
   };
 
-  // Helper for checkbox arrays
   const handleCheckboxArrayChange = (fieldName, value, checked) => {
     setFormData(prev => {
       const currentArray = prev[fieldName] || [];
@@ -262,17 +325,78 @@ const ProfilePage = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    const result = await updateProfile(formData, avatarFile);
-    if (result.success) {
-      toast.success('Profile updated successfully');
-      setIsEditing(false);
-      setAvatarFile(null);
-      setUser(prev => ({ ...prev, ...formData })); // Immediate reflect
-    } else {
-      toast.error(result.error || 'Failed to update profile');
+    if (e) e.preventDefault();
+    try {
+      const result = await updateProfile(formData, avatarFile);
+      if (result.success) {
+        toast.success('Profile updated successfully');
+        setIsEditing(false);
+        setAvatarFile(null);
+        setUser(prev => ({ ...prev, ...formData }));
+      } else {
+        toast.error(result.error || 'Failed to update profile');
+      }
+    } catch (error) {
+      console.error('Profile update error:', error);
+      toast.error('Failed to update profile');
     }
   };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const handleCreatePost = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      const formDataToSend = new FormData();
+      formDataToSend.append('content', postData.content);
+      formDataToSend.append('audience', postData.audience);
+      if (postData.media) {
+        formDataToSend.append('media', postData.media);
+      }
+
+      const response = await axios.post('/api/posts', formDataToSend, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data) {
+        toast.success('Post created successfully');
+        setPostData({ content: '', audience: 'public', media: null });
+        setShowCreatePost(false);
+        fetchUserPosts();
+      }
+    } catch (error) {
+      console.error('Post creation error:', error);
+      toast.error('Failed to create post');
+    }
+  };
+
+  const handleDeletePost = async (postId) => {
+    try {
+      await axios.delete(`/api/posts/${postId}`);
+      toast.success('Post deleted successfully');
+      setPosts(prev => prev.filter(post => post._id !== postId));
+    } catch (error) {
+      console.error('Post deletion error:', error);
+      toast.error('Failed to delete post');
+    }
+  };
+
+  const handleMessageUser = (targetUserId) => {
+    navigate(`/messages?user=${targetUserId}`);
+  };
+
+  // Sidebar Menu Items
+  const menuItems = [
+    { id: 'overview', label: 'Profile Overview', icon: FiUser },
+    { id: 'about', label: 'About', icon: FiInfo },
+    { id: 'skills', label: 'Skills', icon: FiAward },
+    { id: 'connections', label: 'Connections', icon: FiUsers },
+    ...(currentUser && ['alumni', 'teacher'].includes(currentUser.role?.toLowerCase()) ? [{ id: 'posts', label: 'My Posts', icon: FiFileText }] : []),
+    { id: 'settings', label: 'Settings', icon: FiSettings },
+  ];
 
   const renderConnectionButton = () => {
     if (isOwnProfile || !currentUser) return null;
@@ -280,23 +404,27 @@ const ProfilePage = () => {
       case 'connected':
         return (
           <div className="flex space-x-2">
-            <button
-              onClick={() => navigate(`/messages?user=${userId}`)}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+            <motion.button
+              onClick={() => handleMessageUser(userId || user?._id)}
+              className="flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               <FiMessageCircle className="mr-2" /> Message
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={() => handleConnectionAction('remove')}
-              className="flex items-center px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
+              className="flex items-center px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               <FiUserX className="mr-2" /> Remove
-            </button>
+            </motion.button>
           </div>
         );
       case 'pending':
         return (
-          <button disabled className="px-4 py-2 bg-yellow-500 text-white rounded-xl opacity-75">
+          <button disabled className="px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl opacity-75">
             <FiUserCheck className="mr-2 inline" /> Pending
           </button>
         );
@@ -304,28 +432,34 @@ const ProfilePage = () => {
       case 'incoming':
         return (
           <div className="flex space-x-2">
-            <button
+            <motion.button
               onClick={() => handleConnectionAction('accept')}
-              className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors"
+              className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               <FiUserCheck className="mr-2 inline" /> Accept
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               onClick={() => handleConnectionAction('reject')}
-              className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
+              className="px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               <FiUserX className="mr-2 inline" /> Reject
-            </button>
+            </motion.button>
           </div>
         );
       default:
         return (
-          <button
+          <motion.button
             onClick={() => handleConnectionAction('send')}
-            className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-colors"
+            className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
             <FiUserPlus className="mr-2 inline" /> Connect
-          </button>
+          </motion.button>
         );
     }
   };
@@ -362,592 +496,1142 @@ const ProfilePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 py-8">
-      <div className="container mx-auto px-4 max-w-5xl">
-        {/* Top header (kept exactly) */}
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden mb-8 border border-indigo-100">
-          <div className="relative">
-            <div className="h-48 bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600"></div>
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/40 to-transparent p-8">
-              <div className="flex flex-col md:flex-row items-center md:items-end">
-                <div className="relative mb-4 md:mb-0">
-                  {user.avatarUrl ? (
-                    <img className="h-32 w-32 rounded-full border-4 border-white shadow-2xl" src={getAvatarUrl(user.avatarUrl)} alt={user.name} />
-                  ) : (
-                    <div className="h-32 w-32 rounded-full bg-white flex items-center justify-center border-4 border-white shadow-2xl">
-                      <span className="text-4xl font-bold text-indigo-600">{user.name?.charAt(0).toUpperCase()}</span>
-                    </div>
-                  )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex">
+      {/* Left Sidebar */}
+      {isOwnProfile && (
+        <motion.div
+          className="w-80 bg-gradient-to-b from-slate-900 via-indigo-900 to-slate-900 min-h-screen sticky top-0 shadow-2xl"
+          initial={{ x: -100, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        >
+          {/* Header */}
+          <div className="p-6 border-b border-white/10">
+            <motion.h2
+              className="text-2xl font-bold bg-gradient-to-r from-white via-orange-200 to-indigo-200 bg-clip-text text-transparent"
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+            >
+              Profile Menu
+            </motion.h2>
+            <motion.p
+              className="text-slate-300 text-sm mt-2"
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.3 }}
+            >
+              Manage your profile and settings
+            </motion.p>
+          </div>
+
+          {/* Menu Items */}
+          <div className="p-4 space-y-2">
+            {menuItems.map((item, index) => (
+              <motion.button
+                key={item.id}
+                onClick={() => setActiveSection(item.id)}
+                className={`w-full flex items-center justify-between p-4 rounded-xl text-left transition-all duration-300 group ${
+                  activeSection === item.id
+                    ? 'bg-gradient-to-r from-indigo-600 to-orange-600 text-white shadow-lg shadow-indigo-500/30'
+                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                }`}
+                initial={{ x: -50, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: 0.1 * index, duration: 0.4 }}
+                whileHover={{ x: 5 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <div className="flex items-center gap-3">
+                  <motion.div
+                    className={`p-2 rounded-lg ${
+                      activeSection === item.id
+                        ? 'bg-white/20'
+                        : 'bg-slate-800 group-hover:bg-slate-700'
+                    }`}
+                    whileHover={{ scale: 1.1, rotate: 5 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <item.icon size={18} />
+                  </motion.div>
+                  <span className="font-semibold">{item.label}</span>
                 </div>
-                <div className="md:ml-6 text-center md:text-left text-white">
-                  <h1 className="text-4xl font-bold mb-2">{user.name}</h1>
-                  <p className="text-xl opacity-90 mb-1">{user.email}</p>
-                  <span className="px-4 py-1 bg-white/20 rounded-full text-sm capitalize">{user.role}</span>
-                </div>
-                <div className="md:ml-auto mt-4 md:mt-0">
-                  {isOwnProfile ? (
-                    <button
-                      onClick={() => setIsEditing(!isEditing)}
-                      className="px-6 py-3 bg-white/20 text-white rounded-xl hover:bg-white/30 border border-white/30 transition-colors"
-                    >
-                      <FiEdit className="mr-2 inline" /> {isEditing ? 'Cancel' : 'Edit Profile'}
-                    </button>
-                  ) : (
-                    renderConnectionButton()
-                  )}
-                </div>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ 
+                    opacity: activeSection === item.id ? 1 : 0,
+                    x: activeSection === item.id ? 0 : -10
+                  }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <FiChevronRight size={16} />
+                </motion.div>
+              </motion.button>
+            ))}
+          </div>
+
+          {/* Logout Button */}
+          <motion.div
+            className="absolute bottom-6 left-4 right-4"
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.8, duration: 0.5 }}
+          >
+            <motion.button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 group"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <motion.div
+                className="p-2 bg-white/20 rounded-lg"
+                whileHover={{ rotate: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <FiLogOut size={18} />
+              </motion.div>
+              <span className="group-hover:tracking-wide transition-all duration-300">
+                Sign Out
+              </span>
+            </motion.button>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Right Content Area */}
+      <div className={`flex-1 ${isOwnProfile ? '' : 'w-full'}`}>
+        {/* Profile Header */}
+        <motion.div
+          className="bg-white/80 backdrop-blur-sm border-b border-indigo-100 sticky top-0 z-10"
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="max-w-6xl mx-auto p-6">
+            <div className="flex flex-col md:flex-row items-center gap-6">
+              <motion.div
+                className="relative"
+                whileHover={{ scale: 1.05 }}
+                transition={{ duration: 0.2 }}
+              >
+                {user.avatarUrl ? (
+                  <img 
+                    className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200" 
+                    src={getAvatarUrl(user.avatarUrl)} 
+                    alt={user.name} 
+                  />
+                ) : (
+                  <div className="h-24 w-24 rounded-full bg-gradient-to-r from-indigo-600 to-orange-600 flex items-center justify-center border-4 border-white shadow-xl ring-4 ring-orange-200">
+                    <span className="text-3xl font-bold text-white">{user.name?.charAt(0).toUpperCase()}</span>
+                  </div>
+                )}
+              </motion.div>
+              
+              <div className="flex-1 text-center md:text-left">
+                <motion.h1
+                  className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-indigo-600 bg-clip-text text-transparent"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  {user.name}
+                </motion.h1>
+                <motion.p
+                  className="text-slate-600 text-lg mb-2"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  {user.email}
+                </motion.p>
+                <motion.span
+                  className="inline-block px-4 py-2 bg-gradient-to-r from-indigo-100 to-orange-100 text-indigo-800 rounded-full text-sm font-semibold capitalize"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  {user.role}
+                </motion.span>
               </div>
+              
+              <motion.div
+                className="flex gap-3"
+                initial={{ x: 20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: 0.5 }}
+              >
+                {!isOwnProfile && currentUser && (
+                  <motion.button
+                    onClick={() => handleMessageUser(userId || user?._id)}
+                    className="flex items-center px-4 py-2 bg-gradient-to-r from-slate-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <FiMessageCircle className="mr-2" /> Message
+                  </motion.button>
+                )}
+                {renderConnectionButton()}
+              </motion.div>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Bottom redesigned section */}
-        <div className="bg-white/60 rounded-3xl shadow-xl p-2 md:p-4 border border-indigo-100">
-          {isEditing && isOwnProfile ? (
-            <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-6">
-                  <div className="rounded-2xl shadow-sm p-4 bg-white">
-                    <div className="sticky top-0 -mt-4 -mx-4 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                      <h3 className="text-lg font-semibold">Profile Basics</h3>
-                    </div>
-                    <div className="pt-4">
-                      <label className="block text-sm font-semibold mb-2">Profile Picture</label>
-                      <FileInput accept="image/*" onChange={setAvatarFile} />
-                      {avatarFile && <p className="text-sm text-green-600 mt-2">✓ New image selected</p>}
-                    </div>
-                    <div className="mt-4">
-                      <label className="block text-sm font-semibold mb-2">
-                        Name <span className="text-red-600">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                        required
-                      />
-                    </div>
-                    <div className="mt-4">
-                      <label className="block text-sm font-semibold mb-2">
-                        Bio <span className="text-red-600">*</span>
-                      </label>
-                      <textarea
-                        name="bio"
-                        value={formData.bio}
-                        onChange={handleChange}
-                        rows={5}
-                        className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                        placeholder="Tell us about yourself..."
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl shadow-sm p-4 bg-white">
-                    <div className="sticky top-0 -mt-4 -mx-4 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                      <h3 className="text-lg font-semibold">Skills</h3>
-                    </div>
-                    <div className="pt-4">
-                      <div className="w-full px-4 py-3 border rounded-xl focus-within:ring-2 focus-within:ring-indigo-500 transition bg-white">
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          {normalizedSkills.map((skill) => (
-                            <span key={skill} className="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 text-sm font-medium transition transform hover:scale-105">
-                              {skill}
-                              <button type="button" onClick={() => removeSkill(skill)} className="ml-2 text-indigo-700 hover:text-indigo-900">
-                                <FiX />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                        <input
-                          type="text"
-                          value={skillInput}
-                          onChange={(e) => setSkillInput(e.target.value)}
-                          onKeyDown={onSkillKeyDown}
-                          onBlur={commitSkillInput}
-                          className="w-full outline-none"
-                          placeholder="Type a skill and press Enter or comma"
-                        />
-                        {suggestions.length > 0 && (
-                          <div className="mt-2 bg-white border rounded-xl shadow-lg p-2 grid grid-cols-2 gap-2">
-                            {suggestions.map(s => (
-                              <button
-                                key={s}
-                                type="button"
-                                onClick={() => addSuggested(s)}
-                                className="text-left px-3 py-2 rounded-lg hover:bg-indigo-50 text-sm"
-                              >
-                                {s}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {user?.role === 'student' && (
-                    <div className="rounded-2xl shadow-sm p-4 bg-white">
-                      <div className="sticky top-0 -mt-4 -mx-4 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                        <h3 className="text-lg font-semibold">Academic & Goals</h3>
-                      </div>
-                      <div className="pt-4 space-y-4">
-                        <input
-                          type="text"
-                          name="specialization"
-                          value={formData.specialization}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          placeholder="Specialization (e.g., AI, Web)"
-                        />
-                        <input
-                          type="text"
-                          value={formData.projects.join(', ')}
-                          onChange={(e) => handleArrayFieldChange('projects', e.target.value)}
-                          className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          placeholder="Projects (comma separated)"
-                        />
-                        <input
-                          type="text"
-                          value={formData.desired_roles.join(', ')}
-                          onChange={(e) => handleArrayFieldChange('desired_roles', e.target.value)}
-                          className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          placeholder="Desired Roles (comma separated)"
-                        />
-                        <input
-                          type="text"
-                          value={formData.preferred_industries.join(', ')}
-                          onChange={(e) => handleArrayFieldChange('preferred_industries', e.target.value)}
-                          className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          placeholder="Preferred Industries (comma separated)"
-                        />
-                        <div className="grid grid-cols-2 gap-4">
-                          <select
-                            name="higher_studies_interest"
-                            value={formData.higher_studies_interest}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          >
-                            <option value="Yes">Higher Studies: Yes</option>
-                            <option value="No">Higher Studies: No</option>
-                            <option value="Maybe">Higher Studies: Maybe</option>
-                          </select>
-                          <select
-                            name="entrepreneurship_interest"
-                            value={formData.entrepreneurship_interest}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          >
-                            <option value="Yes">Entrepreneurship: Yes</option>
-                            <option value="No">Entrepreneurship: No</option>
-                            <option value="Maybe">Entrepreneurship: Maybe</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold mb-2">Mentorship Needs</label>
-                          <div className="space-y-2">
-                            {['Career Guidance', 'Higher Studies Advice', 'Technical Skills', 'Startup Guidance'].map(need => (
-                              <label key={need} className="flex items-center">
-                                <input
-                                  type="checkbox"
-                                  checked={formData.mentorship_needs.includes(need)}
-                                  onChange={(e) => handleCheckboxArrayChange('mentorship_needs', need, e.target.checked)}
-                                  className="mr-2"
-                                />
-                                <span className="text-sm">{need}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-6">
-                  <div className="rounded-2xl shadow-sm p-4 bg-white">
-                    <div className="sticky top-0 -mt-4 -mx-4 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                      <h3 className="text-lg font-semibold">Location & Contact</h3>
-                    </div>
-                    <div className="pt-4 space-y-4">
-                      <input
-                        type="text"
-                        name="location"
-                        value={formData.location || ''}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                        placeholder="e.g., Mumbai, India"
-                      />
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-semibold">Social Links</h4>
-                        <input type="url" name="socials.linkedin" value={formData.socials.linkedin} onChange={handleChange} placeholder="LinkedIn URL" className="w-full px-4 py-2 border rounded-lg" />
-                        <input type="url" name="socials.github" value={formData.socials.github} onChange={handleChange} placeholder="GitHub URL" className="w-full px-4 py-2 border rounded-lg" />
-                        <input type="url" name="socials.twitter" value={formData.socials.twitter} onChange={handleChange} placeholder="Twitter URL" className="w-full px-4 py-2 border rounded-lg" />
-                        <input type="url" name="socials.website" value={formData.socials.website || ''} onChange={handleChange} placeholder="Website URL" className="w-full px-4 py-2 border rounded-lg" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {user?.role === 'student' && (
-                    <div className="rounded-2xl shadow-sm p-4 bg-white">
-                      <div className="sticky top-0 -mt-4 -mx-4 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                        <h3 className="text-lg font-semibold">Experience</h3>
-                      </div>
-                      <div className="pt-4 space-y-4">
-                        <input
-                          type="text"
-                          value={formData.internships.join(', ')}
-                          onChange={(e) => handleArrayFieldChange('internships', e.target.value)}
-                          className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          placeholder="Internships (comma separated)"
-                        />
-                        <input
-                          type="text"
-                          value={formData.hackathons.join(', ')}
-                          onChange={(e) => handleArrayFieldChange('hackathons', e.target.value)}
-                          className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          placeholder="Hackathons (comma separated)"
-                        />
-                        <input
-                          type="text"
-                          value={formData.research_papers.join(', ')}
-                          onChange={(e) => handleArrayFieldChange('research_papers', e.target.value)}
-                          className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                          placeholder="Research Papers (comma separated)"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {user?.role === 'alumni' && (
-                    <>
-                      <div className="rounded-2xl shadow-sm p-4 bg-white">
-                        <div className="sticky top-0 -mt-4 -mx-4 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                          <h3 className="text-lg font-semibold">Career</h3>
-                        </div>
-                        <div className="pt-4 space-y-4">
-                          <input
-                            type="text"
-                            name="current_job_title"
-                            value={formData.current_job_title}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                            placeholder="Current Job Title"
-                          />
-                          <input
-                            type="text"
-                            name="company"
-                            value={formData.company}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                            placeholder="Company"
-                          />
-                          <input
-                            type="text"
-                            name="industry"
-                            value={formData.industry}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                            placeholder="Industry"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl shadow-sm p-4 bg-white">
-                        <div className="sticky top-0 -mt-4 -mx-4 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                          <h3 className="text-lg font-semibold">Mentorship & Achievements</h3>
-                        </div>
-                        <div className="pt-4 space-y-4">
-                          <div>
-                            <label className="block text-sm font-semibold mb-2">Mentorship Interests</label>
-                            <div className="space-y-2">
-                              {['Career Guidance', 'Higher Studies', 'Technical Mentoring', 'Startup Advice'].map(interest => (
-                                <label key={interest} className="flex items-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={formData.mentorship_interests.includes(interest)}
-                                    onChange={(e) => handleCheckboxArrayChange('mentorship_interests', interest, e.target.checked)}
-                                    className="mr-2"
-                                  />
-                                  <span className="text-sm">{interest}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                          <input
-                            type="text"
-                            value={formData.preferred_students.join(', ')}
-                            onChange={(e) => handleArrayFieldChange('preferred_students', e.target.value)}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                            placeholder="Preferred Students (comma separated)"
-                          />
-                          <input
-                            type="text"
-                            value={formData.certifications.join(', ')}
-                            onChange={(e) => handleArrayFieldChange('certifications', e.target.value)}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                            placeholder="Certifications (comma separated)"
-                          />
-                          <input
-                            type="text"
-                            value={formData.publications.join(', ')}
-                            onChange={(e) => handleArrayFieldChange('publications', e.target.value)}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                            placeholder="Publications (comma separated)"
-                          />
-                          <input
-                            type="text"
-                            name="entrepreneurship"
-                            value={formData.entrepreneurship}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 transition"
-                            placeholder="Entrepreneurship"
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button type="submit" className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-colors">
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
-                {/* About */}
-                {user.bio && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                    <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                      <h3 className="text-lg font-semibold">About</h3>
-                    </div>
-                    <div className="p-6">
-                      <p className="text-gray-700 leading-relaxed">{user.bio}</p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Student Sections */}
-                {user.role === 'student' && (
-                  <>
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                      <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                        <h3 className="text-lg font-semibold">Academic Information</h3>
-                      </div>
-                      <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {user.department && (<InfoItem label="Department" value={user.department} />)}
-                        {user.year && (<InfoItem label="Year of Study" value={user.year} />)}
-                        {user.division && (<InfoItem label="Division" value={user.division} />)}
-                        {user.batch && (<InfoItem label="Batch" value={user.batch} />)}
-                        {user.rollNumber && (<InfoItem label="Roll Number" value={user.rollNumber} />)}
-                        {user.specialization && (<InfoItem label="Specialization" value={user.specialization} />)}
-                      </div>
-                    </motion.div>
-
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                      <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                        <h3 className="text-lg font-semibold">Career Aspirations</h3>
-                      </div>
-                      <div className="p-6 space-y-4">
-                        {user.desired_roles?.length > 0 && (
-                          <ChipList label="Desired Roles" items={user.desired_roles} color="blue" />
-                        )}
-                        {user.preferred_industries?.length > 0 && (
-                          <ChipList label="Preferred Industries" items={user.preferred_industries} color="green" />
-                        )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {user.higher_studies_interest && (<InfoItem label="Higher Studies Interest" value={user.higher_studies_interest} />)}
-                          {user.entrepreneurship_interest && (<InfoItem label="Entrepreneurship Interest" value={user.entrepreneurship_interest} />)}
-                        </div>
-                      </div>
-                    </motion.div>
-
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                      <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                        <h3 className="text-lg font-semibold">Experience</h3>
-                      </div>
-                      <div className="p-6 space-y-4">
-                        {user.projects?.length > 0 && (<ChipList label="Projects" items={user.projects} color="purple" />)}
-                        {user.internships?.length > 0 && (<ChipList label="Internships" items={user.internships} color="orange" />)}
-                        {user.hackathons?.length > 0 && (<ChipList label="Hackathons" items={user.hackathons} color="red" />)}
-                        {user.research_papers?.length > 0 && (<ChipList label="Research Papers" items={user.research_papers} color="indigo" />)}
-                      </div>
-                    </motion.div>
-
-                    {user.mentorship_needs?.length > 0 && (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                        <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to紫-600 text-white rounded-t-2xl">
-                          <h3 className="text-lg font-semibold">Mentorship Needs</h3>
-                        </div>
-                        <div className="p-6">
-                          <div className="flex flex-wrap gap-2">
-                            {user.mentorship_needs.map((need, idx) => (
-                              <span key={idx} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-                                {need}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                      <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                        <h3 className="text-lg font-semibold">Preferences</h3>
-                      </div>
-                      <div className="p-6 space-y-4">
-                        {user.preferred_location && (<InfoItem label="Preferred Location" value={user.preferred_location} />)}
-                        {user.preferred_mode?.length > 0 && <ChipList label="Preferred Communication Mode" items={user.preferred_mode} color="teal" />}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-
-                {/* Alumni Sections */}
-                {user.role === 'alumni' && (
-                  <>
-                    <CardSection title="Academic Background">
-                      {user.specialization && (<InfoItem label="Specialization" value={user.specialization} />)}
-                      {user.higher_studies && (
-                        <div className="space-y-1">
-                          {user.higher_studies.degree && (<InfoItem label="Degree" value={user.higher_studies.degree} />)}
-                          {user.higher_studies.university && (<InfoItem label="University" value={user.higher_studies.university} />)}
-                          {user.higher_studies.specialization && (<InfoItem label="Specialization" value={user.higher_studies.specialization} />)}
-                        </div>
-                      )}
-                    </CardSection>
-
-                    <CardSection title="Career Information">
-                      {user.current_job_title && (<InfoItem label="Current Job Title" value={user.current_job_title} />)}
-                      {user.company && (<InfoItem label="Company" value={user.company} />)}
-                      {user.industry && (<InfoItem label="Industry" value={user.industry} />)}
-                      {user.past_experience?.length > 0 && (<ChipList label="Past Experience" items={user.past_experience} color="blue" />)}
-                    </CardSection>
-
-                    <CardSection title="Mentorship">
-                      {user.mentorship_interests?.length > 0 && (<ChipList label="Mentorship Interests" items={user.mentorship_interests} color="green" />)}
-                      {user.preferred_students?.length > 0 && (<ChipList label="Preferred Students" items={user.preferred_students} color="purple" />)}
-                      {user.availability && (<InfoItem label="Availability" value={user.availability} />)}
-                    </CardSection>
-
-                    <CardSection title="Achievements">
-                      {user.certifications?.length > 0 && (<ChipList label="Certifications" items={user.certifications} color="yellow" />)}
-                      {user.publications?.length > 0 && (<ChipList label="Publications" items={user.publications} color="indigo" />)}
-                      {user.entrepreneurship && (<InfoItem label="Entrepreneurship" value={user.entrepreneurship} />)}
-                    </CardSection>
-                  </>
-                )}
-
-                {/* Skills */}
-                {user.skills?.length > 0 && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                    <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                      <h3 className="text-lg font-semibold">Skills</h3>
-                    </div>
-                    <div className="p-6">
-                      <div className="flex flex-wrap gap-2">
-                        {user.skills.map((skill, idx) => (
-                          <span key={idx} className="px-3 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 rounded-full text-sm font-medium">
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-
-              {/* Contact Sidebar */}
-              <div className="space-y-6">
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                  <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                    <h3 className="text-lg font-semibold">Contact</h3>
-                  </div>
-                  <div className="p-6 space-y-3">
-                    <div className="flex items-center">
-                      <FiMail className="text-indigo-600 mr-3" />
-                      <span className="text-sm">{user.email}</span>
-                    </div>
-                    {user.location && (
-                      <div className="flex items-center">
-                        <span className="text-sm text-gray-600">📍 {user.location}</span>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-
-                {(user.socials && Object.values(user.socials).some(Boolean)) || user.linkedin || user.github || user.website ? (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-                    <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-                      <h3 className="text-lg font-semibold">Social Links</h3>
-                    </div>
-                    <div className="p-6 space-y-2">
-                      {user.socials?.linkedin && <a href={user.socials.linkedin} target="_blank" rel="noreferrer" className="block text-blue-600 hover:underline">LinkedIn</a>}
-                      {user.linkedin && <a href={user.linkedin} target="_blank" rel="noreferrer" className="block text-blue-600 hover:underline">LinkedIn</a>}
-                      {user.socials?.github && <a href={user.socials.github} target="_blank" rel="noreferrer" className="block text-gray-800 hover:underline">GitHub</a>}
-                      {user.github && <a href={user.github} target="_blank" rel="noreferrer" className="block text-gray-800 hover:underline">GitHub</a>}
-                      {user.socials?.twitter && <a href={user.socials.twitter} target="_blank" rel="noreferrer" className="block text-blue-400 hover:underline">Twitter</a>}
-                      {user.socials?.website && <a href={user.socials.website} target="_blank" rel="noreferrer" className="block text-purple-600 hover:underline">Website</a>}
-                      {user.website && <a href={user.website} target="_blank" rel="noreferrer" className="block text-purple-600 hover:underline">Website</a>}
-                    </div>
-                  </motion.div>
-                ) : null}
-              </div>
-            </div>
-          )}
+        {/* Main Content */}
+        <div className="max-w-6xl mx-auto p-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeSection}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              {activeSection === 'overview' && <OverviewSection user={user} />}
+              {activeSection === 'about' && (
+                <AboutSection 
+                  user={user} 
+                  isEditing={isEditing} 
+                  setIsEditing={setIsEditing} 
+                  formData={formData} 
+                  handleChange={handleChange} 
+                  handleSubmit={handleSubmit} 
+                  handleArrayFieldChange={handleArrayFieldChange} 
+                  handleCheckboxArrayChange={handleCheckboxArrayChange} 
+                />
+              )}
+              {activeSection === 'skills' && (
+                <SkillsSection 
+                  user={user} 
+                  isEditing={isEditing} 
+                  setIsEditing={setIsEditing} 
+                  formData={formData} 
+                  skillInput={skillInput} 
+                  setSkillInput={setSkillInput} 
+                  onSkillKeyDown={onSkillKeyDown} 
+                  suggestions={suggestions} 
+                  addSuggested={addSuggested} 
+                  removeSkill={removeSkill} 
+                  commitSkillInput={commitSkillInput} 
+                  handleSubmit={handleSubmit} 
+                />
+              )}
+              {activeSection === 'connections' && (
+                <ConnectionsSection 
+                  connections={connections} 
+                  handleMessageUser={handleMessageUser}
+                  handleConnectionAction={handleConnectionAction}
+                />
+              )}
+              {activeSection === 'posts' && (
+                <PostsSection 
+                  posts={posts}
+                  showCreatePost={showCreatePost}
+                  setShowCreatePost={setShowCreatePost}
+                  postData={postData}
+                  setPostData={setPostData}
+                  handleCreatePost={handleCreatePost}
+                  handleDeletePost={handleDeletePost}
+                />
+              )}
+              {activeSection === 'settings' && (
+                <SettingsSection 
+                  user={user} 
+                  isEditing={isEditing} 
+                  setIsEditing={setIsEditing} 
+                  formData={formData} 
+                  handleChange={handleChange} 
+                  avatarFile={avatarFile} 
+                  setAvatarFile={setAvatarFile} 
+                  handleSubmit={handleSubmit} 
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </div>
   );
 };
 
-const InfoItem = ({ label, value }) => (
-  <div>
-    <span className="text-sm font-semibold text-gray-600">{label}</span>
-    <p className="text-gray-900">{value}</p>
+// Overview Section Component
+const OverviewSection = ({ user }) => (
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    {/* Basic Info Card */}
+    <motion.div
+      className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 0.1 }}
+    >
+      <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+        <FiUser className="text-indigo-600" />
+        Basic Information
+      </h3>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <FiMail className="text-slate-500" />
+          <span className="text-slate-700">{user.email}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <FiBriefcase className="text-slate-500" />
+          <span className="text-slate-700 capitalize">{user.role}</span>
+        </div>
+        {user.department && (
+          <div className="flex items-center gap-3">
+            <FaGraduationCap className="text-slate-500" />
+            <span className="text-slate-700">{user.department}</span>
+          </div>
+        )}
+        {user.current_job_title && (
+          <div className="flex items-center gap-3">
+            <FiBriefcase className="text-slate-500" />
+            <span className="text-slate-700">{user.current_job_title}</span>
+          </div>
+        )}
+        {user.company && (
+          <div className="flex items-center gap-3">
+            <FiBriefcase className="text-slate-500" />
+            <span className="text-slate-700">{user.company}</span>
+          </div>
+        )}
+      </div>
+    </motion.div>
+
+    {/* Bio Card */}
+    {user.bio && (
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <FiInfo className="text-indigo-600" />
+          About
+        </h3>
+        <p className="text-slate-700 leading-relaxed">{user.bio}</p>
+      </motion.div>
+    )}
+
+    {/* Skills Card */}
+    {user.skills && user.skills.length > 0 && (
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <FiAward className="text-indigo-600" />
+          Skills
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          {user.skills.slice(0, 6).map((skill, index) => (
+            <motion.span
+              key={skill}
+              className="px-3 py-1 bg-gradient-to-r from-indigo-100 to-orange-100 text-indigo-800 rounded-full text-sm font-medium"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1 * index }}
+            >
+              {skill}
+            </motion.span>
+          ))}
+          {user.skills.length > 6 && (
+            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm">
+              +{user.skills.length - 6} more
+            </span>
+          )}
+        </div>
+      </motion.div>
+    )}
+
+    {/* Social Links Card */}
+    {user.socials && Object.values(user.socials).some(link => link) && (
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <FiExternalLink className="text-indigo-600" />
+          Social Links
+        </h3>
+        <div className="space-y-3">
+          {user.socials.linkedin && (
+            <a href={user.socials.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+              <FiLinkedin />
+              <span>LinkedIn</span>
+            </a>
+          )}
+          {user.socials.github && (
+            <a href={user.socials.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+              <FiGithub />
+              <span>GitHub</span>
+            </a>
+          )}
+          {user.socials.website && (
+            <a href={user.socials.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+              <FiGlobe />
+              <span>Website</span>
+            </a>
+          )}
+        </div>
+      </motion.div>
+    )}
   </div>
 );
 
-const ChipList = ({ label, items, color }) => {
-  const colorMap = {
-    blue: 'bg-blue-100 text-blue-800',
-    green: 'bg-green-100 text-green-800',
-    purple: 'bg-purple-100 text-purple-800',
-    orange: 'bg-orange-100 text-orange-800',
-    red: 'bg-red-100 text-red-800',
-    indigo: 'bg-indigo-100 text-indigo-800',
-    yellow: 'bg-yellow-100 text-yellow-800',
-    teal: 'bg-teal-100 text-teal-800'
-  };
-  return (
-    <div>
-      <span className="text-sm font-semibold text-gray-600">{label}</span>
-      <div className="flex flex-wrap gap-2 mt-2">
-        {items.map((item, idx) => (
-          <span key={`${item}-${idx}`} className={`px-3 py-1 rounded-full text-sm ${colorMap[color] || 'bg-gray-100 text-gray-800'}`}>
-            {item}
-          </span>
-        ))}
+// About Section Component
+const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, handleSubmit, handleArrayFieldChange, handleCheckboxArrayChange }) => (
+  <div className="space-y-6">
+    {/* Header */}
+    <div className="flex justify-between items-center">
+      <h2 className="text-2xl font-bold text-slate-800">About Information</h2>
+      {!isEditing ? (
+        <motion.button
+          onClick={() => setIsEditing(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <FiEdit size={18} />
+          Edit About
+        </motion.button>
+      ) : (
+        <div className="flex gap-3">
+          <motion.button
+            onClick={handleSubmit}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiSave size={18} />
+            Save Changes
+          </motion.button>
+          <motion.button
+            onClick={() => setIsEditing(false)}
+            className="flex items-center gap-2 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiX size={18} />
+            Cancel
+          </motion.button>
+        </div>
+      )}
+    </div>
+
+    {isEditing ? (
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Basic Info */}
+          <motion.div
+            className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Basic Information</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Bio</label>
+                <textarea
+                  name="bio"
+                  value={formData.bio}
+                  onChange={handleChange}
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  placeholder="Tell us about yourself..."
+                />
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Professional Info */}
+          <motion.div
+            className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Current Job Title</label>
+                <input
+                  type="text"
+                  name="current_job_title"
+                  value={formData.current_job_title}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Company</label>
+                <input
+                  type="text"
+                  name="company"
+                  value={formData.company}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Industry</label>
+                <input
+                  type="text"
+                  name="industry"
+                  value={formData.industry}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                />
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Social Links */}
+          <motion.div
+            className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50 lg:col-span-2"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Social Links</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">LinkedIn</label>
+                <input
+                  type="url"
+                  name="socials.linkedin"
+                  value={formData.socials.linkedin}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  placeholder="https://linkedin.com/in/username"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">GitHub</label>
+                <input
+                  type="url"
+                  name="socials.github"
+                  value={formData.socials.github}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  placeholder="https://github.com/username"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Website</label>
+                <input
+                  type="url"
+                  name="socials.website"
+                  value={formData.socials.website}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  placeholder="https://yourwebsite.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Twitter</label>
+                <input
+                  type="url"
+                  name="socials.twitter"
+                  value={formData.socials.twitter}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  placeholder="https://twitter.com/username"
+                />
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Role-specific fields */}
+          {user.role === 'student' && (
+            <motion.div
+              className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50 lg:col-span-2"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <h3 className="text-lg font-bold text-slate-800 mb-4">Student Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Specialization</label>
+                  <input
+                    type="text"
+                    name="specialization"
+                    value={formData.specialization}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Preferred Location</label>
+                  <input
+                    type="text"
+                    name="preferred_location"
+                    value={formData.preferred_location}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Desired Roles (comma separated)</label>
+                  <input
+                    type="text"
+                    value={formData.desired_roles.join(', ')}
+                    onChange={(e) => handleArrayFieldChange('desired_roles', e.target.value)}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Preferred Industries (comma separated)</label>
+                  <input
+                    type="text"
+                    value={formData.preferred_industries.join(', ')}
+                    onChange={(e) => handleArrayFieldChange('preferred_industries', e.target.value)}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </form>
+    ) : (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Display mode content */}
+        <motion.div
+          className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <h3 className="text-lg font-bold text-slate-800 mb-4">Personal Information</h3>
+          <div className="space-y-3">
+            <div>
+              <span className="text-sm font-semibold text-slate-500">Name:</span>
+              <p className="text-slate-800">{user.name || 'Not provided'}</p>
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-slate-500">Bio:</span>
+              <p className="text-slate-800">{user.bio || 'Not provided'}</p>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div
+          className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
+          <div className="space-y-3">
+            <div>
+              <span className="text-sm font-semibold text-slate-500">Job Title:</span>
+              <p className="text-slate-800">{user.current_job_title || 'Not provided'}</p>
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-slate-500">Company:</span>
+              <p className="text-slate-800">{user.company || 'Not provided'}</p>
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-slate-500">Industry:</span>
+              <p className="text-slate-800">{user.industry || 'Not provided'}</p>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    )}
+  </div>
+);
+
+// Skills Section Component
+const SkillsSection = ({ user, isEditing, setIsEditing, formData, skillInput, setSkillInput, onSkillKeyDown, suggestions, addSuggested, removeSkill, commitSkillInput, handleSubmit }) => (
+  <div className="space-y-6">
+    {/* Header */}
+    <div className="flex justify-between items-center">
+      <h2 className="text-2xl font-bold text-slate-800">Skills & Expertise</h2>
+      {!isEditing ? (
+        <motion.button
+          onClick={() => setIsEditing(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <FiEdit size={18} />
+          Edit Skills
+        </motion.button>
+      ) : (
+        <div className="flex gap-3">
+          <motion.button
+            onClick={handleSubmit}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiSave size={18} />
+            Save Changes
+          </motion.button>
+          <motion.button
+            onClick={() => setIsEditing(false)}
+            className="flex items-center gap-2 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiX size={18} />
+            Cancel
+          </motion.button>
+        </div>
+      )}
+    </div>
+
+    <motion.div
+      className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+    >
+      {isEditing ? (
+        <div className="space-y-4">
+          <div className="w-full px-4 py-3 border border-slate-300 rounded-xl focus-within:ring-2 focus-within:ring-indigo-500 transition bg-white">
+            <div className="flex flex-wrap gap-2 mb-2">
+              {formData.skills.map((skill) => (
+                <span key={skill} className="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-indigo-100 to-orange-100 text-indigo-800 text-sm font-medium transition transform hover:scale-105">
+                  {skill}
+                  <button type="button" onClick={() => removeSkill(skill)} className="ml-2 text-indigo-700 hover:text-indigo-900">
+                    <FiX />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={skillInput}
+              onChange={(e) => setSkillInput(e.target.value)}
+              onKeyDown={onSkillKeyDown}
+              onBlur={commitSkillInput}
+              className="w-full outline-none"
+              placeholder="Type a skill and press Enter or comma"
+            />
+            {suggestions.length > 0 && (
+              <div className="mt-2 bg-white border rounded-xl shadow-lg p-2 grid grid-cols-2 gap-2">
+                {suggestions.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => addSuggested(s)}
+                    className="text-left px-3 py-2 rounded-lg hover:bg-indigo-50 text-sm"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div>
+          <h3 className="text-lg font-bold text-slate-800 mb-4">Skills</h3>
+          {user.skills && user.skills.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {user.skills.map((skill, index) => (
+                <motion.span
+                  key={skill}
+                  className="px-3 py-1 bg-gradient-to-r from-indigo-100 to-orange-100 text-indigo-800 rounded-full text-sm font-medium"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.1 * index }}
+                >
+                  {skill}
+                </motion.span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-slate-500">No skills added yet</p>
+          )}
+        </div>
+      )}
+    </motion.div>
+  </div>
+);
+
+// Connections Section Component
+const ConnectionsSection = ({ connections, handleMessageUser, handleConnectionAction }) => (
+  <div className="space-y-6">
+    <div className="flex justify-between items-center">
+      <h2 className="text-2xl font-bold text-slate-800">My Connections</h2>
+      <div className="flex items-center gap-4">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-indigo-600">{connections.length}</div>
+          <div className="text-sm text-slate-500">Connections</div>
+        </div>
       </div>
     </div>
-  );
-};
 
-const CardSection = ({ title, children }) => (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl shadow hover:shadow-lg hover:-translate-y-0.5 transition-all bg-white">
-    <div className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
-      <h3 className="text-lg font-semibold">{title}</h3>
+    <motion.div
+      className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+    >
+      {connections.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {connections.map((connection, index) => (
+            <motion.div
+              key={connection._id}
+              className="bg-white/80 rounded-xl p-4 border border-slate-200 hover:shadow-lg transition-all duration-300"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 * index }}
+              whileHover={{ y: -5 }}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                {connection.avatarUrl ? (
+                  <img 
+                    className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200"
+                    src={getAvatarUrl(connection.avatarUrl)} 
+                    alt={connection.name} 
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-r from-indigo-600 to-orange-600 flex items-center justify-center text-white font-bold border-2 border-indigo-200">
+                    {connection.name?.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h4 className="font-semibold text-slate-800">{connection.name}</h4>
+                  <p className="text-sm text-slate-500 capitalize">{connection.role}</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <motion.button
+                  onClick={() => handleMessageUser(connection._id)}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <FiMessageCircle size={14} />
+                  Message
+                </motion.button>
+                <motion.button
+                  onClick={() => handleConnectionAction('remove', connection._id)}
+                  className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <FiUserX size={14} />
+                </motion.button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
+            <FiUsers className="w-8 h-8 text-slate-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">No connections yet</h3>
+          <p className="text-slate-500">Start connecting with your alumni, teachers, and peers!</p>
+        </div>
+      )}
+    </motion.div>
+  </div>
+);
+
+// Posts Section Component
+const PostsSection = ({ posts, showCreatePost, setShowCreatePost, postData, setPostData, handleCreatePost, handleDeletePost }) => (
+  <div className="space-y-6">
+    <div className="flex justify-between items-center">
+      <h2 className="text-2xl font-bold text-slate-800">My Posts</h2>
+      <motion.button
+        onClick={() => setShowCreatePost(true)}
+        className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <FiPlus size={18} />
+        Create Post
+      </motion.button>
     </div>
-    <div className="p-6 space-y-3">
-      {children}
+
+    {/* Create Post Modal */}
+    <AnimatePresence>
+      {showCreatePost && (
+        <motion.div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setShowCreatePost(false)}
+        >
+          <motion.div
+            className="bg-white rounded-2xl p-6 w-full max-w-2xl"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-slate-800">Create New Post</h3>
+              <button
+                onClick={() => setShowCreatePost(false)}
+                className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <FiX size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePost} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Content</label>
+                <textarea
+                  value={postData.content}
+                  onChange={(e) => setPostData({...postData, content: e.target.value})}
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  placeholder="What's on your mind?"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Audience</label>
+                <select
+                  value={postData.audience}
+                  onChange={(e) => setPostData({...postData, audience: e.target.value})}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                >
+                  <option value="public">Public</option>
+                  <option value="alumni">Alumni Only</option>
+                  <option value="teachers">Teachers Only</option>
+                  <option value="students">Students Only</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Media (Optional)</label>
+                <FileInput
+                  accept="image/*,video/*"
+                  onChange={(file) => setPostData({...postData, media: file})}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <motion.button
+                  type="submit"
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <FiShare size={18} />
+                  Post
+                </motion.button>
+                <motion.button
+                  type="button"
+                  onClick={() => setShowCreatePost(false)}
+                  className="px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Cancel
+                </motion.button>
+              </div>
+            </form>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
+    {/* Posts List */}
+    <motion.div
+      className="space-y-4"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+    >
+      {posts.length > 0 ? (
+        posts.map((post, index) => (
+          <motion.div
+            key={post._id}
+            className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 * index }}
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <p className="text-slate-800 leading-relaxed">{post.content}</p>
+                <div className="flex items-center gap-4 mt-2">
+                  <span className="text-sm text-slate-500">
+                    {new Date(post.createdAt).toLocaleDateString()}
+                  </span>
+                  <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium capitalize">
+                    {post.audience}
+                  </span>
+                </div>
+              </div>
+              <motion.button
+                onClick={() => handleDeletePost(post._id)}
+                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+              >
+                <FiTrash2 size={16} />
+              </motion.button>
+            </div>
+
+            {post.mediaUrl && (
+              <div className="mt-4">
+                {post.mediaUrl.includes('video') ? (
+                  <video controls className="w-full rounded-xl">
+                    <source src={post.mediaUrl} type="video/mp4" />
+                  </video>
+                ) : (
+                  <img src={post.mediaUrl} alt="Post media" className="w-full rounded-xl" />
+                )}
+              </div>
+            )}
+          </motion.div>
+        ))
+      ) : (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
+            <FiFileText className="w-8 h-8 text-slate-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">No posts yet</h3>
+          <p className="text-slate-500">Create your first post to share with the community!</p>
+        </div>
+      )}
+    </motion.div>
+  </div>
+);
+
+// Settings Section Component
+const SettingsSection = ({ user, isEditing, setIsEditing, formData, handleChange, avatarFile, setAvatarFile, handleSubmit }) => (
+  <div className="space-y-6">
+    <div className="flex justify-between items-center">
+      <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
+      {!isEditing ? (
+        <motion.button
+          onClick={() => setIsEditing(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <FiEdit size={18} />
+          Edit Settings
+        </motion.button>
+      ) : (
+        <div className="flex gap-3">
+          <motion.button
+            onClick={handleSubmit}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiSave size={18} />
+            Save Changes
+          </motion.button>
+          <motion.button
+            onClick={() => {
+              setIsEditing(false);
+              setAvatarFile(null);
+            }}
+            className="flex items-center gap-2 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiX size={18} />
+            Cancel
+          </motion.button>
+        </div>
+      )}
     </div>
-  </motion.div>
+
+    <motion.div
+      className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.1 }}
+    >
+      {isEditing ? (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Profile Picture</label>
+            <FileInput accept="image/*" onChange={setAvatarFile} />
+            {avatarFile && <p className="text-sm text-green-600 mt-2">✓ New image selected</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Name</label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
+            <input
+              type="email"
+              value={user.email}
+              disabled
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-50 text-slate-500"
+            />
+            <p className="text-sm text-slate-500 mt-1">Email cannot be changed</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Role</label>
+            <input
+              type="text"
+              value={user.role}
+              disabled
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-50 text-slate-500 capitalize"
+            />
+            <p className="text-sm text-slate-500 mt-1">Role cannot be changed</p>
+          </div>
+        </form>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Name:</span>
+            <p className="text-slate-800">{user.name}</p>
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Email:</span>
+            <p className="text-slate-800">{user.email}</p>
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Role:</span>
+            <p className="text-slate-800 capitalize">{user.role}</p>
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Member Since:</span>
+            <p className="text-slate-800">{new Date(user.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  </div>
 );
 
 export default ProfilePage;
