@@ -16,17 +16,28 @@ export const forumAPI = {
     const formData = new FormData();
     Object.keys(data).forEach(k => {
       const v = data[k];
-      if (Array.isArray(v)) v.forEach(item => formData.append(k, item));
-      else if (v !== undefined && v !== null) formData.append(k, v);
+      if (k === 'media' && Array.isArray(v)) {
+        v.forEach(file => formData.append('media', file));
+      } else if (Array.isArray(v)) {
+        v.forEach(item => formData.append(k, item));
+      } else if (v !== undefined && v !== null) {
+        formData.append(k, v);
+      }
     });
-    return apiClient.post('/api/forum/posts', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return apiClient.post('/api/forum/posts', formData, { 
+      headers: { 'Content-Type': 'multipart/form-data' } 
+    });
   },
   getPost: (id) => apiClient.get(`/api/forum/posts/${id}`),
   upvotePost: (id) => apiClient.post(`/api/forum/posts/${id}/upvote`),
+  addReaction: (id, reactionType = 'like') => apiClient.post(`/api/forum/posts/${id}/reactions`, { reactionType }),
+  sharePost: (id, connectionIds, message = '') => apiClient.post(`/api/forum/posts/${id}/share`, { connectionIds, message }),
+  deletePost: (id) => apiClient.delete(`/api/forum/posts/${id}`),
   bookmarkPost: (id) => apiClient.post(`/api/forum/posts/${id}/bookmark`),
   addComment: (id, body) => apiClient.post(`/api/forum/posts/${id}/comments`, body),
   upvoteComment: (commentId) => apiClient.post(`/api/forum/comments/${commentId}/upvote`),
   votePoll: (id, optionIndex) => apiClient.post(`/api/forum/posts/${id}/poll/vote`, { optionIndex }),
+  getUserConnections: () => apiClient.get('/api/forum/connections'),
   reportTarget: (id, targetType, reason) => apiClient.post(`/api/forum/${id}/report`, { targetType, reason }),
   leaderboard: () => apiClient.get('/api/forum/leaderboard')
 };

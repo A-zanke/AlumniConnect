@@ -11,8 +11,13 @@ const ForumPollSchema = new mongoose.Schema({
   voters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, { _id: false });
 
+const ForumReactionSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  type: { type: String, enum: ['like', 'love', 'laugh', 'wow', 'sad', 'angry'], default: 'like' }
+}, { _id: false });
+
 const ForumPostSchema = new mongoose.Schema({
-  author: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // optional when anonymous
+  author: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   isAnonymous: { type: Boolean, default: false },
   title: { type: String, required: true, trim: true },
   content: { type: String, required: true, trim: true },
@@ -23,16 +28,34 @@ const ForumPostSchema = new mongoose.Schema({
   },
   tags: [{ type: String, trim: true }],
   mentions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  media: {
+  media: [{
     url: String,
-    type: { type: String, enum: ['image', 'pdf', 'link', null], default: null }
-  },
+    type: { type: String, enum: ['image', 'pdf', 'link'], required: true },
+    filename: String
+  }],
   poll: ForumPollSchema,
   upvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  reactions: [ForumReactionSchema],
   bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  shares: [{ 
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    sharedAt: { type: Date, default: Date.now }
+  }],
+  commentCount: { type: Number, default: 0 },
   highlightedByAlumni: { type: Boolean, default: false },
   isReported: { type: Boolean, default: false },
-  reportsCount: { type: Number, default: 0 }
+  reportsCount: { type: Number, default: 0 },
+  isDeleted: { type: Boolean, default: false },
+  deletedAt: { type: Date }
 }, { timestamps: true });
+
+// Update comment count when comments are added/removed
+ForumPostSchema.methods.updateCommentCount = async function() {
+  const ForumComment = mongoose.model('ForumComment');
+  const count = await ForumComment.countDocuments({ post: this._id });
+  this.commentCount = count;
+  return this.save();
+};
 
 module.exports = mongoose.model('ForumPost', ForumPostSchema);
