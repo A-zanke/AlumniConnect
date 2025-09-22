@@ -163,11 +163,22 @@ exports.getPosts = async (req, res) => {
       .lean();
 
     // Add user-specific data
-    const postsWithUserData = posts.map(post => ({
-      ...post,
-      userReaction: getUserReaction(post.reactions, userId),
-      totalReactions: post.reactions.reduce((total, reaction) => total + reaction.users.length, 0)
-    }));
+    const postsWithUserData = posts.map(post => {
+      const userReaction = getUserReaction(post.reactions, req.user?._id || userId);
+      const totalReactions = (post.reactions || []).reduce((total, reaction) => total + reaction.users.length, 0);
+      const hasUserVoted = post.poll && Array.isArray(post.poll.voters)
+        ? post.poll.voters.some(v => v.toString() === (req.user?._id?.toString() || ''))
+        : false;
+      return {
+        ...post,
+        userReaction,
+        totalReactions,
+        // Frontend convenience fields
+        reactionsCount: totalReactions,
+        hasUserReacted: Boolean(userReaction),
+        hasUserVoted: hasUserVoted
+      };
+    });
 
     // Get total count for pagination
     const total = await UnifiedPost.countDocuments(query);
@@ -239,8 +250,13 @@ exports.getPost = async (req, res) => {
     await UnifiedPost.findByIdAndUpdate(id, { $inc: { viewCount: 1 } });
 
     // Add user-specific data to post
-    post.userReaction = getUserReaction(post.reactions, userId);
-    post.totalReactions = post.reactions.reduce((total, reaction) => total + reaction.users.length, 0);
+    post.userReaction = getUserReaction(post.reactions, req.user?._id || userId);
+    post.totalReactions = (post.reactions || []).reduce((total, reaction) => total + reaction.users.length, 0);
+    post.reactionsCount = post.totalReactions;
+    post.hasUserReacted = Boolean(post.userReaction);
+    post.hasUserVoted = post.poll && Array.isArray(post.poll.voters)
+      ? post.poll.voters.some(v => v.toString() === (req.user?._id?.toString() || ''))
+      : false;
 
     res.json({
       success: true,
@@ -260,10 +276,14 @@ exports.addReaction = async (req, res) => {
   try {
     console.log('Add reaction request:', { params: req.params, body: req.body, user: req.user?._id });
     const { id } = req.params;
-    const { emoji } = req.body;
+    let { emoji } = req.body;
     const userId = req.user._id;
 
     const validEmojis = ['like', 'love', 'laugh', 'wow', 'sad', 'angry'];
+    // Backward compatibility: support { reactionType: 'like' }
+    if (!emoji && req.body.reactionType) {
+      emoji = req.body.reactionType;
+    }
     if (!validEmojis.includes(emoji)) {
       return res.status(400).json({ message: 'Invalid emoji reaction' });
     }
@@ -320,7 +340,8 @@ exports.addReaction = async (req, res) => {
         reactions: post.reactions,
         totalReactions: post.reactions.reduce((total, reaction) => total + reaction.users.length, 0),
         userReaction: emoji,
-        reactionSummary
+        reactionSummary,
+        hasUserReacted: true
       }
     });
   } catch (error) {
@@ -527,10 +548,7 @@ exports.votePoll = async (req, res) => {
       return res.status(404).json({ message: 'Poll not found' });
     }
 
-    // Check if poll has expired
-    if (post.poll.expiresAt && new Date() > post.poll.expiresAt) {
-      return res.status(400).json({ message: 'Poll has expired' });
-    }
+    // No expiry restriction per requirements (remove timer)
 
     // Check if user has already voted for this specific option
     const hasVotedForThisOption = post.poll.options[optionIndex].votes.some(
@@ -612,51 +630,9 @@ exports.votePoll = async (req, res) => {
   }
 };
 
-// Update post (only within 1 minute window)
+// Update post disabled per requirements: no edit after publish
 exports.updatePost = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user._id;
-    const { title, content, category, tags } = req.body;
-
-    const post = await UnifiedPost.findById(id);
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-
-    // Check if user is the author
-    if (post.author.toString() !== userId.toString()) {
-      return res.status(403).json({ message: 'Not authorized to edit this post' });
-    }
-
-    // Check if post is still within edit window (1 minute)
-    const now = new Date();
-    if (now > post.editWindowExpires) {
-      return res.status(400).json({ 
-        message: 'Post can only be edited within 1 minute of creation' 
-      });
-    }
-
-    // Update post fields
-    if (title !== undefined) post.title = title;
-    if (content !== undefined) post.content = content;
-    if (category !== undefined) post.category = category;
-    if (tags !== undefined) post.tags = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim()).filter(Boolean);
-    
-    post.isEdited = true;
-    await post.save();
-
-    // Populate author information
-    await post.populate('author', selectUserPublic);
-
-    res.json({
-      success: true,
-      data: post
-    });
-  } catch (error) {
-    console.error('Update post error:', error);
-    res.status(500).json({ message: 'Failed to update post' });
-  }
+  return res.status(403).json({ message: 'Editing posts is disabled. You can delete anytime.' });
 };
 
 // Delete post (soft delete)
@@ -673,16 +649,6 @@ exports.deletePost = async (req, res) => {
     // Check if user is the author or admin
     if (post.author.toString() !== userId.toString() && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to delete this post' });
-    }
-
-    // Check if post is still within edit window (1 minute) for non-admin users
-    if (req.user.role !== 'admin' && post.author.toString() === userId.toString()) {
-      const now = new Date();
-      if (now > post.editWindowExpires) {
-        return res.status(400).json({ 
-          message: 'Post can only be deleted within 1 minute of creation. Contact admin for permanent deletion.' 
-        });
-      }
     }
 
     // Soft delete
