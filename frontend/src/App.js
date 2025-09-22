@@ -15,10 +15,11 @@ import EventsPage from './pages/EventsPage';
 import EventDetailsPage from './pages/EventDetailsPage';
 import NetworkPage from './pages/NetworkPage';
 import MessagesPage from './pages/MessagesPage';
-import UnifiedForumPage from './pages/UnifiedForumPage';
+import ForumPage from './pages/ForumPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import SearchPage from './pages/SearchPage';
+
 
 function App() {
   return (
@@ -56,7 +57,7 @@ function App() {
                   path="/forum"
                   element={
                     <PrivateRoute roles={['student']}>
-                      <UnifiedForumPage />
+                      <ForumPage />
                     </PrivateRoute>
                   }
                 />

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -12,7 +11,6 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -24,12 +22,10 @@ const Navbar = () => {
   }, []);
 
   const toggleMenu = () => setIsOpen(!isOpen);
-  const toggleDropdown = () => setShowDropdown(!showDropdown);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
-    setShowDropdown(false);
   };
 
   const navItems = [
@@ -144,17 +140,11 @@ const Navbar = () => {
                 {/* Notifications */}
                 <NotificationBell />
 
-                {/* User Menu */}
-                <div className="relative">
-                  <motion.button
-                    onClick={toggleDropdown}
-                    className={`flex items-center gap-3 p-2 rounded-xl border-2 transition-all duration-300 ${
-                      showDropdown 
-                        ? 'border-indigo-400 bg-indigo-50' 
-                        : 'border-transparent hover:border-indigo-300 hover:bg-indigo-50'
-                    }`}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                {/* User Button (direct link to profile) */}
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Link
+                    to="/profile"
+                    className="flex items-center gap-3 p-2 rounded-xl border-2 border-transparent hover:border-indigo-300 hover:bg-indigo-50 transition-all duration-300"
                   >
                     {user.avatarUrl ? (
                       <motion.img
@@ -174,45 +164,8 @@ const Navbar = () => {
                     <span className="hidden md:block font-semibold text-slate-700">
                       {user.name?.split(' ')[0]}
                     </span>
-                  </motion.button>
-
-                  <AnimatePresence>
-                    {showDropdown && (
-                      <motion.div
-                        className="absolute right-0 mt-3 w-56 rounded-2xl shadow-2xl py-2 bg-white/95 backdrop-blur-xl ring-1 ring-black/5 border border-white/20"
-                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <div className="px-4 py-3 border-b border-slate-100">
-                          <p className="text-sm font-semibold text-slate-800">{user.name}</p>
-                          <p className="text-sm text-slate-500">{user.email}</p>
-                        </div>
-                        
-                        <motion.div whileHover={{ x: 5 }}>
-                          <Link
-                            to="/profile"
-                            className="flex items-center px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-200"
-                            onClick={() => setShowDropdown(false)}
-                          >
-                            <FiUser className="mr-3" />
-                            Your Profile
-                          </Link>
-                        </motion.div>
-                        
-                        <motion.button
-                          onClick={handleLogout}
-                          className="flex w-full items-center px-4 py-3 text-sm text-slate-700 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
-                          whileHover={{ x: 5 }}
-                        >
-                          <FiLogOut className="mr-3" />
-                          Sign out
-                        </motion.button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                  </Link>
+                </motion.div>
               </motion.div>
             ) : (
               <motion.div
