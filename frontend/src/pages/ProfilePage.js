@@ -6,7 +6,9 @@ import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { connectionAPI, userAPI } from '../components/utils/api';
 import { getAvatarUrl } from '../components/utils/helpers';
+
 // Feather icons (Fi = Feather Icons)
+
 import {
   FiUser,
   FiInfo,
@@ -56,6 +58,7 @@ const ProfilePage = () => {
   const [skillInput, setSkillInput] = useState('');
   const [activeSection, setActiveSection] = useState('overview');
   const [connections, setConnections] = useState([]);
+  const [allConnections, setAllConnections] = useState([]); // For total unique connections
   const [posts, setPosts] = useState([]);
   const [showCreatePost, setShowCreatePost] = useState(false);
   
@@ -190,11 +193,25 @@ const ProfilePage = () => {
     }
   };
 
+  // Fetch both connections (I connected) and those who connected to me (mutual/one-way)
   const fetchUserConnections = async () => {
     if (!currentUser) return;
     try {
-      const response = await connectionAPI.getConnections();
-      setConnections(response.data?.connections || []);
+      const [sentRes, receivedRes] = await Promise.all([
+        connectionAPI.getConnections(), // connections I sent/accepted
+        connectionAPI.getPendingRequests() // requests I received (pending)
+      ]);
+      // sentRes.data: my connections (array of users)
+      // receivedRes.data: pending requests (array of users who sent me requests)
+      const sent = sentRes.data || [];
+      const received = (receivedRes.data?.map?.(r => r.fromUser) || []);
+      // Merge, deduplicate by _id
+      const all = [...sent, ...received].reduce((acc, user) => {
+        if (!acc.find(u => u._id === user._id)) acc.push(user);
+        return acc;
+      }, []);
+      setConnections(sent); // still show direct connections in main list
+      setAllConnections(all); // all unique connections (sent + received)
     } catch (error) {
       console.error('Error fetching connections:', error);
     }
@@ -237,8 +254,6 @@ const ProfilePage = () => {
         case 'remove':
           await connectionAPI.removeConnection(userId);
           if (isOwnProfile) {
-            // Remove from connections list
-            setConnections(prev => prev.filter(conn => conn._id !== userId));
             toast.success('Connection removed');
           } else {
             setConnectionStatus(null);
@@ -248,6 +263,8 @@ const ProfilePage = () => {
         default:
           break;
       }
+      // Always re-fetch connections after any action for real-time update
+      if (isOwnProfile) fetchUserConnections();
     } catch (error) {
       console.error('Connection action error:', error);
       toast.error('Failed to perform action');
@@ -404,14 +421,14 @@ const ProfilePage = () => {
       case 'connected':
         return (
           <div className="flex space-x-2">
-            <motion.button
+            {/* <motion.button
               onClick={() => handleMessageUser(userId || user?._id)}
               className="flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               <FiMessageCircle className="mr-2" /> Message
-            </motion.button>
+            </motion.button> */}
             <motion.button
               onClick={() => handleConnectionAction('remove')}
               className="flex items-center px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
@@ -717,7 +734,8 @@ const ProfilePage = () => {
               )}
               {activeSection === 'connections' && (
                 <ConnectionsSection 
-                  connections={connections} 
+                  connections={connections}
+                  allConnections={allConnections}
                   handleMessageUser={handleMessageUser}
                   handleConnectionAction={handleConnectionAction}
                 />
@@ -1270,14 +1288,14 @@ const SkillsSection = ({ user, isEditing, setIsEditing, formData, skillInput, se
 );
 
 // Connections Section Component
-const ConnectionsSection = ({ connections, handleMessageUser, handleConnectionAction }) => (
+const ConnectionsSection = ({ connections, allConnections, handleMessageUser, handleConnectionAction }) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">My Connections</h2>
       <div className="flex items-center gap-4">
         <div className="text-center">
-          <div className="text-2xl font-bold text-indigo-600">{connections.length}</div>
-          <div className="text-sm text-slate-500">Connections</div>
+          <div className="text-2xl font-bold text-indigo-600">{allConnections ? allConnections.length : connections.length}</div>
+          <div className="text-sm text-slate-500">Total Connections</div>
         </div>
       </div>
     </div>
@@ -1288,9 +1306,9 @@ const ConnectionsSection = ({ connections, handleMessageUser, handleConnectionAc
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
     >
-      {connections.length > 0 ? (
+      {(allConnections && allConnections.length > 0) ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {connections.map((connection, index) => (
+          {allConnections.map((connection, index) => (
             <motion.div
               key={connection._id}
               className="bg-white/80 rounded-xl p-4 border border-slate-200 hover:shadow-lg transition-all duration-300"
@@ -1300,23 +1318,39 @@ const ConnectionsSection = ({ connections, handleMessageUser, handleConnectionAc
               whileHover={{ y: -5 }}
             >
               <div className="flex items-center gap-3 mb-3">
-                {connection.avatarUrl ? (
-                  <img 
-                    className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200"
-                    src={getAvatarUrl(connection.avatarUrl)} 
-                    alt={connection.name} 
-                  />
-                ) : (
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-r from-indigo-600 to-orange-600 flex items-center justify-center text-white font-bold border-2 border-indigo-200">
-                    {connection.name?.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="flex-1">
-                  <h4 className="font-semibold text-slate-800">{connection.name}</h4>
-                  <p className="text-sm text-slate-500 capitalize">{connection.role}</p>
-                </div>
+                {/* Avatar clickable */}
+                {(() => {
+                  const profileUrl = connection.username
+                    ? `/profile/${connection.username}`
+                    : `/profile/id/${connection._id}`;
+                  return (
+                    <>
+                      {connection.avatarUrl ? (
+                        <a href={profileUrl} className="focus:outline-none">
+                          <img 
+                            className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
+                            src={getAvatarUrl(connection.avatarUrl)} 
+                            alt={connection.name} 
+                          />
+                        </a>
+                      ) : (
+                        <a href={profileUrl} className="focus:outline-none">
+                          <div className="h-12 w-12 rounded-full bg-gradient-to-r from-indigo-600 to-orange-600 flex items-center justify-center text-white font-bold border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition">
+                            {connection.name?.charAt(0).toUpperCase()}
+                          </div>
+                        </a>
+                      )}
+                      <div className="flex-1">
+                        {/* Name clickable */}
+                        <a href={profileUrl} className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block">
+                          {connection.name}
+                        </a>
+                        <p className="text-sm text-slate-500 capitalize">{connection.role}</p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
-              
               <div className="flex gap-2">
                 <motion.button
                   onClick={() => handleMessageUser(connection._id)}
@@ -1333,7 +1367,8 @@ const ConnectionsSection = ({ connections, handleMessageUser, handleConnectionAc
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <FiUserX size={14} />
+                  {/* Unfollow icon and label */}
+                  <FiUserX size={14} /> Unfollow
                 </motion.button>
               </div>
             </motion.div>

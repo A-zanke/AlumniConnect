@@ -32,15 +32,16 @@ const EventSchema = new mongoose.Schema({
     graduation_year: { type: Number, required: true }
   }],
 
-  // Status
   status: { type: String, enum: ['active', 'pending', 'rejected'], default: 'active' },
 
   // Date fields
   startAt: { type: Date, required: true },
   endAt: { type: Date, required: true },
-
-  // Misc/legacy compatibility fields
-  audience: { type: String, enum: ['college', 'department', 'year', 'custom'], default: 'college' },
+  // Audience field for notification and privacy
+  audience: {
+    type: [String], // e.g., ["student", "teacher", "alumni"]
+    required: true
+  },
   departmentScope: [{ type: String }],
   yearScope: [{ type: Number }],
   graduationYearScope: [{ type: Number }],

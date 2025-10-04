@@ -110,18 +110,18 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   };
 
   const Author = () => {
-    if (post.isAnonymous || !post.author) {
-      return <span className="text-gray-500 font-medium">Anonymous</span>;
-    }
-    return (
-      <Link 
-        to={`/profile/${post.author.username || post.author._id}`} 
-        className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
-      >
-        {post.author.name}
-      </Link>
-    );
-  };
+  if (!post.author) {
+    return <span className="text-gray-500 font-medium">Unknown User</span>;
+  }
+  return (
+    <Link 
+      to={`/profile/${post.author.username || post.author._id}`} 
+      className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
+    >
+      {post.author.name}
+    </Link>
+  );
+};
 
   const canDelete = post.author && currentUser && post.author._id === currentUser._id;
 

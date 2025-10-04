@@ -120,6 +120,7 @@ const buildEventPayload = (req) => {
 	return payload;
 };
 
+const Notification = require('../models/Notification');
 const createEvent = async (req, res) => {
 	try {
 		const creatorRole = (req.user.role || '').toLowerCase();
@@ -138,11 +139,120 @@ const createEvent = async (req, res) => {
 			approved
 		});
 
+    // Find targeted users based on criteria
+    let targetedUserIds = new Set();
+
+    // For students
+    if (payload.target_roles.includes('student') && payload.target_student_combinations.length > 0) {
+      const studentFilter = {
+        role: 'student',
+        $or: payload.target_student_combinations.map(comb => ({
+          department: comb.department,
+          year: comb.year
+        }))
+      };
+      const students = await User.find(studentFilter).select('_id');
+      students.forEach(s => targetedUserIds.add(s._id.toString()));
+    } else if (payload.target_roles.includes('student')) {
+      // All students if no specific combinations
+      const allStudents = await User.find({ role: 'student' }).select('_id');
+      allStudents.forEach(s => targetedUserIds.add(s._id.toString()));
+    }
+
+    // For teachers
+    if (payload.target_roles.includes('teacher') && payload.target_teacher_departments.length > 0) {
+      const teacherFilter = {
+        role: 'teacher',
+        department: { $in: payload.target_teacher_departments }
+      };
+      const teachers = await User.find(teacherFilter).select('_id');
+      teachers.forEach(t => targetedUserIds.add(t._id.toString()));
+    } else if (payload.target_roles.includes('teacher')) {
+      // All teachers
+      const allTeachers = await User.find({ role: 'teacher' }).select('_id');
+      allTeachers.forEach(t => targetedUserIds.add(t._id.toString()));
+    }
+
+    // For alumni
+    if (payload.target_roles.includes('alumni') && payload.target_alumni_combinations.length > 0) {
+      const alumniFilter = {
+        role: 'alumni',
+        $or: payload.target_alumni_combinations.map(comb => ({
+          department: comb.department,
+          graduationYear: comb.graduation_year
+        }))
+      };
+      const alumni = await User.find(alumniFilter).select('_id');
+      alumni.forEach(a => targetedUserIds.add(a._id.toString()));
+    } else if (payload.target_roles.includes('alumni')) {
+      // All alumni
+      const allAlumni = await User.find({ role: 'alumni' }).select('_id');
+      allAlumni.forEach(a => targetedUserIds.add(a._id.toString()));
+    }
+
+    const targetedUsers = Array.from(targetedUserIds).map(id => ({ _id: id }));
+
+    // Create notifications for targeted users
+    const notifications = targetedUsers.map(u => ({
+      recipient: u._id,
+      sender: req.user._id,
+      type: 'event',
+      content: `New event: ${event.title}`,
+      relatedId: event._id,
+      onModel: 'Event'
+    }));
+    if (notifications.length > 0) {
+      await Notification.insertMany(notifications);
+    }
+
+    // 🔥 Emit real-time notification via Socket.io to targeted users' personal rooms
+    if (req.io && targetedUsers.length > 0) {
+      targetedUsers.forEach(u => {
+        req.io.to(u._id.toString()).emit("newEvent", {
+          eventId: event._id,
+          title: event.title,
+          message: `New event: ${event.title}`,
+          relatedId: event._id
+        });
+      });
+    }
+
 		res.status(201).json(event);
 	} catch (err) {
 		console.error('Error creating event:', err);
 		res.status(err.status || 400).json({ message: err.message || 'Failed to create event' });
 	}
+};
+
+// Get events for current user based on targeting criteria
+const getEventsForUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('role department year graduationYear name');
+    if (!user) return res.status(401).json({ message: 'User not found' });
+
+    const role = (user.role || '').toLowerCase();
+    const upcomingOnly = req.query.upcoming === 'true';
+    let filter = { status: 'active' };
+
+    if (role === 'admin') {
+      // Admin sees everything
+      filter = { status: { $in: ['active', 'pending'] } };
+    }
+
+    // Filter for upcoming events if requested
+    if (upcomingOnly) {
+      filter.startAt = { $gt: new Date() };
+    }
+
+    const events = await Event.find(filter)
+      .populate('organizer', 'name email role department year graduationYear')
+      .sort({ startAt: upcomingOnly ? 1 : -1 });
+
+    res.status(200).json(events);
+  } catch (err) {
+    console.error('Error fetching events for user:', err);
+    res.status(500).json({ message: 'Failed to fetch events' });
+  }
 };
 
 // Strict audience filtering for "All Events"
@@ -152,40 +262,22 @@ const listEvents = async (req, res) => {
 		if (!user) return res.status(401).json({ message: 'User not found' });
 
 		const role = (user.role || '').toLowerCase();
-		let filter = {};
+		const upcomingOnly = req.query.upcoming === 'true';
+		let filter = { status: 'active' };
 
-		if (role === 'student') {
-			filter = {
-				status: 'active',
-				target_roles: 'student',
-				target_student_combinations: {
-					$elemMatch: { department: user.department, year: user.year }
-				}
-			};
-		} else if (role === 'teacher') {
-			filter = {
-				status: 'active',
-				target_roles: 'teacher',
-				target_teacher_departments: user.department
-			};
-		} else if (role === 'alumni') {
-			filter = {
-				status: 'active',
-				target_roles: 'alumni',
-				target_alumni_combinations: {
-					$elemMatch: { department: user.department, graduation_year: user.graduationYear }
-				}
-			};
-		} else if (role === 'admin') {
-			// Admin sees everything here
-			filter = {};
-		} else {
-			filter = { status: 'active', _id: null };
+		if (role === 'admin') {
+			// Admin sees everything
+			filter = { status: { $in: ['active', 'pending'] } };
+		}
+
+		// Filter for upcoming events if requested
+		if (upcomingOnly) {
+			filter.startAt = { $gt: new Date() };
 		}
 
 		const events = await Event.find(filter)
 			.populate('organizer', 'name email role department year graduationYear')
-			.sort({ startAt: -1 });
+			.sort({ startAt: upcomingOnly ? 1 : -1 });
 
 		res.status(200).json(events);
 	} catch (err) {
@@ -337,5 +429,6 @@ module.exports = {
 	rsvpEvent,
 	updateEvent,
 	deleteEvent,
-	listPending
+	listPending,
+	getEventsForUser
 };

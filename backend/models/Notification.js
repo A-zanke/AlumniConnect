@@ -1,42 +1,27 @@
 const mongoose = require('mongoose');
 
-const notificationSchema = new mongoose.Schema({
-  recipient: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+const notificationSchema = new mongoose.Schema(
+  {
+    recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    type: {
+      type: String,
+      enum: ['connection_request', 'connection_accepted', 'message', 'like', 'comment', 'event'],
+      required: true,
+    },
+    content: { type: String },
+    relatedId: { type: mongoose.Schema.Types.ObjectId, refPath: 'onModel' },
+    onModel: { type: String },
+    read: { type: Boolean, default: false },
+    readAt: { type: Date },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'declined', null],
+      default: null,
+    },
   },
-  sender: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  type: {
-    type: String,
-    enum: ['connection_request', 'connection_accepted', 'connection_rejected', 'message', 'event_invite', 'event_reminder', 'post_like', 'post_comment'],
-    required: true
-  },
-  content: {
-    type: String,
-    required: true
-  },
-  read: {
-    type: Boolean,
-    default: false
-  },
-  relatedId: {
-    type: mongoose.Schema.Types.ObjectId,
-    refPath: 'onModel'
-  },
-  onModel: {
-    type: String,
-    enum: ['Post', 'Event', 'Message'],
-    required: false,
-    default: undefined
-  }
-}, {
-  timestamps: true
-});
+  { timestamps: true }
+);
 
 // Index for faster queries
 notificationSchema.index({ recipient: 1, createdAt: -1 });

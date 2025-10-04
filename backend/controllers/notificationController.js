@@ -20,10 +20,11 @@ exports.createNotification = async (req, res) => {
     const notification = await Notification.create({
       recipient,
       sender: req.user._id,
-      type,
+      type, // e.g. 'connection_request'
       content: safeContent,
       relatedId: relatedId || null,
       onModel: onModel || null,
+      status: 'pending', // NEW FIELD: pending, accepted, declined
     });
 
     res.json(notification);
@@ -119,5 +120,46 @@ exports.deleteNotification = async (req, res) => {
   } catch (error) {
     console.error('Error deleting notification:', error);
     res.status(500).json({ message: error.message || 'Failed to delete notification' });
+  }
+};
+
+// Respond to a connection request (accept/decline)
+exports.respondToRequest = async (req, res) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
+    const { action } = req.body; // "accept" or "decline"
+
+    const notif = await Notification.findOne({
+      _id: req.params.id,
+      recipient: req.user._id,
+      type: 'connection_request',
+      status: 'pending',
+    });
+
+    if (!notif) return res.status(404).json({ message: 'Request not found or already handled' });
+
+    if (action === 'accept') {
+      notif.status = 'accepted';
+      notif.read = true;
+      notif.readAt = new Date();
+      notif.type = 'connection_accepted'; // change type for history
+      notif.content = `You are now connected with ${notif.sender.name || 'someone'}`;
+      await notif.save();
+
+      return res.json({ message: 'Request accepted', notification: notif });
+    }
+
+    if (action === 'decline') {
+      await Notification.deleteOne({ _id: notif._id });
+      return res.json({ message: 'Request declined and removed' });
+    }
+
+    res.status(400).json({ message: 'Invalid action' });
+  } catch (error) {
+    console.error('Error responding to request:', error);
+    res.status(500).json({ message: error.message || 'Failed to respond to request' });
   }
 };
