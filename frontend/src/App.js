@@ -7,7 +7,7 @@ import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import HomePage from './pages/HomePage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
-import AboutPage from './pages/AboutPage';
+import AboutPage from './pages/AboutPage.jsx';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
