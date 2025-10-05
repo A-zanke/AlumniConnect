@@ -81,7 +81,7 @@ const CommentsSection = ({ postId, onCommentAdded }) => {
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-medium text-gray-900">
-              {comment.isAnonymous ? 'Anonymous' : comment.author?.name || 'Unknown'}
+              {comment.author?.name || 'Unknown'}
             </span>
             <span className="text-xs text-gray-500">
               {new Date(comment.createdAt).toLocaleDateString()}

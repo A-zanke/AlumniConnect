@@ -16,6 +16,7 @@ import EventDetailsPage from './pages/EventDetailsPage';
 import NetworkPage from './pages/NetworkPage';
 import MessagesPage from './pages/MessagesPage';
 import ForumPage from './pages/ForumPage';
+import ForumPostPage from './pages/ForumPostPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import SearchPage from './pages/SearchPage';
@@ -58,6 +59,14 @@ function App() {
                   element={
                     <PrivateRoute roles={['student']}>
                       <ForumPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/forum/:id"
+                  element={
+                    <PrivateRoute roles={['student']}>
+                      <ForumPostPage />
                     </PrivateRoute>
                   }
                 />

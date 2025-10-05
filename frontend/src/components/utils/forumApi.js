@@ -37,6 +37,7 @@ export const forumAPI = {
   addComment: (id, body) => apiClient.post(`/api/forum/posts/${id}/comments`, body),
   upvoteComment: (commentId) => apiClient.post(`/api/forum/comments/${commentId}/upvote`),
   votePoll: (id, optionIndex) => apiClient.post(`/api/forum/posts/${id}/poll/vote`, { optionIndex }),
+  getPollOptionVoters: (id, optionIndex) => apiClient.get(`/api/forum/posts/${id}/poll/${optionIndex}/voters`),
   getUserConnections: () => apiClient.get('/api/forum/connections'),
   reportTarget: (id, targetType, reason) => apiClient.post(`/api/forum/${id}/report`, { targetType, reason }),
   leaderboard: () => apiClient.get('/api/forum/leaderboard')

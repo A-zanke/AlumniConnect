@@ -23,6 +23,7 @@ const { Server } = require('socket.io');
 const io = new Server(http, {
   cors: { origin: 'http://localhost:3000', credentials: true }
 });
+global.io = io;
 
 // Middleware
 app.use(express.json());
@@ -96,9 +97,9 @@ const adminRoutes = require('./routes/adminRoutes');
 const messagesRoutes = require('./routes/messagesRoutes');
 const avatarRoutes = require('./routes/avatarRoutes');
 const forumRoutes = require('./routes/forumRoutes');
-const unifiedForumRoutes = require('./routes/unifiedForumRoutes');
+
 app.use('/api/forum', forumRoutes);
-app.use('/api/unified-forum', unifiedForumRoutes);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -206,4 +207,19 @@ io.on('connection', (socket) => {
   });
 
   socket.join(socket.userId);
+
+  // Forum rooms
+  socket.on('forum:join_post', (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.join(`forum_post_${postId}`);
+    } catch (e) {}
+  });
+
+  socket.on('forum:leave_post', (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.leave(`forum_post_${postId}`);
+    } catch (e) {}
+  });
 });

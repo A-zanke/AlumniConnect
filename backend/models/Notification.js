@@ -13,7 +13,13 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['connection_request', 'connection_accepted', 'connection_rejected', 'message', 'event_invite', 'event_reminder', 'post_like', 'post_comment'],
+    enum: [
+      'connection_request', 'connection_accepted', 'connection_rejected',
+      'message', 'event_invite', 'event_reminder',
+      'post_like', 'post_comment',
+      // Forum-related types
+      'mention', 'reaction', 'upvote', 'share', 'comment'
+    ],
     required: true
   },
   content: {
@@ -30,9 +36,13 @@ const notificationSchema = new mongoose.Schema({
   },
   onModel: {
     type: String,
-    enum: ['Post', 'Event', 'Message'],
+    enum: ['Post', 'Event', 'Message', 'ForumPost', 'ForumComment'],
     required: false,
     default: undefined
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false
   }
 }, {
   timestamps: true

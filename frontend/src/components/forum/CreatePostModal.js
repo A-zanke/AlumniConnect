@@ -15,7 +15,6 @@ const CreatePostModal = ({ onClose, onCreated }) => {
     title: '',
     content: '',
     category: 'Career',
-    isAnonymous: false,
     tags: [],
     mentions: '',
     pollQuestion: '',
@@ -83,6 +82,8 @@ const CreatePostModal = ({ onClose, onCreated }) => {
         media: media,
         mediaLinks: links.filter(link => link.trim())
       };
+      // Ensure anonymity is disabled
+      delete payload.isAnonymous;
 
       if (form.pollQuestion && form.pollOptions) {
         payload.pollQuestion = form.pollQuestion.trim();
@@ -181,7 +182,7 @@ const CreatePostModal = ({ onClose, onCreated }) => {
               />
             </div>
 
-            {/* Category + Anonymous */}
+            {/* Category */}
             <div className="flex flex-wrap items-center gap-4">
               <select
                 className="px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-200 outline-none"
@@ -190,16 +191,6 @@ const CreatePostModal = ({ onClose, onCreated }) => {
               >
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <label className="flex items-center gap-2 text-sm">
-                <FiUser className="text-blue-600" />
-                <input
-                  type="checkbox"
-                  checked={form.isAnonymous}
-                  onChange={e => setForm({ ...form, isAnonymous: e.target.checked })}
-                  className="text-blue-600 focus:ring-blue-500"
-                />
-                Post anonymously
-              </label>
             </div>
 
             {/* Tags */}
