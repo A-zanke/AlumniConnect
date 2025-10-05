@@ -138,7 +138,7 @@ const Search = () => {
     // Helper for profile image fallback
     const handleImgError = (e) => {
         e.target.onerror = null;
-        e.target.src = '/default-avatar.png.jpg';
+        e.target.src = '/default-avatar.png';
     };
 
     return (
@@ -185,12 +185,11 @@ const Search = () => {
                                             <div className="p-4">
                                                 <div className="relative">
                                                     <img
-                                                        src={user.avatarUrl || '/default-avatar.png.jpg'}
+                                                        src={user.avatarUrl ? user.avatarUrl : '/default-avatar.png'}
                                                         alt={user.name}
                                                         onError={handleImgError}
                                                         className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg group-hover:scale-110 transition-transform duration-300"
                                                     />
-                                                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white"></div>
                                                 </div>
                                             </div>
                                             <div className="flex-1 p-4 pr-6">

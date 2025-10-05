@@ -32,7 +32,8 @@ const Navbar = () => {
     { to: '/', label: 'Home', icon: FiHome },
     { to: '/events', label: 'Events', icon: FiCalendar },
     { to: '/about', label: 'About', icon: FiUsers },
-    { to: '/forum', label: 'Forum', icon: FiMessageCircle },
+    // Hide Forum for teacher role
+    ...(user && (user.role || '').toLowerCase() !== 'teacher' ? [{ to: '/forum', label: 'Forum', icon: FiMessageCircle }] : []),
     ...(user ? [{ to: '/network', label: 'Network', icon: FiUsers }] : []),
     ...(user && (user.role || '').toLowerCase() === 'admin' ? [{ to: '/admin', label: 'Admin', icon: FiUser }] : [])
   ];
@@ -146,21 +147,12 @@ const Navbar = () => {
                     to="/profile"
                     className="flex items-center gap-3 p-2 rounded-xl border-2 border-transparent hover:border-indigo-300 hover:bg-indigo-50 transition-all duration-300"
                   >
-                    {user.avatarUrl ? (
-                      <motion.img
-                        className="h-10 w-10 rounded-full object-cover shadow-lg"
-                        src={getAvatarUrl(user.avatarUrl)}
-                        alt={user.name}
-                        whileHover={{ scale: 1.1 }}
-                      />
-                    ) : (
-                      <motion.div
-                        className="h-10 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-lg"
-                        whileHover={{ scale: 1.1, rotate: 5 }}
-                      >
-                        {user.name?.charAt(0).toUpperCase()}
-                      </motion.div>
-                    )}
+                    <motion.img
+                      className="h-10 w-10 rounded-full object-cover shadow-lg"
+                      src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : '/default-avatar.png'}
+                      alt={user.name}
+                      whileHover={{ scale: 1.1 }}
+                    />
                     <span className="hidden md:block font-semibold text-slate-700">
                       {user.name?.split(' ')[0]}
                     </span>

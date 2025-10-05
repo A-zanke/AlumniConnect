@@ -51,15 +51,7 @@ const alumniSchema = new mongoose.Schema({
     
     // Academic Background for AI recommendation system
     specialization: { type: String, default: '' },
-    higher_studies: {
-        degree: { 
-            type: String, 
-            enum: ['MS', 'MBA', 'PhD', 'Other'],
-            default: ''
-        },
-        university: { type: String, default: '' },
-        specialization: { type: String, default: '' }
-    },
+    // higher_studies removed as per requirements
     
     // Career Info
     current_job_title: { type: String, default: '' },
@@ -114,6 +106,6 @@ const alumniSchema = new mongoose.Schema({
 // Add index for search functionality
 alumniSchema.index({ name: 'text', skills: 'text', company: 'text', position: 'text' });
 
-const Alumni = mongoose.model('Alumni', alumniSchema);
+const Alumni = mongoose.model('Alumni', alumniSchema, 'alumnis');
 
 module.exports = Alumni; 

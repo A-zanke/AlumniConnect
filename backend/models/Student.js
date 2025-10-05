@@ -21,15 +21,7 @@ const studentSchema = new mongoose.Schema({
         required: true,
         enum: ['A', 'B', 'C', 'D']
     },
-    batch: {
-        type: String,
-        required: true
-    },
-    rollNumber: {
-        type: String,
-        required: true,
-        unique: true
-    },
+    // batch and rollNumber removed as per new requirements
     major: { type: String, default: '' },
     graduationYear: { type: Number },
     skills: [{ type: String, trim: true }],
@@ -158,9 +150,9 @@ const studentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 studentSchema.index({ name: 'text', username: 'text', skills: 'text', major: 'text' });
-studentSchema.index({ department: 1, year: 1, division: 1, batch: 1 });
-studentSchema.index({ rollNumber: 1 });
+studentSchema.index({ department: 1, year: 1, division: 1 });
+// rollNumber index removed
 
-const Student = mongoose.model('Student', studentSchema);
+const Student = mongoose.model('Student', studentSchema, 'students');
 
 module.exports = Student; 

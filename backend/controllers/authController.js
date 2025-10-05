@@ -49,7 +49,7 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Please verify your email via OTP before registration' });
     }
 
-    // Create user
+    // Create user in User collection
     const user = await User.create({
       username,
       password,
@@ -61,6 +61,55 @@ const registerUser = async (req, res) => {
       graduationYear,
       emailVerified: isEmailVerified
     });
+
+    // Also create in respective role collection
+    const roleLower = (role || 'student').toLowerCase();
+    if (roleLower === 'student') {
+      const Student = require('../models/Student');
+      await Student.create({
+        _id: user._id,
+        name,
+        username,
+        email,
+        password: user.password,
+        department,
+        year,
+        graduationYear,
+        emailVerified: isEmailVerified
+      });
+    } else if (roleLower === 'alumni') {
+      const Alumni = require('../models/Alumni');
+      await Alumni.create({
+        _id: user._id,
+        name,
+        username,
+        email,
+        password: user.password,
+        graduationYear,
+        emailVerified: isEmailVerified
+      });
+    } else if (roleLower === 'teacher') {
+      const Teacher = require('../models/Teacher');
+      await Teacher.create({
+        _id: user._id,
+        name,
+        username,
+        email,
+        password: user.password,
+        department,
+        emailVerified: isEmailVerified
+      });
+    } else if (roleLower === 'admin') {
+      const Admin = require('../models/Admin');
+      await Admin.create({
+        _id: user._id,
+        name,
+        username,
+        email,
+        password: user.password,
+        emailVerified: isEmailVerified
+      });
+    }
 
     if (user) {
       // Set JWT as cookie
