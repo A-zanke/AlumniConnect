@@ -42,12 +42,9 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    // Require email verified (registration flow should verify before saving)
+    // Check email verification via OTP if available; proceed even if not verified
     const verifiedOtp = await Otp.findOne({ email, consumed: true }).sort({ createdAt: -1 });
     const isEmailVerified = Boolean(verifiedOtp);
-    if (!isEmailVerified) {
-      return res.status(400).json({ message: 'Please verify your email via OTP before registration' });
-    }
 
     // Create user in User collection
     const user = await User.create({
