@@ -1,4 +1,5 @@
  import React from 'react';
+import Chatbot from './components/ui/Chatbot';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
@@ -107,6 +108,7 @@ function App() {
               </Routes>
             </main>
             <Footer />
+              <Chatbot />
           </div>
         </Router>
       </NotificationProvider>

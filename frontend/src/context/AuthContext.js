@@ -195,6 +195,8 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  
+
   return (
     <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent, sendResetOtp, verifyResetOtp, resetPassword }}>
       {children}

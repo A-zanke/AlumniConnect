@@ -259,6 +259,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
+                onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
               />
               {images.length > 1 && (
                 <>

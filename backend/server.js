@@ -97,8 +97,10 @@ const adminRoutes = require('./routes/adminRoutes');
 const messagesRoutes = require('./routes/messagesRoutes');
 const avatarRoutes = require('./routes/avatarRoutes');
 const forumRoutes = require('./routes/forumRoutes');
+const chatbotRoutes = require('./routes/chatbotRoutes');
 
 app.use('/api/forum', forumRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);

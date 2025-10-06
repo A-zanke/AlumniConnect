@@ -742,6 +742,7 @@ const ProfilePage = () => {
                   className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200" 
                   src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : '/default-avatar.png'} 
                   alt={user.name} 
+                  onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
                 />
               </motion.div>
               
@@ -1428,6 +1429,7 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
                       className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
                       src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : '/default-avatar.png'} 
                       alt={connection.name} 
+                      onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
                     />
                   </a>
                   <div className="flex-1">

@@ -11,6 +11,7 @@ const {
   updatePresence,
   getPresence
 } = require('../controllers/userController');
+const chatbotController = require('../controllers/chatbotController');
 
 // Public route to get user profile by username
 router.get('/username/:username', getUserByUsername);
@@ -103,5 +104,8 @@ router.get('/mutual/connections', protect, getMyMutualConnections);
 // Presence routes
 router.put('/presence', protect, updatePresence);
 router.get('/:userId/presence', protect, getPresence);
+
+// AI Chatbot endpoint
+router.post('/chatbot', chatbotController.chatbotReply);
 
 module.exports = router; 
