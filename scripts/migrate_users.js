@@ -41,7 +41,7 @@ async function migrate() {
               password: user.password || '',
               department: departmentId,
               year: user.year || null,
-              division: user.division || 'A',
+              
               graduationYear: user.graduationYear || null,
               emailVerified: user.emailVerified || false
             });

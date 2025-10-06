@@ -45,7 +45,6 @@ const getDashboardOverview = async (req, res) => {
             },
             classAssignments: classAssignments.map(ca => ({
                 year: ca.year,
-                division: ca.division,
                 batch: ca.batch,
                 isClassTeacher: ca.isClassTeacher,
                 totalStudents: ca.students.length,
@@ -115,7 +114,6 @@ const generateStudentReport = async (req, res) => {
                 rollNumber: student.rollNumber,
                 department: student.department.name,
                 year: student.year,
-                division: student.division,
                 batch: student.batch
             },
             academicPerformance: student.academicPerformance,
@@ -152,7 +150,7 @@ const getDepartmentOverview = async (req, res) => {
         const classDistribution = await Student.aggregate([
             { $match: { department: teacher.department } },
             { $group: {
-                _id: { year: '$year', division: '$division' },
+                _id: { year: '$year' },
                 count: { $sum: 1 }
             }}
         ]);

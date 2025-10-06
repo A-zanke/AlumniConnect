@@ -72,6 +72,7 @@ const registerUser = async (req, res) => {
         if (department) {
           let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
           if (!dep) {
+            // Create department if missing; store provided string as both code and name for simplicity
             dep = await Department.create({ code: String(department), name: String(department) });
           }
           departmentId = dep._id;
@@ -84,7 +85,6 @@ const registerUser = async (req, res) => {
           password: user.password,
           department: departmentId,
           year,
-          division: 'A',
           graduationYear,
           emailVerified: isEmailVerified
         });
@@ -462,9 +462,15 @@ const updateUserProfile = async (req, res) => {
         const studentData = await Student.findOne({ email: user.email });
         if (studentData) {
           // Update student-specific fields
-          if (req.body.department) studentData.department = req.body.department;
+          if (req.body.department) {
+            const Department = require('../models/Department');
+            let dep = await Department.findOne({ code: req.body.department }) || await Department.findOne({ name: req.body.department });
+            if (!dep) {
+              dep = await Department.create({ code: String(req.body.department), name: String(req.body.department) });
+            }
+            studentData.department = dep._id;
+          }
           if (req.body.year) studentData.year = req.body.year;
-          if (req.body.division) studentData.division = req.body.division;
           if (req.body.batch) studentData.batch = req.body.batch;
           if (req.body.rollNumber) studentData.rollNumber = req.body.rollNumber;
           if (req.body.major) studentData.major = req.body.major;

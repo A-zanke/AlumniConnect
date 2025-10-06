@@ -16,11 +16,6 @@ const studentSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
-    division: {
-        type: String,
-        required: true,
-        enum: ['A', 'B', 'C', 'D']
-    },
     // batch and rollNumber removed as per new requirements
     major: { type: String, default: '' },
     graduationYear: { type: Number },
@@ -150,7 +145,7 @@ const studentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 studentSchema.index({ name: 'text', username: 'text', skills: 'text', major: 'text' });
-studentSchema.index({ department: 1, year: 1, division: 1 });
+studentSchema.index({ department: 1, year: 1 });
 // rollNumber index removed
 
 const Student = mongoose.model('Student', studentSchema, 'students');
