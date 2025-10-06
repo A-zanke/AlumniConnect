@@ -36,10 +36,10 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Username already taken' });
     }
 
-    // Enforce password strength
-    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
-    if (!passwordStrong.test(password)) {
-      return res.status(400).json({ message: 'Password not strong enough' });
+    // Relaxed password validation: accept common passwords but require minimum length
+    const acceptablePassword = /^.{6,}$/;
+    if (!acceptablePassword.test(password)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
     // Require email verified (registration flow should verify before saving)
@@ -62,53 +62,76 @@ const registerUser = async (req, res) => {
       emailVerified: isEmailVerified
     });
 
-    // Also create in respective role collection
+    // Also create in respective role collection (best-effort; do not fail registration on error)
     const roleLower = (role || 'student').toLowerCase();
-    if (roleLower === 'student') {
-      const Student = require('../models/Student');
-      await Student.create({
-        _id: user._id,
-        name,
-        username,
-        email,
-        password: user.password,
-        department,
-        year,
-        graduationYear,
-        emailVerified: isEmailVerified
-      });
-    } else if (roleLower === 'alumni') {
-      const Alumni = require('../models/Alumni');
-      await Alumni.create({
-        _id: user._id,
-        name,
-        username,
-        email,
-        password: user.password,
-        graduationYear,
-        emailVerified: isEmailVerified
-      });
-    } else if (roleLower === 'teacher') {
-      const Teacher = require('../models/Teacher');
-      await Teacher.create({
-        _id: user._id,
-        name,
-        username,
-        email,
-        password: user.password,
-        department,
-        emailVerified: isEmailVerified
-      });
-    } else if (roleLower === 'admin') {
-      const Admin = require('../models/Admin');
-      await Admin.create({
-        _id: user._id,
-        name,
-        username,
-        email,
-        password: user.password,
-        emailVerified: isEmailVerified
-      });
+    try {
+      if (roleLower === 'student') {
+        const Student = require('../models/Student');
+        const Department = require('../models/Department');
+        let departmentId;
+        if (department) {
+          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          if (!dep) {
+            dep = await Department.create({ code: String(department), name: String(department) });
+          }
+          departmentId = dep._id;
+        }
+        await Student.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          department: departmentId,
+          year,
+          division: 'A',
+          graduationYear,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'alumni') {
+        const Alumni = require('../models/Alumni');
+        await Alumni.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          graduationYear,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'teacher') {
+        const Teacher = require('../models/Teacher');
+        const Department = require('../models/Department');
+        let departmentId;
+        if (department) {
+          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          if (!dep) {
+            dep = await Department.create({ code: String(department), name: String(department) });
+          }
+          departmentId = dep._id;
+        }
+        await Teacher.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          department: departmentId,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'admin') {
+        const Admin = require('../models/Admin');
+        await Admin.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          emailVerified: isEmailVerified
+        });
+      }
+    } catch (e) {
+      console.error('Role profile creation failed:', e?.message || e);
     }
 
     if (user) {
@@ -329,10 +352,10 @@ const resetPassword = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Validate password strength
-    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
-    if (!passwordStrong.test(newPassword)) {
-      return res.status(400).json({ message: 'Password not strong enough' });
+    // Relaxed password validation for reset as well
+    const acceptablePassword = /^.{6,}$/;
+    if (!acceptablePassword.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
     user.password = newPassword;
