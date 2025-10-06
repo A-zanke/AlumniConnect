@@ -389,22 +389,11 @@ const MessagesPage = () => {
                       >
                         <div className="flex items-center">
                           <div className="relative">
-                            {connection.avatarUrl ? (
-                              <img
-                                src={getAvatarUrl(connection.avatarUrl)}
-                                alt={connection.name}
-                                className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
-                              />
-                            ) : (
-                              <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
-                                {connection.name?.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            {presenceData[connection._id]?.isOnline ? (
-                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
-                            ) : (
-                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gray-400 rounded-full border-2 border-white"></div>
-                            )}
+                            <img
+                              src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : '/default-avatar.png'}
+                              alt={connection.name}
+                              className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
+                            />
                           </div>
                           <div className="ml-4 flex-1 min-w-0">
                             <p className={`text-sm font-semibold truncate ${
@@ -441,21 +430,19 @@ const MessagesPage = () => {
                         <div className="relative">
                           {selectedUser.avatarUrl ? (
                             <img
-                              src={getAvatarUrl(selectedUser.avatarUrl)}
+                              src={selectedUser.avatarUrl ? getAvatarUrl(selectedUser.avatarUrl) : '/default-avatar.png'}
                               alt={selectedUser.name}
                               className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
                             />
                           ) : (
-                            <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
-                              {selectedUser.name?.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          {presenceData[selectedUser._id]?.isOnline ? (
-                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
-                          ) : (
-                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gray-400 rounded-full border-2 border-white"></div>
+                            <img
+                              src="/default-avatar.png"
+                              alt={selectedUser.name}
+                              className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
+                            />
                           )}
                         </div>
+                        
                         <div className="ml-4">
                           <p className="text-lg font-semibold text-gray-900">{selectedUser.name}</p>
                           <p className="text-sm text-gray-500">

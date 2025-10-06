@@ -17,7 +17,9 @@ const {
   toggleBookmark,
   getUserConnections,
   reportTarget,
-  leaderboard
+  leaderboard,
+  getPollOptionVoters,
+  reactToComment
 } = require('../controllers/forumController');
 
 const storage = multer.diskStorage({
@@ -45,9 +47,11 @@ router.post('/posts/:id/bookmark', protect, toggleBookmark);
 // Comments
 router.post('/posts/:id/comments', protect, createComment);
 router.post('/comments/:commentId/upvote', protect, toggleUpvoteComment);
+router.post('/comments/:commentId/reactions', protect, reactToComment);
 
 // Polls
 router.post('/posts/:id/poll/vote', protect, votePoll);
+router.get('/posts/:id/poll/:index/voters', protect, getPollOptionVoters);
 
 // Connections for sharing
 router.get('/connections', protect, getUserConnections);

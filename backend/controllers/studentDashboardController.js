@@ -42,7 +42,6 @@ const getDashboardOverview = async (req, res) => {
                 rollNumber: student.rollNumber,
                 department: student.department.name,
                 year: student.year,
-                division: student.division,
                 batch: student.batch
             },
             academic: {
@@ -151,7 +150,6 @@ const getClassSchedule = async (req, res) => {
             subjects: classAssignment.subjects,
             department: classAssignment.department,
             year: classAssignment.year,
-            division: classAssignment.division,
             batch: classAssignment.batch
         });
     } catch (error) {

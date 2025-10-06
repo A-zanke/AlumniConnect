@@ -15,55 +15,30 @@ async function getUserByUsername(req, res) {
 
     let additionalData = {};
     if (user.role === 'student') {
-      const studentData = await Student.findOne({ email: user.email });
-      if (studentData) {
-        additionalData = {
-          department: studentData.department,
-          year: studentData.year,
-          division: studentData.division,
-          batch: studentData.batch,
-          rollNumber: studentData.rollNumber,
-          major: studentData.major,
-          graduationYear: studentData.graduationYear,
-          specialization: studentData.specialization,
-          projects: studentData.projects,
-          desired_roles: studentData.desired_roles,
-          preferred_industries: studentData.preferred_industries,
-          higher_studies_interest: studentData.higher_studies_interest,
-          entrepreneurship_interest: studentData.entrepreneurship_interest,
-          internships: studentData.internships,
-          hackathons: studentData.hackathons,
-          research_papers: studentData.research_papers,
-          mentorship_needs: studentData.mentorship_needs,
-          preferred_location: studentData.preferred_location,
-          preferred_mode: studentData.preferred_mode,
-          certifications: studentData.certifications,
-          achievements: studentData.achievements,
-          detailed_projects: studentData.detailed_projects,
-          detailed_internships: studentData.detailed_internships
-        };
-      }
+      // Student profile now primarily uses fields on the User model for consistency
+      additionalData = {
+        department: user.department,
+        year: user.year,
+        graduationYear: user.graduationYear,
+        skills: user.skills,
+        socials: user.socials,
+        careerInterests: user.careerInterests,
+        activities: user.activities,
+        mentorshipOpen: user.mentorshipOpen
+      };
     } else if (user.role === 'alumni') {
-      const alumniData = await Alumni.findOne({ email: user.email });
-      if (alumniData) {
-        additionalData = {
-          specialization: alumniData.specialization,
-          higher_studies: alumniData.higher_studies,
-          current_job_title: alumniData.current_job_title,
-          company: alumniData.company,
-          industry: alumniData.industry,
-          past_experience: alumniData.past_experience,
-          mentorship_interests: alumniData.mentorship_interests,
-          preferred_students: alumniData.preferred_students,
-          availability: alumniData.availability,
-          certifications: alumniData.certifications,
-          publications: alumniData.publications,
-          entrepreneurship: alumniData.entrepreneurship,
-          linkedin: alumniData.linkedin,
-          github: alumniData.github,
-          website: alumniData.website
-        };
-      }
+      additionalData = {
+        department: user.department,
+        graduationYear: user.graduationYear,
+        degree: user.degree,
+        company: user.company,
+        position: user.position,
+        industry: user.industry,
+        skills: user.skills,
+        socials: user.socials,
+        mentorshipAvailable: user.mentorshipAvailable,
+        guidanceAreas: user.guidanceAreas
+      };
     }
 
     const fullProfile = { ...user.toObject(), ...additionalData };

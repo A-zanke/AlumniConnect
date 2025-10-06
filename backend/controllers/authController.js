@@ -36,20 +36,17 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Username already taken' });
     }
 
-    // Enforce password strength
-    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
-    if (!passwordStrong.test(password)) {
-      return res.status(400).json({ message: 'Password not strong enough' });
+    // Relaxed password validation: accept common passwords but require minimum length
+    const acceptablePassword = /^.{6,}$/;
+    if (!acceptablePassword.test(password)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    // Require email verified (registration flow should verify before saving)
+    // Check email verification via OTP if available; proceed even if not verified
     const verifiedOtp = await Otp.findOne({ email, consumed: true }).sort({ createdAt: -1 });
     const isEmailVerified = Boolean(verifiedOtp);
-    if (!isEmailVerified) {
-      return res.status(400).json({ message: 'Please verify your email via OTP before registration' });
-    }
 
-    // Create user
+    // Create user in User collection
     const user = await User.create({
       username,
       password,
@@ -61,6 +58,78 @@ const registerUser = async (req, res) => {
       graduationYear,
       emailVerified: isEmailVerified
     });
+
+    // Also create in respective role collection (best-effort; do not fail registration on error)
+    const roleLower = (role || 'student').toLowerCase();
+    try {
+      if (roleLower === 'student') {
+        const Student = require('../models/Student');
+        const Department = require('../models/Department');
+        let departmentId;
+        if (department) {
+          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          if (!dep) {
+            // Create department if missing; store provided string as both code and name for simplicity
+            dep = await Department.create({ code: String(department), name: String(department) });
+          }
+          departmentId = dep._id;
+        }
+        await Student.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          department: departmentId,
+          year,
+          graduationYear,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'alumni') {
+        const Alumni = require('../models/Alumni');
+        await Alumni.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          graduationYear,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'teacher') {
+        const Teacher = require('../models/Teacher');
+        const Department = require('../models/Department');
+        let departmentId;
+        if (department) {
+          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          if (!dep) {
+            dep = await Department.create({ code: String(department), name: String(department) });
+          }
+          departmentId = dep._id;
+        }
+        await Teacher.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          department: departmentId,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'admin') {
+        const Admin = require('../models/Admin');
+        await Admin.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          emailVerified: isEmailVerified
+        });
+      }
+    } catch (e) {
+      console.error('Role profile creation failed:', e?.message || e);
+    }
 
     if (user) {
       // Set JWT as cookie
@@ -280,10 +349,10 @@ const resetPassword = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Validate password strength
-    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
-    if (!passwordStrong.test(newPassword)) {
-      return res.status(400).json({ message: 'Password not strong enough' });
+    // Relaxed password validation for reset as well
+    const acceptablePassword = /^.{6,}$/;
+    if (!acceptablePassword.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
     user.password = newPassword;
@@ -358,16 +427,27 @@ const updateUserProfile = async (req, res) => {
       // Update basic user fields
       user.name = req.body.name || user.name;
       user.email = req.body.email || user.email;
-      user.bio = req.body.bio || user.bio;
-      user.location = req.body.location || user.location;
-      user.college = req.body.college || user.college;
-      user.specialization = req.body.specialization || user.specialization;
-      user.graduationYear = req.body.graduationYear || user.graduationYear;
-      user.company = req.body.company || user.company;
-      user.position = req.body.position || user.position;
-      user.isPrivate = req.body.isPrivate !== undefined ? req.body.isPrivate : user.isPrivate;
-      user.skills = req.body.skills || user.skills;
-      
+      user.bio = req.body.bio ?? user.bio;
+      user.graduationYear = req.body.graduationYear ?? user.graduationYear;
+      user.department = req.body.department ?? user.department;
+      user.year = req.body.year ?? user.year;
+      user.skills = req.body.skills ?? user.skills;
+      user.degree = req.body.degree ?? user.degree; // alumni degree
+      user.company = req.body.company ?? user.company;
+      user.position = req.body.position ?? user.position;
+      user.industry = req.body.industry ?? user.industry;
+
+      // Student- and Alumni-normalized fields stored on User
+      user.careerInterests = req.body.careerInterests ?? user.careerInterests;
+      user.activities = req.body.activities ?? user.activities;
+      user.mentorshipOpen = req.body.mentorshipOpen ?? user.mentorshipOpen;
+      user.mentorshipAvailable = req.body.mentorshipAvailable ?? user.mentorshipAvailable; // alumni boolean
+      user.guidanceAreas = req.body.guidanceAreas ?? user.guidanceAreas; // alumni guidance topics
+      user.phoneNumber = req.body.phoneNumber ?? user.phoneNumber;
+      // Keep phoneVerified if someone tries to send false; only backend should set true upon OTP verify
+      if (req.body.profileVisibility) user.profileVisibility = req.body.profileVisibility;
+      if (req.body.personalVisibility) user.personalVisibility = req.body.personalVisibility;
+
       if (req.body.socials) {
         user.socials = {
           ...user.socials,
@@ -389,52 +469,38 @@ const updateUserProfile = async (req, res) => {
       if (user.role === 'student') {
         const studentData = await Student.findOne({ email: user.email });
         if (studentData) {
-          // Update student-specific fields
-          if (req.body.department) studentData.department = req.body.department;
+          if (req.body.department) {
+            const Department = require('../models/Department');
+            let dep = await Department.findOne({ code: req.body.department }) || await Department.findOne({ name: req.body.department });
+            if (!dep) {
+              dep = await Department.create({ code: String(req.body.department), name: String(req.body.department) });
+            }
+            studentData.department = dep._id;
+          }
           if (req.body.year) studentData.year = req.body.year;
-          if (req.body.division) studentData.division = req.body.division;
-          if (req.body.batch) studentData.batch = req.body.batch;
-          if (req.body.rollNumber) studentData.rollNumber = req.body.rollNumber;
-          if (req.body.major) studentData.major = req.body.major;
-          if (req.body.specialization) studentData.specialization = req.body.specialization;
-          if (req.body.projects) studentData.projects = req.body.projects;
-          if (req.body.desired_roles) studentData.desired_roles = req.body.desired_roles;
-          if (req.body.preferred_industries) studentData.preferred_industries = req.body.preferred_industries;
-          if (req.body.higher_studies_interest) studentData.higher_studies_interest = req.body.higher_studies_interest;
-          if (req.body.entrepreneurship_interest) studentData.entrepreneurship_interest = req.body.entrepreneurship_interest;
-          if (req.body.internships) studentData.internships = req.body.internships;
-          if (req.body.hackathons) studentData.hackathons = req.body.hackathons;
-          if (req.body.research_papers) studentData.research_papers = req.body.research_papers;
-          if (req.body.mentorship_needs) studentData.mentorship_needs = req.body.mentorship_needs;
-          if (req.body.preferred_location) studentData.preferred_location = req.body.preferred_location;
-          if (req.body.preferred_mode) studentData.preferred_mode = req.body.preferred_mode;
-          if (req.body.certifications) studentData.certifications = req.body.certifications;
-          if (req.body.achievements) studentData.achievements = req.body.achievements;
-          if (req.body.detailed_projects) studentData.detailed_projects = req.body.detailed_projects;
-          if (req.body.detailed_internships) studentData.detailed_internships = req.body.detailed_internships;
-          
+          if (req.body.graduationYear) studentData.graduationYear = req.body.graduationYear;
+          if (req.body.skills) studentData.skills = req.body.skills;
+          if (req.body.bio) studentData.bio = req.body.bio;
+          if (req.body.careerInterests) studentData.careerInterests = req.body.careerInterests;
+          if (req.body.activities) studentData.activities = req.body.activities;
+          if (req.body.socials) studentData.socials = { ...studentData.socials, ...req.body.socials };
+          if (req.body.mentorshipOpen !== undefined) studentData.mentorshipOpen = req.body.mentorshipOpen;
           await studentData.save();
         }
       } else if (user.role === 'alumni') {
         const alumniData = await Alumni.findOne({ email: user.email });
         if (alumniData) {
-          // Update alumni-specific fields
-          if (req.body.specialization) alumniData.specialization = req.body.specialization;
-          if (req.body.higher_studies) alumniData.higher_studies = req.body.higher_studies;
-          if (req.body.current_job_title) alumniData.current_job_title = req.body.current_job_title;
+          // Keep Alumni collection in sync for legacy consumers; core fields already on User
+          if (req.body.bio) alumniData.bio = req.body.bio;
           if (req.body.company) alumniData.company = req.body.company;
+          if (req.body.position) alumniData.position = req.body.position;
           if (req.body.industry) alumniData.industry = req.body.industry;
-          if (req.body.past_experience) alumniData.past_experience = req.body.past_experience;
-          if (req.body.mentorship_interests) alumniData.mentorship_interests = req.body.mentorship_interests;
-          if (req.body.preferred_students) alumniData.preferred_students = req.body.preferred_students;
-          if (req.body.availability) alumniData.availability = req.body.availability;
-          if (req.body.certifications) alumniData.certifications = req.body.certifications;
-          if (req.body.publications) alumniData.publications = req.body.publications;
-          if (req.body.entrepreneurship) alumniData.entrepreneurship = req.body.entrepreneurship;
+          if (req.body.graduationYear) alumniData.graduationYear = req.body.graduationYear;
+          if (req.body.degree) alumniData.degree = req.body.degree;
+          if (req.body.skills) alumniData.skills = req.body.skills;
           if (req.body.linkedin) alumniData.linkedin = req.body.linkedin;
           if (req.body.github) alumniData.github = req.body.github;
           if (req.body.website) alumniData.website = req.body.website;
-          
           await alumniData.save();
         }
       }
@@ -447,15 +513,24 @@ const updateUserProfile = async (req, res) => {
         role: updatedUser.role,
         bio: updatedUser.bio,
         avatarUrl: updatedUser.avatarUrl,
-        location: updatedUser.location,
-        college: updatedUser.college,
-        specialization: updatedUser.specialization,
+        department: updatedUser.department,
+        year: updatedUser.year,
         graduationYear: updatedUser.graduationYear,
+        degree: updatedUser.degree,
         company: updatedUser.company,
         position: updatedUser.position,
-        isPrivate: updatedUser.isPrivate,
+        industry: updatedUser.industry,
         skills: updatedUser.skills,
         socials: updatedUser.socials,
+        careerInterests: updatedUser.careerInterests,
+        activities: updatedUser.activities,
+        mentorshipOpen: updatedUser.mentorshipOpen,
+        mentorshipAvailable: updatedUser.mentorshipAvailable,
+        guidanceAreas: updatedUser.guidanceAreas,
+        phoneNumber: updatedUser.phoneNumber,
+        phoneVerified: updatedUser.phoneVerified,
+        profileVisibility: updatedUser.profileVisibility,
+        personalVisibility: updatedUser.personalVisibility,
       });
     } else {
       res.status(404).json({ message: 'User not found' });

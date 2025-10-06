@@ -18,14 +18,27 @@ const userSchema = new mongoose.Schema({
   specialization: String,
   company: String,
   position: String,
+  industry: String,
+  degree: String,
   isPrivate: { type: Boolean, default: false },
   skills: [String],
   socials: {
     linkedin: String,
     twitter: String,
     github: String,
-    website: String
+    website: String,
+    portfolio: String
   },
+  // Student profile fields (normalized)
+  careerInterests: [String],
+  activities: [String],
+  mentorshipOpen: { type: Boolean, default: false },
+  mentorshipAvailable: { type: Boolean, default: false },
+  guidanceAreas: [String],
+  phoneNumber: { type: String },
+  phoneVerified: { type: Boolean, default: false },
+  personalVisibility: { type: String, enum: ['public', 'private'], default: 'private' },
+  profileVisibility: { type: String, enum: ['public', 'connections', 'private'], default: 'public' },
   connections: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   connectionRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

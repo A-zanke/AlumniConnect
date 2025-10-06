@@ -15,11 +15,6 @@ const ClassAssignmentSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  division: {
-    type: String,
-    required: true,
-    enum: ['A', 'B', 'C', 'D']
-  },
   batch: {
     type: String,
     required: true
@@ -56,6 +51,6 @@ const ClassAssignmentSchema = new mongoose.Schema({
 
 // Indexes for better query performance
 ClassAssignmentSchema.index({ teacher: 1, department: 1 });
-ClassAssignmentSchema.index({ year: 1, division: 1, batch: 1 });
+ClassAssignmentSchema.index({ year: 1, batch: 1 });
 
 module.exports = mongoose.model('ClassAssignment', ClassAssignmentSchema); 

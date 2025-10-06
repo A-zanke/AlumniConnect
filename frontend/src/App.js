@@ -1,4 +1,5 @@
  import React from 'react';
+import Chatbot from './components/ui/Chatbot';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
@@ -16,6 +17,7 @@ import EventDetailsPage from './pages/EventDetailsPage';
 import NetworkPage from './pages/NetworkPage';
 import MessagesPage from './pages/MessagesPage';
 import ForumPage from './pages/ForumPage';
+import ForumPostPage from './pages/ForumPostPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import SearchPage from './pages/SearchPage';
@@ -62,6 +64,14 @@ function App() {
                   }
                 />
                 <Route
+                  path="/forum/:id"
+                  element={
+                    <PrivateRoute roles={['student']}>
+                      <ForumPostPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
                   path="/profile"
                   element={
                     <PrivateRoute>
@@ -98,6 +108,7 @@ function App() {
               </Routes>
             </main>
             <Footer />
+              <Chatbot />
           </div>
         </Router>
       </NotificationProvider>
