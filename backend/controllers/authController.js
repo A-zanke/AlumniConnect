@@ -36,10 +36,10 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Username already taken' });
     }
 
-    // Enforce password strength
-    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
-    if (!passwordStrong.test(password)) {
-      return res.status(400).json({ message: 'Password not strong enough' });
+    // Relaxed password policy: at least 6 chars and one number
+    const relaxedPasswordPolicy = /^(?=.*\d).{6,}$/;
+    if (!relaxedPasswordPolicy.test(password)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters and include a number' });
     }
 
     // Require email verified (registration flow should verify before saving)
@@ -280,10 +280,10 @@ const resetPassword = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Validate password strength
-    const passwordStrong = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
-    if (!passwordStrong.test(newPassword)) {
-      return res.status(400).json({ message: 'Password not strong enough' });
+    // Relaxed password policy aligned with registration
+    const relaxedPasswordPolicy = /^(?=.*\d).{6,}$/;
+    if (!relaxedPasswordPolicy.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters and include a number' });
     }
 
     user.password = newPassword;
