@@ -257,7 +257,7 @@ exports.addReaction = async (req, res) => {
     const uid = req.user._id;
     // Ensure reactions array exists
     if (!Array.isArray(post.reactions)) post.reactions = [];
-    const existingReactionIndex = post.reactions.findIndex(r => r.user.toString() === uid.toString());
+    const existingReactionIndex = post.reactions.findIndex(r => r && r.user && r.user.toString() === uid.toString());
 
     if (existingReactionIndex > -1) {
       const currentType = post.reactions[existingReactionIndex].type;
@@ -295,7 +295,7 @@ exports.addReaction = async (req, res) => {
 
     // Compute per-type counts and ensure all keys exist for frontend mapping
     const counts = (post.reactions || []).reduce((acc, r) => {
-      const t = r.type || 'like';
+      const t = (r && r.type) ? r.type : 'like';
       acc[t] = (acc[t] || 0) + 1;
       return acc;
     }, {});
@@ -314,7 +314,7 @@ exports.addReaction = async (req, res) => {
       console.error('addReaction emit error:', e);
     }
 
-    const hasReacted = post.reactions.some(r => r.user.toString() === uid.toString());
+    const hasReacted = (post.reactions || []).some(r => r && r.user && r.user.toString() === uid.toString());
     res.json({ 
       data: { 
         total: post.reactions.length,

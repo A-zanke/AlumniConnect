@@ -38,6 +38,7 @@ export const forumAPI = {
   bookmarkPost: (id) => apiClient.post(`/api/forum/posts/${id}/bookmark`),
   addComment: (id, body) => apiClient.post(`/api/forum/posts/${id}/comments`, body),
   upvoteComment: (commentId) => apiClient.post(`/api/forum/comments/${commentId}/upvote`),
+  reactToComment: (commentId, type = 'like') => apiClient.post(`/api/forum/comments/${commentId}/reactions`, { type }),
   votePoll: (id, optionIndex) => apiClient.post(`/api/forum/posts/${id}/poll/vote`, { optionIndex }),
   getPollOptionVoters: (id, optionIndex) => apiClient.get(`/api/forum/posts/${id}/poll/${optionIndex}/voters`),
   getUserConnections: () => apiClient.get('/api/forum/connections'),

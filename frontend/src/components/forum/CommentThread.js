@@ -58,7 +58,6 @@ const CommentNode = ({ node, postId, onAddLocal, onChanged, depth = 0 }) => {
             </button>
             <div className="relative group">
               <button
-                onClick={() => forumAPI.upvoteComment(node._id).then(onChanged)}
                 className="px-2 py-0.5 rounded bg-gray-50 text-gray-700 hover:bg-gray-100"
                 title="React"
               >
@@ -66,7 +65,7 @@ const CommentNode = ({ node, postId, onAddLocal, onChanged, depth = 0 }) => {
               </button>
               <div className="absolute -top-10 left-0 hidden group-hover:flex bg-white border rounded-full shadow p-1 gap-1">
                 {['like','love','laugh','wow','sad','angry'].map(t => (
-                  <button key={t} title={t} onClick={() => forumAPI.upvoteComment(node._id).then(onChanged)} className="w-7 h-7 rounded hover:bg-gray-100">
+                  <button key={t} title={t} onClick={() => forumAPI.reactToComment(node._id, t).then(onChanged)} className="w-7 h-7 rounded hover:bg-gray-100">
                     {t==='like'?'👍':t==='love'?'❤️':t==='laugh'?'😂':t==='wow'?'😮':t==='sad'?'😢':'😡'}
                   </button>
                 ))}
