@@ -43,11 +43,24 @@ exports.sendRequest = async (req, res) => {
 
     await Connection.create({ requesterId: sender._id, recipientId: receiver._id, status: 'pending' });
 
-    await Notification.create({
+    // Create notification using the new API
+    const notification = await Notification.create({
       recipient: receiver._id,
       sender: sender._id,
       type: 'connection_request',
-      content: `${sender.name} sent you a connection request`
+      content: `${sender.name} sent you a connection request`,
+      status: 'pending'
+    });
+
+    // Emit real-time notification to receiver
+    req.io.to(receiver._id.toString()).emit('newNotification', {
+      _id: notification._id,
+      recipient: notification.recipient,
+      sender: notification.sender,
+      type: notification.type,
+      content: notification.content,
+      read: notification.read,
+      createdAt: notification.createdAt
     });
 
     res.json({ message: 'Connection request sent' });
@@ -117,11 +130,55 @@ exports.acceptRequest = async (req, res) => {
       { status: 'accepted' }
     );
 
-    await Notification.create({
+    // Update the receiver's notification to accepted and mark as read
+    const receiverNotif = await Notification.findOne({
+      recipient: me._id,
+      sender: sender._id,
+      type: 'connection_request',
+      status: 'pending',
+    });
+
+    let receiverNotifId = null;
+    if (receiverNotif) {
+      receiverNotif.status = 'accepted';
+      receiverNotif.read = true;
+      receiverNotif.readAt = new Date();
+      receiverNotif.type = 'connection_accepted';
+      receiverNotif.content = `You are now connected with ${sender.name}`;
+      await receiverNotif.save();
+      receiverNotifId = receiverNotif._id;
+    }
+
+    // Create new notification for sender
+    const senderNotif = await Notification.create({
       recipient: sender._id,
       sender: me._id,
       type: 'connection_accepted',
-      content: `${me.name} accepted your connection request`
+      content: `${me.name} accepted your connection request. You are now connected.`,
+      status: 'accepted',
+      read: false
+    });
+
+    // Emit real-time updates
+    // To receiver: notification updated (mark as read)
+    if (receiverNotifId) {
+      req.io.to(me._id.toString()).emit('notificationUpdated', {
+        _id: receiverNotifId,
+        read: true,
+        type: 'connection_accepted',
+        content: `You are now connected with ${sender.name}`
+      });
+    }
+
+    // To sender: new notification
+    req.io.to(sender._id.toString()).emit('newNotification', {
+      _id: senderNotif._id,
+      recipient: senderNotif.recipient,
+      sender: senderNotif.sender,
+      type: senderNotif.type,
+      content: senderNotif.content,
+      read: senderNotif.read,
+      createdAt: senderNotif.createdAt
     });
 
     res.json({ message: 'Connection request accepted' });
@@ -138,7 +195,9 @@ exports.rejectRequest = async (req, res) => {
     console.log('Reject request - userId:', userId, 'rejecter:', req.user._id);
 
     const me = await User.findById(req.user._id);
+    const sender = await User.findById(userId);
     if (!me) return res.status(404).json({ message: 'Current user not found' });
+    if (!sender) return res.status(404).json({ message: 'Sender not found' });
 
     if (!me.connectionRequests) me.connectionRequests = [];
     me.connectionRequests = me.connectionRequests.filter((id) => id.toString() !== userId);
@@ -149,13 +208,18 @@ exports.rejectRequest = async (req, res) => {
       { status: 'rejected' }
     );
 
-    const sender = await User.findById(userId);
-    if (sender) {
-      await Notification.create({
-        recipient: sender._id,
-        sender: me._id,
-        type: 'connection_rejected',
-        content: `${me.name} declined your connection request`
+    // Delete the original connection_request notification for receiver
+    const deletedNotif = await Notification.findOneAndDelete({
+      recipient: me._id,
+      sender: userId,
+      type: 'connection_request'
+    });
+
+    // Emit real-time updates
+    // To receiver: notification deleted/removed
+    if (deletedNotif) {
+      req.io.to(me._id.toString()).emit('notificationDeleted', {
+        _id: deletedNotif._id
       });
     }
 

@@ -39,6 +39,7 @@ import { FaGraduationCap } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import axios from 'axios';
+import { DEFAULT_PROFILE_IMAGE } from '../constants/images';
 
 const COMMON_SKILLS = [
   'JavaScript',
@@ -98,38 +99,24 @@ const ProfilePage = () => {
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
-    skills: [],
-    socials: { linkedin: '', github: '', twitter: '', website: '' },
-    specialization: '',
-    projects: [],
-    desired_roles: [],
-    preferred_industries: [],
-    higher_studies_interest: 'Maybe',
-    entrepreneurship_interest: 'Maybe',
-    internships: [],
-    hackathons: [],
-    research_papers: [],
-    mentorship_needs: [],
-    preferred_location: '',
-    preferred_mode: ['Email'],
-    higher_studies: {
-      degree: '',
-      university: '',
-      specialization: '',
-    },
-    current_job_title: '',
+    department: '',
+    year: '',
+    graduationYear: '',
+    degree: '',
     company: '',
+    position: '',
     industry: '',
-    past_experience: [],
-    mentorship_interests: [],
-    preferred_students: [],
-    availability: 'Monthly',
-    certifications: [],
-    publications: [],
-    entrepreneurship: '',
-    linkedin: '',
-    github: '',
-    website: '',
+    skills: [],
+    careerInterests: [],
+    activities: [],
+    mentorshipAvailable: false,
+    guidanceAreas: [],
+    socials: { linkedin: '', github: '', website: '', portfolio: '' },
+    mentorshipOpen: false,
+    phoneNumber: '',
+    personalVisibility: 'private',
+    profileVisibility: 'public',
+    password: ''
   });
 
   const [postData, setPostData] = useState({
@@ -143,39 +130,28 @@ const ProfilePage = () => {
   useEffect(() => {
     if (isOwnProfile) {
       setUser(currentUser);
-      // Initialize formData with current user's data when it's own profile
       if (currentUser) {
         setFormData({
           name: currentUser.name || '',
           bio: currentUser.bio || '',
-          skills: currentUser.skills || [],
-          socials: currentUser.socials || { linkedin: '', github: '', twitter: '', website: '' },
-          specialization: currentUser.specialization || '',
-          projects: currentUser.projects || [],
-          desired_roles: currentUser.desired_roles || [],
-          preferred_industries: currentUser.preferred_industries || [],
-          higher_studies_interest: currentUser.higher_studies_interest || 'Maybe',
-          entrepreneurship_interest: currentUser.entrepreneurship_interest || 'Maybe',
-          internships: currentUser.internships || [],
-          hackathons: currentUser.hackathons || [],
-          research_papers: currentUser.research_papers || [],
-          mentorship_needs: currentUser.mentorship_needs || [],
-          preferred_location: currentUser.preferred_location || '',
-          preferred_mode: currentUser.preferred_mode || ['Email'],
-          higher_studies: currentUser.higher_studies || { degree: '', university: '', specialization: '' },
-          current_job_title: currentUser.current_job_title || '',
+          department: currentUser.department || '',
+          year: currentUser.year || '',
+          graduationYear: currentUser.graduationYear || '',
+          degree: currentUser.degree || '',
           company: currentUser.company || '',
+          position: currentUser.position || '',
           industry: currentUser.industry || '',
-          past_experience: currentUser.past_experience || [],
-          mentorship_interests: currentUser.mentorship_interests || [],
-          preferred_students: currentUser.preferred_students || [],
-          availability: currentUser.availability || 'Monthly',
-          certifications: currentUser.certifications || [],
-          publications: currentUser.publications || [],
-          entrepreneurship: currentUser.entrepreneurship || '',
-          linkedin: currentUser.linkedin || '',
-          github: currentUser.github || '',
-          website: currentUser.website || ''
+          skills: currentUser.skills || [],
+          careerInterests: currentUser.careerInterests || [],
+          activities: currentUser.activities || [],
+          mentorshipAvailable: Boolean(currentUser.mentorshipAvailable),
+          guidanceAreas: currentUser.guidanceAreas || [],
+          socials: currentUser.socials || { linkedin: '', github: '', website: '', portfolio: '' },
+          mentorshipOpen: Boolean(currentUser.mentorshipOpen),
+          phoneNumber: currentUser.phoneNumber || '',
+          personalVisibility: currentUser.personalVisibility || 'private',
+          profileVisibility: currentUser.profileVisibility || 'public',
+          password: ''
         });
       }
       fetchUserConnections();
@@ -199,37 +175,27 @@ const ProfilePage = () => {
       setFormData({
         name: user.name || '',
         bio: user.bio || '',
-        skills: user.skills || [],
-        socials: user.socials || { linkedin: '', github: '', twitter: '', website: '' },
-        specialization: user.specialization || '',
-        projects: user.projects || [],
-        desired_roles: user.desired_roles || [],
-        preferred_industries: user.preferred_industries || [],
-        higher_studies_interest: user.higher_studies_interest || 'Maybe',
-        entrepreneurship_interest: user.entrepreneurship_interest || 'Maybe',
-        internships: user.internships || [],
-        hackathons: user.hackathons || [],
-        research_papers: user.research_papers || [],
-        mentorship_needs: user.mentorship_needs || [],
-        preferred_location: user.preferred_location || '',
-        preferred_mode: user.preferred_mode || ['Email'],
-        higher_studies: user.higher_studies || { degree: '', university: '', specialization: '' },
-        current_job_title: user.current_job_title || '',
+        department: user.department || '',
+        year: user.year || '',
+        graduationYear: user.graduationYear || '',
+        degree: user.degree || '',
         company: user.company || '',
+        position: user.position || '',
         industry: user.industry || '',
-        past_experience: user.past_experience || [],
-        mentorship_interests: user.mentorship_interests || [],
-        preferred_students: user.preferred_students || [],
-        availability: user.availability || 'Monthly',
-        certifications: user.certifications || [],
-        publications: user.publications || [],
-        entrepreneurship: user.entrepreneurship || '',
-        linkedin: user.linkedin || '',
-        github: user.github || '',
-        website: user.website || ''
+        skills: user.skills || [],
+        careerInterests: user.careerInterests || [],
+        activities: user.activities || [],
+        mentorshipAvailable: Boolean(user.mentorshipAvailable),
+        guidanceAreas: user.guidanceAreas || [],
+        socials: user.socials || { linkedin: '', github: '', website: '', portfolio: '' },
+        mentorshipOpen: Boolean(user.mentorshipOpen),
+        phoneNumber: user.phoneNumber || '',
+        personalVisibility: user.personalVisibility || 'private',
+        profileVisibility: user.profileVisibility || 'public',
+        password: ''
       });
     }
-  }, [user, isOwnProfile]); // Only run if user changes or it's not own profile
+  }, [user, isOwnProfile]);
 
 
   const fetchUserProfile = async () => {
@@ -518,7 +484,6 @@ const ProfilePage = () => {
     { id: 'about', label: 'About', icon: FiInfo },
     { id: 'skills', label: 'Skills', icon: FiAward },
     { id: 'connections', label: 'Connections', icon: FiUsers },
-    ...(currentUser && ['alumni', 'teacher'].includes(currentUser.role?.toLowerCase()) ? [{ id: 'posts', label: 'My Posts', icon: FiFileText }] : []),
     { id: 'settings', label: 'Settings', icon: FiSettings },
   ];
 
@@ -740,9 +705,9 @@ const ProfilePage = () => {
               >
                 <img 
                   className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200" 
-                  src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : '/default-avatar.png'} 
+                  src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : DEFAULT_PROFILE_IMAGE} 
                   alt={user.name} 
-                  onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+                  onError={e => { e.target.onerror = null; e.target.src = DEFAULT_PROFILE_IMAGE; }}
                 />
               </motion.div>
               
@@ -812,10 +777,9 @@ const ProfilePage = () => {
                   isEditing={isEditing} 
                   setIsEditing={setIsEditing} 
                   formData={formData} 
+                  setFormData={setFormData}
                   handleChange={handleChange} 
                   handleSubmit={handleSubmit} 
-                  handleArrayFieldChange={handleArrayFieldChange} 
-                  handleCheckboxArrayChange={handleCheckboxArrayChange} 
                 />
               )}
               {activeSection === 'skills' && (
@@ -859,9 +823,11 @@ const ProfilePage = () => {
                   isEditing={isEditing} 
                   setIsEditing={setIsEditing} 
                   formData={formData} 
+                  setFormData={setFormData}
                   handleChange={handleChange} 
                   avatarFile={avatarFile} 
                   setAvatarFile={setAvatarFile} 
+                  handleDeleteAvatar={handleDeleteAvatar}
                   handleSubmit={handleSubmit} 
                 />
               )}
@@ -899,19 +865,11 @@ const OverviewSection = ({ user }) => (
         {user.department && (
           <div className="flex items-center gap-3">
             <FaGraduationCap className="text-slate-500" />
-            <span className="text-slate-700">{user.department}</span>
-          </div>
-        )}
-        {user.current_job_title && (
-          <div className="flex items-center gap-3">
-            <FiBriefcase className="text-slate-500" />
-            <span className="text-slate-700">{user.current_job_title}</span>
-          </div>
-        )}
-        {user.company && (
-          <div className="flex items-center gap-3">
-            <FiBriefcase className="text-slate-500" />
-            <span className="text-slate-700">{user.company}</span>
+            <span className="text-slate-700">
+              {user.role === 'alumni'
+                ? `${user.department} • Grad ${user.graduationYear || '-'}`
+                : `${user.department} • Year ${user.year || '-'} • Grad ${user.graduationYear || '-'}`}
+            </span>
           </div>
         )}
       </div>
@@ -966,6 +924,89 @@ const OverviewSection = ({ user }) => (
       </motion.div>
     )}
 
+    {/* Student Preferences Card */}
+    {user.role === 'student' && (
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
+        <h3 className="text-xl font-bold text-slate-800 mb-4">Student Preferences</h3>
+        <div className="space-y-3">
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Career Interests:</span>
+            {Array.isArray(user.careerInterests) && user.careerInterests.length > 0 ? (
+              <span className="ml-2 text-slate-800">{user.careerInterests.join(', ')}</span>
+            ) : (
+              <span className="ml-2 text-slate-800">Not provided</span>
+            )}
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">College Activities / Clubs:</span>
+            {Array.isArray(user.activities) && user.activities.length > 0 ? (
+              <span className="ml-2 text-slate-800">{user.activities.join(', ')}</span>
+            ) : (
+              <span className="ml-2 text-slate-800">Not provided</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Open to Mentorship from Alumni:</span>
+            <span className="text-slate-800">{user.mentorshipOpen ? 'Yes' : 'No'}</span>
+          </div>
+        </div>
+      </motion.div>
+    )}
+
+    {/* Alumni Details Card */}
+    {user.role === 'alumni' && (
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
+        <h3 className="text-xl font-bold text-slate-800 mb-4">Alumni Details</h3>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Degree:</span>
+            <span className="text-slate-800">{user.degree || 'Not provided'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Current Company / Organization:</span>
+            <span className="text-slate-800">{user.company || 'Not provided'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Current Role / Designation:</span>
+            <span className="text-slate-800">{user.position || user.current_job_title || 'Not provided'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Industry / Domain:</span>
+            <span className="text-slate-800">{user.industry || 'Not provided'}</span>
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Guidance Areas:</span>
+            {Array.isArray(user.guidanceAreas) && user.guidanceAreas.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {user.guidanceAreas.map((g, i) => (
+                  <span key={`${g}-${i}`} className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium">{g}</span>
+                ))}
+              </div>
+            ) : (
+              <span className="ml-2 text-slate-800">Not provided</span>
+            )}
+          </div>
+          {user.mentorshipAvailable && (
+            <div>
+              <span className="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">
+                Available for Mentorship
+              </span>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )}
+
     {/* Social Links Card */}
     {user.socials && Object.values(user.socials).some(link => link) && (
       <motion.div
@@ -997,6 +1038,12 @@ const OverviewSection = ({ user }) => (
               <span>Website</span>
             </a>
           )}
+          {user.socials.portfolio && (
+            <a href={user.socials.portfolio} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+              <FiGlobe />
+              <span>Portfolio</span>
+            </a>
+          )}
         </div>
       </motion.div>
     )}
@@ -1004,7 +1051,7 @@ const OverviewSection = ({ user }) => (
 );
 
 // About Section Component
-const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, handleSubmit, handleArrayFieldChange, handleCheckboxArrayChange }) => (
+const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, handleChange, handleSubmit }) => (
   <div className="space-y-6">
     {/* Header */}
     <div className="flex justify-between items-center">
@@ -1079,46 +1126,92 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, h
             </div>
           </motion.div>
 
-          {/* Professional Info */}
+          {/* Education / Department Info */}
           <motion.div
             className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Current Job Title</label>
-                <input
-                  type="text"
-                  name="current_job_title"
-                  value={formData.current_job_title}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                />
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Education</h3>
+            {user.role === 'alumni' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
+                  <select
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="">Select</option>
+                    <option value="CSE">CSE</option>
+                    <option value="AIDS">AIDS</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Mechanical">Mechanical</option>
+                    <option value="Civil">Civil</option>
+                    <option value="IT">IT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Graduation Year</label>
+                  <input
+                    type="number"
+                    name="graduationYear"
+                    value={formData.graduationYear}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                    placeholder="2020"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Company</label>
-                <input
-                  type="text"
-                  name="company"
-                  value={formData.company}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
+                  <select
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="">Select</option>
+                    <option value="CSE">CSE</option>
+                    <option value="AIDS">AIDS</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Mechanical">Mechanical</option>
+                    <option value="Civil">Civil</option>
+                    <option value="IT">IT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Current Year</label>
+                  <select
+                    name="year"
+                    value={formData.year}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus-border-transparent transition-all duration-300"
+                  >
+                    <option value="">Select</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Expected Graduation Year</label>
+                  <input
+                    type="number"
+                    name="graduationYear"
+                    value={formData.graduationYear}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                    placeholder="2025"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Industry</label>
-                <input
-                  type="text"
-                  name="industry"
-                  value={formData.industry}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-            </div>
+            )}
           </motion.div>
 
           {/* Social Links */}
@@ -1131,7 +1224,7 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, h
             <h3 className="text-lg font-bold text-slate-800 mb-4">Social Links</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">LinkedIn</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">LinkedIn URL</label>
                 <input
                   type="url"
                   name="socials.linkedin"
@@ -1142,7 +1235,7 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, h
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">GitHub</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">GitHub / Portfolio URL</label>
                 <input
                   type="url"
                   name="socials.github"
@@ -1150,6 +1243,17 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, h
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
                   placeholder="https://github.com/username"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Portfolio</label>
+                <input
+                  type="url"
+                  name="socials.portfolio"
+                  value={formData.socials.portfolio}
+                  onChange={handleChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  placeholder="https://yourportfolio.com"
                 />
               </div>
               <div>
@@ -1163,21 +1267,10 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, h
                   placeholder="https://yourwebsite.com"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Twitter</label>
-                <input
-                  type="url"
-                  name="socials.twitter"
-                  value={formData.socials.twitter}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  placeholder="https://twitter.com/username"
-                />
-              </div>
             </div>
           </motion.div>
 
-          {/* Role-specific fields */}
+          {/* Student-specific fields */}
           {user.role === 'student' && (
             <motion.div
               className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50 lg:col-span-2"
@@ -1185,45 +1278,123 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, h
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
             >
-              <h3 className="text-lg font-bold text-slate-800 mb-4">Student Information</h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-4">Student Preferences</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Specialization</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Career Interests</label>
+                  <select
+                    multiple
+                    value={formData.careerInterests}
+                    onChange={(e) => setFormData(prev => ({ ...prev, careerInterests: Array.from(e.target.selectedOptions).map(o => o.value) }))}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="Internships">Internships</option>
+                    <option value="Research">Research</option>
+                    <option value="Startups">Startups</option>
+                    <option value="Higher Studies">Higher Studies</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">College Activities / Clubs (comma separated)</label>
                   <input
                     type="text"
-                    name="specialization"
-                    value={formData.specialization}
+                    value={(formData.activities || []).join(', ')}
+                    onChange={(e) => setFormData(prev => ({ ...prev, activities: e.target.value.split(',').map(s=>s.trim()).filter(Boolean) }))}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="mentorshipOpen"
+                    type="checkbox"
+                    checked={!!formData.mentorshipOpen}
+                    onChange={(e) => setFormData(prev => ({ ...prev, mentorshipOpen: e.target.checked }))}
+                  />
+                  <label htmlFor="mentorshipOpen" className="text-sm font-semibold text-slate-700">Open to mentorship from alumni</label>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Alumni-specific fields */}
+          {user.role === 'alumni' && (
+            <motion.div
+              className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50 lg:col-span-2"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.45 }}
+            >
+              <h3 className="text-lg font-bold text-slate-800 mb-4">Alumni Details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Degree</label>
+                  <select
+                    name="degree"
+                    value={formData.degree}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="">Select</option>
+                    <option value="B.Tech">B.Tech</option>
+                    <option value="M.Tech">M.Tech</option>
+                    <option value="PhD">PhD</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Current Company / Organization</label>
+                  <input
+                    type="text"
+                    name="company"
+                    value={formData.company}
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Preferred Location</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Job Role</label>
                   <input
                     type="text"
-                    name="preferred_location"
-                    value={formData.preferred_location}
+                    name="position"
+                    value={formData.position}
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Desired Roles (comma separated)</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Industry / Domain</label>
                   <input
                     type="text"
-                    value={formData.desired_roles.join(', ')}
-                    onChange={(e) => handleArrayFieldChange('desired_roles', e.target.value)}
+                    name="industry"
+                    value={formData.industry}
+                    onChange={handleChange}
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                    placeholder="IT, Finance, Research, Startup, Education, etc."
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Preferred Industries (comma separated)</label>
-                  <input
-                    type="text"
-                    value={formData.preferred_industries.join(', ')}
-                    onChange={(e) => handleArrayFieldChange('preferred_industries', e.target.value)}
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Guidance Areas</label>
+                  <select
+                    multiple
+                    value={formData.guidanceAreas}
+                    onChange={(e) => setFormData(prev => ({ ...prev, guidanceAreas: Array.from(e.target.selectedOptions).map(o => o.value) }))}
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="Jobs">Jobs</option>
+                    <option value="Internships">Internships</option>
+                    <option value="Higher Studies">Higher Studies</option>
+                    <option value="Startups">Startups</option>
+                    <option value="Research">Research</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="mentorshipAvailable"
+                    type="checkbox"
+                    checked={!!formData.mentorshipAvailable}
+                    onChange={(e) => setFormData(prev => ({ ...prev, mentorshipAvailable: e.target.checked }))}
                   />
+                  <label htmlFor="mentorshipAvailable" className="text-sm font-semibold text-slate-700">Available for mentorship</label>
                 </div>
               </div>
             </motion.div>
@@ -1252,28 +1423,30 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, handleChange, h
           </div>
         </motion.div>
 
-        <motion.div
-          className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
-          <div className="space-y-3">
-            <div>
-              <span className="text-sm font-semibold text-slate-500">Job Title:</span>
-              <p className="text-slate-800">{user.current_job_title || 'Not provided'}</p>
+        {user.role === 'alumni' && (
+          <motion.div
+            className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
+            <div className="space-y-3">
+              <div>
+                <span className="text-sm font-semibold text-slate-500">Job Role:</span>
+                <p className="text-slate-800">{user.position || user.current_job_title || 'Not provided'}</p>
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-slate-500">Company:</span>
+                <p className="text-slate-800">{user.company || 'Not provided'}</p>
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-slate-500">Industry:</span>
+                <p className="text-slate-800">{user.industry || 'Not provided'}</p>
+              </div>
             </div>
-            <div>
-              <span className="text-sm font-semibold text-slate-500">Company:</span>
-              <p className="text-slate-800">{user.company || 'Not provided'}</p>
-            </div>
-            <div>
-              <span className="text-sm font-semibold text-slate-500">Industry:</span>
-              <p className="text-slate-800">{user.industry || 'Not provided'}</p>
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
       </div>
     )}
   </div>
@@ -1427,9 +1600,9 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
                   <a href={profileUrl} className="focus:outline-none">
                     <img 
                       className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
-                      src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : '/default-avatar.png'} 
+                      src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : DEFAULT_PROFILE_IMAGE} 
                       alt={connection.name} 
-                      onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+                      onError={e => { e.target.onerror = null; e.target.src = DEFAULT_PROFILE_IMAGE; }}
                     />
                   </a>
                   <div className="flex-1">
@@ -1644,7 +1817,7 @@ const PostsSection = ({ posts, showCreatePost, setShowCreatePost, postData, setP
 );
 
 // Settings Section Component
-const SettingsSection = ({ user, isEditing, setIsEditing, formData, handleChange, avatarFile, setAvatarFile, handleSubmit }) => (
+const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData, handleChange, avatarFile, setAvatarFile, handleDeleteAvatar, handleSubmit }) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
@@ -1682,10 +1855,7 @@ const SettingsSection = ({ user, isEditing, setIsEditing, formData, handleChange
             Cancel
           </motion.button>
           <motion.button
-            onClick={() => {
-              setAvatarFile(null);
-              handleSubmit({ target: { name: 'avatarUrl', value: null } });
-            }}
+            onClick={handleDeleteAvatar}
             className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -1735,14 +1905,81 @@ const SettingsSection = ({ user, isEditing, setIsEditing, formData, handleChange
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Role</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Profile Visibility</label>
+            <select
+              name="profileVisibility"
+              value={formData.profileVisibility}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+            >
+              <option value="public">Public</option>
+              <option value="connections">Connections Only</option>
+              <option value="private">Private</option>
+            </select>
+          </div>
+
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+            <p className="text-sm text-orange-800 font-medium">
+              Note: For real-time messaging features, verify your mobile number.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Mobile Number</label>
+              <input
+                type="tel"
+                name="phoneNumber"
+                value={formData.phoneNumber}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                placeholder="e.g., +91 9876543210"
+              />
+              <p className="text-xs text-slate-500 mt-1">Status: {user.phoneVerified ? 'Verified' : 'Not Verified'}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Personal Details Visibility</label>
+              <select
+                name="personalVisibility"
+                value={formData.personalVisibility}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Change Password</label>
             <input
-              type="text"
-              value={user.role}
-              disabled
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-50 text-slate-500 capitalize"
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+              placeholder="Enter new password"
             />
-            <p className="text-sm text-slate-500 mt-1">Role cannot be changed</p>
+            <p className="text-xs text-slate-500 mt-1">Leave blank to keep your current password.</p>
+          </div>
+
+          <div className="pt-2">
+            <motion.button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Are you sure you want to delete your profile? This cannot be undone.')) {
+                  // placeholder; backend route to be added
+                  alert('Use admin to delete or add endpoint.');
+                }
+              }}
+              className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FiTrash2 size={18} />
+              Delete Profile
+            </motion.button>
           </div>
         </form>
       ) : (

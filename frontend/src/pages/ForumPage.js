@@ -214,7 +214,7 @@ const ForumPage = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setShowCreate(true)}
-          className="fixed bottom-8 right-8 h-16 w-16 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-full shadow-2xl flex items-center justify-center z-50 hover:shadow-blue-500/25"
+          className="fixed bottom-28 right-8 h-16 w-16 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-full shadow-2xl flex items-center justify-center z-50 hover:shadow-blue-500/25"
         >
           <FiPlus className="text-2xl" />
         </motion.button>

@@ -173,7 +173,7 @@ export const userAPI = {
     return apiClient.put('/api/auth/profile', userData);
   },
   // NEW: Function to delete user avatar
-  deleteAvatar: () => apiClient.delete('/api/auth/profile/avatar'), // New endpoint for avatar deletion
+  deleteAvatar: () => apiClient.delete('/api/users/remove-avatar'), // Updated to match backend route
   updatePresence: (isOnline) => apiClient.put('/api/users/presence', { isOnline }),
   getPresence: (userId) => apiClient.get(`/api/users/${userId}/presence`),
 };

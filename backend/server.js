@@ -8,11 +8,11 @@ const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorHandler');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const Notification = require('./models/Notification'); // Add at top if missing
 
 // Load environment variables
 dotenv.config();
 
-// Connect to database
 connectDB();
 
 // Initialize Express
@@ -24,6 +24,12 @@ const io = new Server(http, {
   cors: { origin: 'http://localhost:3000', credentials: true }
 });
 global.io = io;
+
+// Middleware to access io in controllers
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
 // Middleware
 app.use(express.json());
@@ -176,6 +182,39 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', (socket) => {
+  // Join personal room for notifications
+  socket.join(socket.userId);
+
+  // Join room by role
+  socket.on("joinRoom", role => {
+    socket.join(role); // students join "student" room, etc.
+  });
+
+  // For students, join department-year room for section notifications
+  socket.on('joinSectionRoom', ({ department, year }) => {
+    if (department && year) {
+      const room = `student-${department}-${year}`;
+      socket.join(room);
+    }
+  });
+
+  // For teachers, join department room
+  socket.on('joinTeacherRoom', ({ department }) => {
+    if (department) {
+      const room = `teacher-${department}`;
+      socket.join(room);
+    }
+  });
+
+  // For alumni, join department-graduationYear room
+  socket.on('joinAlumniRoom', ({ department, graduationYear }) => {
+    if (department && graduationYear) {
+      const room = `alumni-${department}-${graduationYear}`;
+      socket.join(room);
+    }
+  });
+
+  // Chat logic remains unchanged
   socket.on('chat:send', async (payload) => {
     try {
       const from = socket.userId;
@@ -185,12 +224,10 @@ io.on('connection', (socket) => {
       if (!me) return;
       const isConnected = me.connections.some(id => id.toString() === to);
       if (!isConnected) return;
-      
       const messageData = { from, to, content: content || '' };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-      
       const msg = await Message.create(messageData);
       const messagePayload = { 
         _id: msg._id, 
@@ -200,7 +237,6 @@ io.on('connection', (socket) => {
         attachments: msg.attachments || [],
         createdAt: msg.createdAt 
       };
-      
       io.to(to).emit('chat:receive', messagePayload);
       socket.emit('chat:sent', messagePayload);
     } catch (e) {
