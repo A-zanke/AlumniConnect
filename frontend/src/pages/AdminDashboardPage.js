@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import AdminNavbar from '../admin/AdminNavbar.jsx';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 const Card = ({ children }) => (
   <div style={{ background:'#fff', borderRadius:12, padding:'16px', boxShadow:'0 8px 24px rgba(0,0,0,0.08)' }}>{children}</div>
@@ -33,19 +35,23 @@ const AdminDashboardPage = () => {
   });
   const [users, setUsers] = useState([]);
   const [events, setEvents] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [a, u, e] = await Promise.all([
+      const [a, u, e, pr] = await Promise.all([
         axios.get('/api/admin/analytics'),
         axios.get('/api/admin/users'),
-        axios.get('/api/admin/events')
+        axios.get('/api/admin/events'),
+        axios.get('/api/admin/event-requests')
       ]);
       setStats(a.data || {});
       setUsers(u.data || []);
       setEvents(e.data || []);
+      setPendingRequests(pr.data || []);
     } finally {
       setLoading(false);
     }
@@ -86,6 +92,22 @@ const AdminDashboardPage = () => {
     await fetchAll();
   };
 
+  const approveRequest = async (id) => {
+    await axios.put(`/api/admin/event-requests/${id}/approve`);
+    await fetchAll();
+  };
+
+  const rejectRequest = async (id) => {
+    await axios.put(`/api/admin/event-requests/${id}/reject`);
+    await fetchAll();
+  };
+
+  const deleteRequest = async (id) => {
+    if (!window.confirm('Delete this request?')) return;
+    await axios.delete(`/api/admin/event-requests/${id}`);
+    await fetchAll();
+  };
+
   const deleteUser = async (id) => {
     if (!window.confirm('Delete this user?')) return;
     await axios.delete(`/api/admin/users/${id}`);
@@ -93,9 +115,9 @@ const AdminDashboardPage = () => {
   };
 
   const totals = useMemo(() => ([
-    { label: 'Students', value: stats.totalStudents || 0 },
-    { label: 'Teachers', value: stats.totalTeachers || 0 },
-    { label: 'Alumni', value: stats.totalAlumni || 0 },
+    { key: 'student', label: 'Students', value: stats.totalStudents || 0 },
+    { key: 'teacher', label: 'Teachers', value: stats.totalTeachers || 0 },
+    { key: 'alumni', label: 'Alumni', value: stats.totalAlumni || 0 },
     { label: 'Events (Active)', value: stats.eventsActive || 0 },
     { label: 'Events (Pending)', value: stats.eventsPending || 0 },
     { label: 'Events (Rejected)', value: stats.eventsRejected || 0 }
@@ -105,44 +127,69 @@ const AdminDashboardPage = () => {
 
   return (
     <div style={{ padding:'24px', maxWidth:1300, margin:'0 auto' }}>
+      <AdminNavbar />
       <h2 style={{ fontSize:28, fontWeight:800, marginBottom:16 }}>Admin Dashboard</h2>
 
       {/* Top stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16, marginBottom:16 }}>
-        {totals.map((t, i) => <Card key={i}><Stat label={t.label} value={t.value} /></Card>)}
+        {totals.map((t, i) => (
+          <div key={i} onClick={() => t.key && navigate(`/admin/users?role=${t.key}`)} style={{ cursor: t.key ? 'pointer' : 'default' }}>
+            <Card>
+              <Stat label={t.label} value={t.value} />
+            </Card>
+          </div>
+        ))}
       </div>
 
-      {/* Analytics tables/charts (simple) */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16, marginBottom:16 }}>
+      {/* Charts */}
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:16, marginBottom:16 }}>
         <Card>
-          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>Students by Department</h3>
-          <ul style={{ margin:0, paddingLeft:16 }}>
-            {Object.entries(stats.studentByDepartment || {}).map(([k,v]) => <li key={k}>{k}: {v}</li>)}
-          </ul>
+          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>User Growth</h3>
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <LineChart data={stats.userGrowthSeries || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="students" stroke="#3b82f6" strokeWidth={2} />
+                <Line type="monotone" dataKey="teachers" stroke="#10b981" strokeWidth={2} />
+                <Line type="monotone" dataKey="alumni" stroke="#f59e0b" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
         <Card>
-          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>Students by Year</h3>
-          <ul style={{ margin:0, paddingLeft:16 }}>
-            {Object.entries(stats.studentByYear || {}).map(([k,v]) => <li key={k}>Year {k}: {v}</li>)}
-          </ul>
+          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>Forum Activity</h3>
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer>
+              <BarChart data={stats.forumActivitySeries || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="posts" fill="#6366f1" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:16, marginBottom:16 }}>
         <Card>
-          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>Alumni by Graduation Year</h3>
-          <ul style={{ margin:0, paddingLeft:16 }}>
-            {Object.entries(stats.alumniByGraduationYear || {}).map(([k,v]) => <li key={k}>{k}: {v}</li>)}
-          </ul>
-        </Card>
-        <Card>
-          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>Alumni by Company</h3>
-          <ul style={{ margin:0, paddingLeft:16 }}>
-            {Object.entries(stats.alumniByCompany || {}).map(([k,v]) => <li key={k}>{k}: {v}</li>)}
-          </ul>
-        </Card>
-        <Card>
-          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>Events by Creator Role</h3>
-          <ul style={{ margin:0, paddingLeft:16 }}>
-            {Object.entries(stats.eventsByCreatorRole || {}).map(([k,v]) => <li key={k}>{k}: {v}</li>)}
-          </ul>
+          <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>Event Requests</h3>
+          <div style={{ width: '100%', height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie data={stats.eventRequestStats || []} dataKey="value" nameKey="name" outerRadius={90} label>
+                  {(stats.eventRequestStats || []).map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={["#f59e0b", "#10b981", "#ef4444"][index % 3]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
       </div>
 
@@ -228,7 +275,9 @@ const AdminDashboardPage = () => {
             ].filter(Boolean).join(' | ');
             return (
               <tr key={e._id}>
-                <Td>{e.title}</Td>
+                <Td>
+                  <Link to={`/admin/events/${e._id}`} style={{ color:'#2563eb', textDecoration:'none' }}>{e.title}</Link>
+                </Td>
                 <Td>{e.description?.slice(0, 80) || ''}</Td>
                 <Td>{e.organizer?.name || e.createdBy?.name || '-'}</Td>
                 <Td>{e.createdBy?.role || e.organizer?.role || '-'}</Td>
@@ -255,6 +304,38 @@ const AdminDashboardPage = () => {
           {events.length === 0 && (
             <tr>
               <Td colSpan={7}>No events found</Td>
+            </tr>
+          )}
+        </tbody>
+      </Table>
+
+      {/* Alumni Requested Events */}
+      <h3 style={{ fontSize:20, fontWeight:700, margin:'24px 0 8px' }}>Alumni Requested Events</h3>
+      <Table>
+        <thead>
+          <tr>
+            <Th>Title</Th>
+            <Th>Requested By</Th>
+            <Th>Requested At</Th>
+            <Th>Actions</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {pendingRequests.map(r => (
+            <tr key={r._id}>
+              <Td>{r.title}</Td>
+              <Td>{r.organizer?.name || r.createdBy?.name || '-'}</Td>
+              <Td>{new Date(r.createdAt).toLocaleString()}</Td>
+              <Td style={{ display:'flex', gap:8 }}>
+                <button onClick={() => approveRequest(r._id)} style={{ padding:'6px 10px', background:'#10b981', color:'#fff', border:'none', borderRadius:6 }}>Accept</button>
+                <button onClick={() => rejectRequest(r._id)} style={{ padding:'6px 10px', background:'#f59e0b', color:'#fff', border:'none', borderRadius:6 }}>Reject</button>
+                <button onClick={() => deleteRequest(r._id)} style={{ padding:'6px 10px', background:'#ef4444', color:'#fff', border:'none', borderRadius:6 }}>Delete</button>
+              </Td>
+            </tr>
+          ))}
+          {pendingRequests.length === 0 && (
+            <tr>
+              <Td colSpan={4}>No pending requests</Td>
             </tr>
           )}
         </tbody>

@@ -8,6 +8,10 @@ import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import HomePage from './pages/HomePage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import AdminForumManager from './admin/AdminForumManager.jsx';
+import AdminUserList from './admin/AdminUserList.jsx';
+import AdminEventDetail from './admin/AdminEventDetail.jsx';
+import AdminEventList from './admin/AdminEventList.jsx';
 import AboutPage from './pages/AboutPage.jsx';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -101,6 +105,38 @@ function App() {
                   element={
                     <PrivateRoute roles={["admin"]}>
                       <AdminDashboardPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/forum"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminForumManager />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/users"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminUserList />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/events"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminEventList />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/events/:id"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminEventDetail />
                     </PrivateRoute>
                   }
                 />

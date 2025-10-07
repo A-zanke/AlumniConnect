@@ -11,6 +11,7 @@ const {
   deleteUser,
   exportUsers,
   listAllEvents,
+  listEventRequests,
   approveEvent,
   rejectEvent,
   deleteEvent,
@@ -43,13 +44,21 @@ router.delete('/events/:id', deleteEvent);
 router.get('/export/events', exportEvents);
 router.get('/events/:id', getEventByIdAdmin);
 
+// ===== Event Requests (Alumni-submitted pending events) =====
+router.get('/event-requests', listEventRequests);
+router.put('/event-requests/:id/approve', approveEvent);
+router.put('/event-requests/:id/reject', rejectEvent);
+router.delete('/event-requests/:id', deleteEvent);
+
 // ===================== Posts moderation =====================
 router.get('/posts/pending', listPendingPosts);
 router.post('/posts/:id/approve', approvePost);
 
 // ===================== Forum moderation =====================
 router.get('/forum/posts', listForumPosts);
+router.get('/forums', listForumPosts); // alias
 router.delete('/forum/posts/:id', deleteForumPost);
+router.delete('/forums/:id', deleteForumPost); // alias
 router.get('/export/forum', exportForum);
 
 // Export the router

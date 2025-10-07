@@ -16,12 +16,45 @@ const countBy = (arr, key) => {
 // ===================== Analytics =====================
 const getAnalytics = async (req, res) => {
   try {
-    const [students, teachers, alumni, events] = await Promise.all([
-      User.find({ role: 'student' }).select('department year'),
-      User.find({ role: 'teacher' }).select('department'),
-      User.find({ role: 'alumni' }).select('graduationYear company industry'),
-      Event.find({}).select('createdBy status')
+    const [students, teachers, alumni, events, forumPosts] = await Promise.all([
+      User.find({ role: 'student' }).select('department year createdAt'),
+      User.find({ role: 'teacher' }).select('department createdAt'),
+      User.find({ role: 'alumni' }).select('graduationYear company industry createdAt'),
+      Event.find({}).select('createdAt createdBy status'),
+      ForumPost.find({ isDeleted: { $ne: true } }).select('createdAt')
     ]);
+
+    // Monthly buckets for last 12 months
+    const toMonthKey = (d) => {
+      const dt = new Date(d);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    };
+    const last12Keys = (() => {
+      const arr = [];
+      const now = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        arr.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`);
+      }
+      return arr;
+    })();
+    const seriesInit = () => last12Keys.reduce((acc, k) => { acc[k] = 0; return acc; }, {});
+
+    const studentSeries = seriesInit();
+    students.forEach(s => { studentSeries[toMonthKey(s.createdAt)] = (studentSeries[toMonthKey(s.createdAt)] || 0) + 1; });
+    const teacherSeries = seriesInit();
+    teachers.forEach(t => { teacherSeries[toMonthKey(t.createdAt)] = (teacherSeries[toMonthKey(t.createdAt)] || 0) + 1; });
+    const alumniSeries = seriesInit();
+    alumni.forEach(a => { alumniSeries[toMonthKey(a.createdAt)] = (alumniSeries[toMonthKey(a.createdAt)] || 0) + 1; });
+
+    const forumSeries = seriesInit();
+    forumPosts.forEach(p => { forumSeries[toMonthKey(p.createdAt)] = (forumSeries[toMonthKey(p.createdAt)] || 0) + 1; });
+
+    const eventReqStats = {
+      pending: events.filter(e => e.status === 'pending').length,
+      active: events.filter(e => e.status === 'active').length,
+      rejected: events.filter(e => e.status === 'rejected').length
+    };
 
     const stats = {
       totalStudents: students.length,
@@ -36,9 +69,16 @@ const getAnalytics = async (req, res) => {
         acc[r] = (acc[r] || 0) + 1;
         return acc;
       }, {}),
-      eventsPending: events.filter(e => e.status === 'pending').length,
-      eventsActive: events.filter(e => e.status === 'active').length,
-      eventsRejected: events.filter(e => e.status === 'rejected').length
+      eventsPending: eventReqStats.pending,
+      eventsActive: eventReqStats.active,
+      eventsRejected: eventReqStats.rejected,
+      userGrowthSeries: last12Keys.map(k => ({ month: k, students: studentSeries[k] || 0, teachers: teacherSeries[k] || 0, alumni: alumniSeries[k] || 0 })),
+      forumActivitySeries: last12Keys.map(k => ({ month: k, posts: forumSeries[k] || 0 })),
+      eventRequestStats: [
+        { name: 'Pending', value: eventReqStats.pending },
+        { name: 'Active', value: eventReqStats.active },
+        { name: 'Rejected', value: eventReqStats.rejected }
+      ]
     };
 
     res.json(stats);
@@ -51,8 +91,27 @@ const getAnalytics = async (req, res) => {
 // ===================== Users =====================
 const listUsers = async (req, res) => {
   try {
-    const users = await User.find({})
-      .select('avatarUrl name email username role department year graduationYear company');
+    const { role, q, location, startDate, endDate, verified, online } = req.query || {};
+    const query = {};
+    if (role) query.role = role;
+    if (location) query.location = location;
+    if (typeof verified !== 'undefined') query.emailVerified = String(verified) === 'true';
+    if (typeof online !== 'undefined') query.isOnline = String(online) === 'true';
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+    if (q) {
+      query.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { username: { $regex: q, $options: 'i' } }
+      ];
+    }
+
+    const users = await User.find(query)
+      .select('avatarUrl name email username role department year graduationYear company location emailVerified createdAt');
     res.json(users);
   } catch (err) {
     console.error('List users error:', err);
@@ -74,13 +133,20 @@ const deleteUser = async (req, res) => {
 const exportUsers = async (req, res) => {
   try {
     const q = {};
-    const { role, department, year, graduationYear } = req.query;
+    const { role, department, year, graduationYear, location, startDate, endDate, verified } = req.query;
     if (role) q.role = role;
     if (department) q.department = department;
     if (year) q.year = Number(year);
     if (graduationYear) q.graduationYear = Number(graduationYear);
+    if (location) q.location = location;
+    if (typeof verified !== 'undefined') q.emailVerified = String(verified) === 'true';
+    if (startDate || endDate) {
+      q.createdAt = {};
+      if (startDate) q.createdAt.$gte = new Date(startDate);
+      if (endDate) q.createdAt.$lte = new Date(endDate);
+    }
 
-    const users = await User.find(q).select('name email username role department year graduationYear company avatarUrl');
+    const users = await User.find(q).select('name email username role department year graduationYear company avatarUrl location emailVerified createdAt');
     const parser = new Parser();
     const csv = parser.parse(users.map(u => u.toObject()));
     res.header('Content-Type', 'text/csv');
@@ -171,6 +237,22 @@ const exportEvents = async (req, res) => {
   } catch (err) {
     console.error('Export events error:', err);
     res.status(500).json({ message: 'Failed to export events' });
+  }
+};
+
+// ===== Event Requests (pending events, often alumni-submitted) =====
+const listEventRequests = async (req, res) => {
+  try {
+    const { creatorRole } = req.query || {};
+    const q = { status: 'pending' };
+    if (creatorRole) q['createdBy.role'] = creatorRole;
+    const pending = await Event.find(q)
+      .populate('organizer', 'name role email')
+      .sort({ createdAt: -1 });
+    res.json(pending);
+  } catch (err) {
+    console.error('List event requests error:', err);
+    res.status(500).json({ message: 'Failed to list event requests' });
   }
 };
 
@@ -268,6 +350,7 @@ module.exports = {
   deleteUser,
   exportUsers,
   listAllEvents,
+  listEventRequests,
   approveEvent,
   rejectEvent,
   deleteEvent,
