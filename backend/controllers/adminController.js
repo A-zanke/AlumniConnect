@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Event = require('../models/Event');
+const ForumPost = require('../models/ForumPost');
 const { Parser } = require('json2csv');
 
 // Helper for counting by key
@@ -194,6 +195,72 @@ const approvePost = async (req, res) => {
   }
 };
 
+// ===================== Forum (Admin moderation) =====================
+const listForumPosts = async (req, res) => {
+  try {
+    const { q, category } = req.query || {};
+    const query = { isDeleted: { $ne: true } };
+    if (q) query.$or = [
+      { title: { $regex: q, $options: 'i' } },
+      { content: { $regex: q, $options: 'i' } }
+    ];
+    if (category) query.category = category;
+    const posts = await ForumPost.find(query)
+      .populate('author', 'name username role')
+      .sort({ createdAt: -1 });
+    res.json(posts);
+  } catch (err) {
+    console.error('List forum posts error:', err);
+    res.status(500).json({ message: 'Failed to list forum posts' });
+  }
+};
+
+const deleteForumPost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await ForumPost.findById(id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    await ForumPost.findByIdAndUpdate(id, { isDeleted: true, deletedAt: new Date() });
+    res.json({ message: 'Post deleted' });
+  } catch (err) {
+    console.error('Delete forum post error:', err);
+    res.status(500).json({ message: 'Failed to delete forum post' });
+  }
+};
+
+const exportForum = async (req, res) => {
+  try {
+    const { category } = req.query || {};
+    const query = { isDeleted: { $ne: true } };
+    if (category) query.category = category;
+    const posts = await ForumPost.find(query)
+      .select('title content category createdAt')
+      .lean();
+    const parser = new Parser();
+    const csv = parser.parse(posts);
+    res.header('Content-Type', 'text/csv');
+    res.attachment('forum_posts_export.csv');
+    return res.send(csv);
+  } catch (err) {
+    console.error('Export forum error:', err);
+    res.status(500).json({ message: 'Failed to export forum posts' });
+  }
+};
+
+// ===================== Event detail =====================
+const getEventByIdAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const event = await Event.findById(id)
+      .populate('organizer', 'name email role department year graduationYear');
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    res.json(event);
+  } catch (err) {
+    console.error('Get event by id (admin) error:', err);
+    res.status(500).json({ message: 'Failed to fetch event' });
+  }
+};
+
 // ===================== Export all functions =====================
 module.exports = {
   getAnalytics,
@@ -206,5 +273,9 @@ module.exports = {
   deleteEvent,
   exportEvents,
   listPendingPosts,
-  approvePost
+  approvePost,
+  listForumPosts,
+  deleteForumPost,
+  exportForum,
+  getEventByIdAdmin
 };

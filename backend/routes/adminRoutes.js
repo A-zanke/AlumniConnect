@@ -16,7 +16,11 @@ const {
   deleteEvent,
   listPendingPosts,
   approvePost,
-  exportEvents
+  exportEvents,
+  listForumPosts,
+  deleteForumPost,
+  exportForum,
+  getEventByIdAdmin
 } = require('../controllers/adminController');
 
 // Admin-only routes
@@ -37,10 +41,16 @@ router.put('/events/:id/approve', approveEvent);
 router.put('/events/:id/reject', rejectEvent);
 router.delete('/events/:id', deleteEvent);
 router.get('/export/events', exportEvents);
+router.get('/events/:id', getEventByIdAdmin);
 
 // ===================== Posts moderation =====================
 router.get('/posts/pending', listPendingPosts);
 router.post('/posts/:id/approve', approvePost);
+
+// ===================== Forum moderation =====================
+router.get('/forum/posts', listForumPosts);
+router.delete('/forum/posts/:id', deleteForumPost);
+router.get('/export/forum', exportForum);
 
 // Export the router
 module.exports = router;
