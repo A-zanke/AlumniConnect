@@ -465,59 +465,105 @@ const NetworkPage = () => {
           </div>
         </div>
       ) : activeTab === 'requests' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {pendingRequests.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500">
-              <FaUserCheck className="text-6xl mx-auto mb-4 text-gray-300" />
-              <p className="text-xl font-medium">No pending requests</p>
-              <p className="text-sm mt-2">You're all caught up!</p>
-            </div>
-          ) : (
-            pendingRequests.map((request) => (
-              <motion.div
-                key={request._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
-              >
-                <div className="flex items-center mb-4">
-                  {request.requester?.avatarUrl ? (
-                    <img
-                      src={getAvatarUrl(request.requester.avatarUrl)}
-                      alt={request.requester?.name || 'User'}
-                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                    />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                      {(request.requester?.name || 'U').charAt(0).toUpperCase()}
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pendingRequests.length === 0 ? (
+              <div className="col-span-full text-center py-12 text-gray-500">
+                <FaUserCheck className="text-6xl mx-auto mb-4 text-gray-300" />
+                <p className="text-xl font-medium">No pending requests</p>
+                <p className="text-sm mt-2">You're all caught up!</p>
+              </div>
+            ) : (
+              pendingRequests.map((request) => (
+                <motion.div
+                  key={request._id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
+                >
+                  <div className="flex items-center mb-4">
+                    {request.requester?.avatarUrl ? (
+                      <img
+                        src={getAvatarUrl(request.requester.avatarUrl)}
+                        alt={request.requester?.name || 'User'}
+                        className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                        {(request.requester?.name || 'U').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="ml-4 flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 truncate">
+                        {request.requester?.name || 'Unknown User'}
+                      </h3>
+                      <p className="text-sm text-gray-500 truncate">@{request.requester?.username || 'unknown'}</p>
+                      <p className="text-xs text-gray-400 capitalize">{request.requester?.role || 'user'}</p>
                     </div>
-                  )}
-                  <div className="ml-4 flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">
-                      {request.requester?.name || 'Unknown User'}
-                    </h3>
-                    <p className="text-sm text-gray-500 truncate">@{request.requester?.username || 'unknown'}</p>
-                    <p className="text-xs text-gray-400 capitalize">{request.requester?.role || 'user'}</p>
                   </div>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleAcceptRequest(request._id)}
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    <FaUserCheck className="mr-2" />
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => handleRejectRequest(request._id)}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    <FaUserMinus className="mr-2" />
-                    Decline
-                  </button>
-                </div>
-              </motion.div>
-            ))
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleAcceptRequest(request._id)}
+                      className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                    >
+                      <FaUserCheck className="mr-2" />
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => handleRejectRequest(request._id)}
+                      className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                    >
+                      <FaUserMinus className="mr-2" />
+                      Decline
+                    </button>
+                  </div>
+                </motion.div>
+              ))
+            )}
+          </div>
+
+          {/* Resolved in last 24 hours */}
+          {requestHistory.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent activity (last 24 hours)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {requestHistory.map((item) => {
+                  const actor = item.requester || item.requesterId || {};
+                  const name = actor.name || 'User';
+                  const username = actor.username || 'unknown';
+                  const avatar = actor.avatarUrl;
+                  const isAccepted = item.status === 'accepted';
+                  return (
+                    <motion.div
+                      key={item._id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white rounded-xl shadow-md p-4 border"
+                    >
+                      <div className="flex items-center gap-3">
+                        {avatar ? (
+                          <img src={getAvatarUrl(avatar)} alt={name} className="h-10 w-10 rounded-full object-cover" />
+                        ) : (
+                          <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{name}</div>
+                          <div className="text-xs text-gray-500 truncate">@{username}</div>
+                        </div>
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${isAccepted ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {isAccepted ? 'Accepted' : 'Rejected'}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       ) : null}
