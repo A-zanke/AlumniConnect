@@ -513,12 +513,24 @@ const MessagesPage = () => {
                                   {message.attachments && message.attachments.length > 0 && (
                                     <div className="mt-2 space-y-2">
                                       {message.attachments.map((attachment, idx) => (
-                                        <img
-                                          key={idx}
-                                          src={attachment}
-                                          alt="Message attachment"
-                                          className="max-w-full h-auto rounded-2xl shadow-md"
-                                        />
+                                        attachment.startsWith('/forum/') ? (
+                                          <a
+                                            key={idx}
+                                            href={attachment}
+                                            onClick={(e) => { e.preventDefault(); window.location.href = attachment; }}
+                                            className="block p-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                          >
+                                            <div className="text-sm font-semibold text-blue-800">Forum Post</div>
+                                            <div className="text-xs text-blue-700 opacity-80">Tap to open the original post</div>
+                                          </a>
+                                        ) : (
+                                          <img
+                                            key={idx}
+                                            src={attachment}
+                                            alt="Message attachment"
+                                            className="max-w-full h-auto rounded-2xl shadow-md"
+                                          />
+                                        )
                                       ))}
                                     </div>
                                   )}

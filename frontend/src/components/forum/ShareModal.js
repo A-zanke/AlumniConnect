@@ -55,6 +55,8 @@ const ShareModal = ({ post, onClose, onShared }) => {
     }
   };
 
+  const sharingNotAllowed = (userRole) => String(userRole || '').toLowerCase() !== 'student';
+
   return (
     <AnimatePresence>
       <motion.div
@@ -87,8 +89,9 @@ const ShareModal = ({ post, onClose, onShared }) => {
           <div className="p-6 flex-1 overflow-y-auto">
             {/* Post Preview */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-2">{post.title}</h4>
-              <p className="text-sm text-gray-600 line-clamp-3">{post.content}</p>
+              <div className="text-xs text-gray-500 mb-1">Forum • {post.category}</div>
+              <h4 className="font-medium text-gray-900 mb-1">{post.title}</h4>
+              <p className="text-sm text-gray-600 line-clamp-2">{post.content}</p>
             </div>
 
             {/* Message Input */}

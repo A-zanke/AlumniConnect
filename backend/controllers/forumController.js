@@ -248,7 +248,7 @@ exports.addReaction = async (req, res) => {
       if (global.io) {
         global.io.to(`forum_post_${post._id}`).emit('forum:reaction_updated', {
           postId: post._id.toString(),
-          total: post.reactions.length,
+          reactions: post.reactions.length,
           counts
         });
       }
@@ -307,6 +307,12 @@ exports.sharePost = async (req, res) => {
 
     const uid = req.user._id;
 
+    // Enforce share permission: only students can share
+    const me = await User.findById(uid).select('role connections');
+    if (!me || String(me.role).toLowerCase() !== 'student') {
+      return res.status(403).json({ message: 'Only students can share forum posts' });
+    }
+
     // Verify all connectionIds are actual connections
     const user = await User.findById(uid).select('connections').populate('connections', '_id');
     const myConnections = Array.isArray(user?.connections) ? user.connections : [];
@@ -335,11 +341,19 @@ exports.sharePost = async (req, res) => {
         content: `${req.user.name} shared a forum post with you: ${post.title}`,
         metadata: { postId: post._id, message }
       });
-      // Create chat message with link
+      // Create clean, compact chat message card-like content
+      const snippet = String(post.content || '').slice(0, 160).replace(/\s+$/,'');
+      const compact = [
+        `“${post.title}”`,
+        `Forum • ${post.category || 'Post'}`,
+        snippet ? `${snippet}${post.content && post.content.length > 160 ? '…' : ''}` : ''
+      ].filter(Boolean).join('\n');
+
       const chat = await Message.create({
         from: uid,
         to: connId,
-        content: message ? `${message}\n\n${post.title}` : `${post.title}`,
+        content: message ? `${message}\n\n${compact}` : compact,
+        // Store a routable link to original forum page as an attachment
         attachments: [`/forum/${post._id}`]
       });
       // Emit chat event to recipient
@@ -350,7 +364,7 @@ exports.sharePost = async (req, res) => {
             from: String(uid),
             to: String(connId),
             content: chat.content,
-            attachments: [`/api/forum/posts/${post._id}`],
+            attachments: [`/forum/${post._id}`],
             createdAt: chat.createdAt
           });
         }

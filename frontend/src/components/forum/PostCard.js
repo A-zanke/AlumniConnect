@@ -158,7 +158,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     s.emit('forum:join_post', { postId: post._id });
     s.on('forum:reaction_updated', (payload) => {
       if (payload?.postId === post._id) {
-        setReactionCount(payload.reactions || 0);
+        setReactionCount(payload.reactions || payload.total || 0);
       }
     });
     return () => {
@@ -407,13 +407,16 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
             </Link>
 
             {/* Share Button */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowShareModal(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-gray-50 text-gray-700 hover:bg-green-50 hover:text-green-600 transition-all"
-            >
-              <FiShare2 />
-            </motion.button>
+            {/* Share only for students */}
+            {currentUser?.role === 'student' && (
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowShareModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-gray-50 text-gray-700 hover:bg-green-50 hover:text-green-600 transition-all"
+              >
+                <FiShare2 />
+              </motion.button>
+            )}
 
             {/* Bookmark Button */}
             <motion.button
