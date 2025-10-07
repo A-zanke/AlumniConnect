@@ -55,13 +55,15 @@ const ShareModal = ({ post, onClose, onShared }) => {
     }
   };
 
+  const sharingNotAllowed = (userRole) => String(userRole || '').toLowerCase() !== 'student';
+
   return (
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+        className="fixed inset-0 bg-black/50 flex items-center justify.center p-4 z-50"
         onClick={onClose}
       >
         <motion.div
@@ -87,8 +89,9 @@ const ShareModal = ({ post, onClose, onShared }) => {
           <div className="p-6 flex-1 overflow-y-auto">
             {/* Post Preview */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-2">{post.title}</h4>
-              <p className="text-sm text-gray-600 line-clamp-3">{post.content}</p>
+              <div className="text-xs text-gray-500 mb-1">Forum • {post.category}</div>
+              <h4 className="font-medium text-gray-900 mb-1">{post.title}</h4>
+              <p className="text-sm text-gray-600 line-clamp-2">{post.content}</p>
             </div>
 
             {/* Message Input */}
@@ -149,7 +152,7 @@ const ShareModal = ({ post, onClose, onShared }) => {
                         )}
                         <div>
                           <div className="font-medium text-gray-900">{connection.name}</div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text.gray-500">
                             {connection.role} • {connection.department}
                           </div>
                         </div>
