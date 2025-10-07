@@ -3,14 +3,7 @@ require('dotenv').config();
 const Event = require('../models/Event');
 const Alumni = require('../models/Alumni');
 const User = require('../models/User');
-const Skill = require('../models/Skill'); // Assuming you have a Skill model
-
-const userProfile = {
-  id: 123,
-  name: "Ashish Zanke",
-  department: "Information Technology",
-  batch: "2022"
-};
+const Student = require('../models/Student');
 
 async function getAIResponse(message) {
   // Use OpenRouter API for real AI answers
@@ -25,7 +18,7 @@ async function getAIResponse(message) {
       {
         model: 'meta-llama/llama-3-8b-instruct',
         messages: [
-          { role: 'system', content: 'You are an expert alumni assistant for a college portal. Answer helpfully and concisely.' },
+          { role: 'system', content: 'You are an expert alumni assistant for a college portal. Answer helpfully and concisely in 1-2 sentences maximum.' },
           { role: 'user', content: message }
         ]
       },
@@ -50,17 +43,20 @@ async function getAIResponse(message) {
 
 const handleFAQ = async () => {
   try {
-    // Fetch FAQs from the database
+    // Short, message-style FAQs
     const faqs = [
-        { question: "How can I register for an event?", answer: "Go to the Events page -> click 'Register'." },
-        { question: "How do I update my profile?", answer: "Navigate to your profile page and click the 'Edit Profile' button." },
-        { question: "How do I post in the forum?", answer: "Go to the Forum page -> click 'Create Post'." },
-        { question: "How do I contact an alumni mentor?", answer: "Go to the Mentorship page -> click 'Connect'." },
-        { question: "I forgot my password, what do I do?", answer: "Go to the 'Forgot Password' page and enter your email." }
+      { question: "How can I register for an event?", answer: "Go to Events → Click Register button." },
+      { question: "How do I update my profile?", answer: "Open Profile → Edit → Save changes." },
+      { question: "How can I contact alumni support?", answer: "Email: alumni@college.edu" },
+      { question: "How to reset password?", answer: "Click 'Forgot Password' on login page." },
+      { question: "Where can I find mentorship programs?", answer: "Check Mentorship tab under Dashboard." },
+      { question: "How do I post in the forum?", answer: "Go to Forum → Click 'Create Post'." },
+      { question: "How to connect with other alumni?", answer: "Visit their profile → Click 'Connect'." },
+      { question: "Where can I see my connections?", answer: "Go to Dashboard → View Connections." }
     ];
+    
     if (faqs && faqs.length > 0) {
-      const formattedFAQs = faqs.map((faq, index) => `${index + 1}. Q: ${faq.question}\nA: ${faq.answer}`);
-      return formattedFAQs.join('\n');
+      return faqs.map((faq, index) => `${index + 1}. Q: ${faq.question}\nA: ${faq.answer}`).join('\n\n');
     } else {
       return "No FAQs found.";
     }
@@ -70,69 +66,98 @@ const handleFAQ = async () => {
   }
 };
 
-const handleAlumni = async () => {
+const handleProfileAnalysis = async (userId) => {
   try {
-    // Fetch alumni from the database based on user's department
-    const alumni = await Alumni.find({ department: userProfile.department }).limit(5);
-    if (alumni && alumni.length > 0) {
-      const formattedAlumni = alumni.map((alumnus, index) => `${index + 1}. ${alumnus.name} - ${alumnus.position} at ${alumnus.company}\nProfile: /profile/${alumnus._id}`);
-      return formattedAlumni.join('\n');
-    } else {
-      return "No alumni recommendations available right now.";
+    // Fetch user profile data
+    const user = await User.findById(userId).select('-password');
+    if (!user) {
+      return "Please update your profile to get better suggestions.";
     }
+
+    let profileData = {};
+    let suggestions = [];
+
+    if (user.role === 'student') {
+      const studentData = await Student.findOne({ email: user.email });
+      if (studentData) {
+        profileData = {
+          department: studentData.department,
+          skills: studentData.skills || [],
+          projects: studentData.projects || [],
+          internships: studentData.internships || [],
+          certifications: studentData.certifications || []
+        };
+      }
+    } else if (user.role === 'alumni') {
+      const alumniData = await Alumni.findOne({ email: user.email });
+      if (alumniData) {
+        profileData = {
+          department: alumniData.department,
+          skills: alumniData.skills || [],
+          current_job_title: alumniData.current_job_title,
+          company: alumniData.company,
+          certifications: alumniData.certifications || []
+        };
+      }
+    }
+
+    // Generate profile suggestions based on data
+    if (!profileData.skills || profileData.skills.length === 0) {
+      suggestions.push("Add your technical skills to your profile.");
+    } else if (profileData.department === 'Information Technology' || profileData.department === 'Computer Science') {
+      suggestions.push("Improve your data analysis skills (Power BI, SQL).");
+    }
+
+    if (user.role === 'student') {
+      if (!profileData.projects || profileData.projects.length === 0) {
+        suggestions.push("Add your latest projects to showcase your work.");
+      }
+      if (!profileData.internships || profileData.internships.length === 0) {
+        suggestions.push("Add your internship experience to your profile.");
+      }
+    }
+
+    if (user.role === 'alumni') {
+      if (!profileData.current_job_title || !profileData.company) {
+        suggestions.push("Update your current job details.");
+      }
+    }
+
+    if (suggestions.length === 0) {
+      suggestions.push("Consider joining an alumni event to grow your network.");
+      suggestions.push("Update your bio to make your profile more engaging.");
+      suggestions.push("Add certifications to highlight your expertise.");
+    }
+
+    // Return top 3 suggestions
+    return suggestions.slice(0, 3).map((suggestion, index) => `• ${suggestion}`).join('\n');
+
   } catch (error) {
-    console.error('Alumni API error:', error);
-    return "Sorry, I couldn't retrieve alumni recommendations right now.";
+    console.error('Profile analysis error:', error);
+    return "Please update your profile to get better suggestions.";
   }
 };
 
-const handleMentorship = async () => {
+const chatbotReply = async (req, res) => {
   try {
-    // Fetch mentors from the database based on user's department
-    const mentors = await User.find({ department: userProfile.department, role: 'mentor' }).limit(5);
-    if (mentors && mentors.length > 0) {
-      const formattedMentors = mentors.map((mentor, index) => `${index + 1}. ${mentor.name} - ${mentor.expertise_area} at ${mentor.company}\nConnect: /connect/${mentor._id}`);
-      return formattedMentors.join('\n');
-    } else {
-      return "No mentors available right now. Check back later!";
+    const { message } = req.body;
+    const userId = req.user ? req.user._id : null;
+    
+    if (!message) {
+      return res.status(400).json({ reply: 'Please provide a message.' });
     }
-  } catch (error) {
-    console.error('Mentorship API error:', error);
-    return "Sorry, I couldn't retrieve mentors right now.";
-  }
-};
 
-const handleProfile = async () => {
-  try {
-    // Fetch user profile from the database
-    const user = await User.findById(userProfile.id);
-    if (user) {
-      return `Name: ${user.name}\nDepartment: ${user.department}\nBatch: ${user.batch}\nView Full Profile: /profile`;
-    } else {
-      return "Couldn't find your profile details.";
-    }
-  } catch (error) {
-    console.error('Profile API error:', error);
-    return "Sorry, I couldn't retrieve your profile right now.";
-  }
-};
-
-const handleSkills = async () => {
-  try {
-    // Fetch skill tips from the database based on user's department
-    const skills = await Skill.find({ department: userProfile.department }).limit(5);
-
+    const lowerMessage = message.toLowerCase();
     let reply;
-    if (message.toLowerCase().includes('faq')) {
+
+    if (lowerMessage.includes('faq') || lowerMessage.includes('help')) {
       reply = await handleFAQ();
-    } else if (message.toLowerCase().includes('alumni')) {
-      reply = await handleAlumni();
-    } else if (message.toLowerCase().includes('mentorship')) {
-      reply = await handleMentorship();
-    } else if (message.toLowerCase().includes('profile')) {
-      reply = await handleProfile();
-    } else if (message.toLowerCase().includes('skills')) {
-      reply = await handleSkills();
+    } else if (lowerMessage.includes('analyze') && lowerMessage.includes('profile')) {
+      if (!userId) {
+        reply = "Please log in to analyze your profile.";
+      } else {
+        reply = await handleProfileAnalysis(userId);
+      }
     } else {
       reply = await getAIResponse(message);
     }
@@ -142,4 +167,8 @@ const handleSkills = async () => {
     console.error('Chatbot error:', err);
     res.status(500).json({ reply: 'Sorry, I could not process your request. Please try again.' });
   }
+};
+
+module.exports = {
+  chatbotReply
 };
