@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { FiMessageCircle, FiSend, FiX, FiUser, FiUsers, FiCalendar, FiStar, FiHelpCircle, FiSmile, FiChevronDown, FiArrowRight } from 'react-icons/fi';
+import { FiMessageCircle, FiSend, FiX, FiUser, FiCalendar, FiHelpCircle } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
-// import {AuthContext} from '../../context/AuthContext';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
+import { userAPI } from '../utils/api';
 
 // --- Helper Functions for Rendering Cards ---
 
@@ -16,64 +16,72 @@ const renderEventCard = (event) => (
   </Link>
 );
 
-const renderMentorCard = (mentor) => (
-  <Link to={`/profile/${mentor.username}`} className="block bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-indigo-100">
-    <div className="flex items-center gap-3">
-      <img src={mentor.profile_picture || '/default-avatar.png'} alt={mentor.name} className="w-10 h-10 rounded-full" />
-      <div>
-        <div className="font-semibold text-indigo-700">{mentor.name}</div>
-        <div className="text-sm text-gray-600">{mentor.current_job_title} at {mentor.company}</div>
-      </div>
-    </div>
-  </Link>
-);
-
-
-const renderForumPostCard = (post) => (
-  <Link to={`/forum/post/${post._id}`} className="block bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-indigo-100">
-    <div className="font-semibold text-indigo-700">{post.title}</div>
-    <div className="text-sm text-gray-500">by {post.author?.name || 'Unknown'} • {post.comments.length} replies</div>
-  </Link>
-);
-
-const renderFaqCard = (faq) => (
-    <div className="bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-      <div className="font-semibold text-indigo-700">{faq.question}</div>
-      <p className="text-sm text-gray-600 mt-1">{faq.answer}</p>
-    </div>
-);
-
-const renderProfileCard = (profile) => (
-    <div className="bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-        <div className="font-semibold text-indigo-700">{profile.name}</div>
-        <div className="text-sm text-gray-600">{profile.department} - Batch of {profile.batch}</div>
-        <div className="text-sm text-gray-600 mt-1">Email: {profile.email}</div>
-        {profile.skills && <div className="text-xs text-gray-500 mt-2">Skills: {profile.skills.join(', ')}</div>}
-        <Link to={`/profile/${profile.username}`} className="text-sm font-semibold text-indigo-600 hover:underline mt-2 block">View Full Profile <FiArrowRight className="inline" /></Link>
-    </div>
-);
-
-const renderSkillCard = (tip) => (
-    <div className="bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-        <div className="font-semibold text-indigo-700">{tip.title}</div>
-        <p className="text-sm text-gray-600 mt-1">{tip.description}</p>
-        {tip.link && <a href={tip.link} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-indigo-600 hover:underline mt-2 block">Learn More <FiArrowRight className="inline" /></a>}
-    </div>
-);
+// Note: Event rendering kept intact as requested
 
 const quickActions = [
-  { label: 'FAQ Helper', value: 'faq', icon: <FiHelpCircle /> },
   { label: 'Event Guide', value: 'events', icon: <FiCalendar /> },
-  { label: 'Alumni Recommendation', value: 'recommend', icon: <FiUsers /> },
-  { label: 'Mentorship Assistant', value: 'mentorship', icon: <FiStar /> },
-  { label: 'Profile Helper', value: 'profile', icon: <FiUser /> },
-  { label: 'Skill & Career Tips', value: 'skills', icon: <FiSmile /> },
+  { label: 'FAQ Helper', value: 'faq', icon: <FiHelpCircle /> },
+  { label: 'Profile Analyzer', value: 'analyze', icon: <FiUser /> },
+];
+
+// --- FAQ knowledge base (concise, message-style) ---
+const FAQ_KNOWLEDGE = [
+  {
+    q: 'How can I register for an event?',
+    a: 'Go to Events → click Register.',
+    triggers: ['register', 'sign up', 'rsvp', 'event register']
+  },
+  {
+    q: 'How do I update my profile?',
+    a: 'Open Profile → Edit → Save changes.',
+    triggers: ['update profile', 'edit profile', 'change profile', 'profile edit']
+  },
+  {
+    q: 'How can I contact alumni support?',
+    a: 'Email: alumni@college.edu',
+    triggers: ['contact', 'support', 'help email', 'alumni support']
+  },
+  {
+    q: 'How to reset password?',
+    a: "Click 'Forgot Password' on the login page.",
+    triggers: ['reset password', 'forgot password', 'change password']
+  },
+  {
+    q: 'Where can I find mentorship programs?',
+    a: 'Check Mentorship under Dashboard.',
+    triggers: ['mentorship', 'mentor program', 'find mentor']
+  },
+  {
+    q: 'How to view event details?',
+    a: 'Open Events → tap an event card.',
+    triggers: ['event details', 'view event', 'see event']
+  },
+  {
+    q: 'How to message an alumni?',
+    a: 'Open Network → find profile → click Message.',
+    triggers: ['message alumni', 'text alumni', 'contact alumni']
+  },
+  {
+    q: 'Where are my RSVPs?',
+    a: 'Go to Events → My Events.',
+    triggers: ['my events', 'rsvps', 'registered events']
+  },
+  {
+    q: 'How to report an issue?',
+    a: 'Use Help in Settings or email alumni@college.edu.',
+    triggers: ['report issue', 'bug', 'problem']
+  },
+  {
+    q: 'How to change notifications?',
+    a: 'Settings → Notifications → Update preferences.',
+    triggers: ['notifications', 'mute', 'notification settings']
+  },
 ];
 
 const Chatbot = () => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { sender: 'bot', text: '👋 Hi! I am your AlumniConnect AI Assistant. How can I help you today?' }
+    { sender: 'bot', text: 'Hi! I can help with events, FAQs, or profile analysis.' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -93,6 +101,7 @@ const Chatbot = () => {
   // --- API Fetching Functions ---
 
   const fetchEvents = async () => {
+    // Event Guide kept as-is (no logic changes)
     addMessage('bot', 'Sure, fetching relevant events for you...');
     setLoading(true);
     try {
@@ -103,10 +112,68 @@ const Chatbot = () => {
           items: data.slice(0, 3)
         });
       } else {
-        addMessage('bot', "I couldn't find any upcoming events for your department.");
+        addMessage('bot', "No updates found right now.");
       }
     } catch (err) {
       addMessage('bot', 'Sorry, I had trouble fetching events.');
+    }
+    setLoading(false);
+  };
+
+  // --- FAQ Helper ---
+  const findFaqAnswer = (text) => {
+    const t = text.toLowerCase();
+    const item = FAQ_KNOWLEDGE.find(({ triggers }) =>
+      triggers.some((kw) => t.includes(kw))
+    );
+    return item ? item.a : null;
+  };
+
+  const showTopFaqs = async () => {
+    setLoading(true);
+    // Short pause to show typing animation
+    await new Promise((r) => setTimeout(r, 350));
+    const top = FAQ_KNOWLEDGE.slice(0, 6);
+    addMessage('bot', 'Quick answers:');
+    top.forEach(({ q, a }) => {
+      addMessage('bot', `${q} → ${a}`);
+    });
+    setLoading(false);
+  };
+
+  // --- Profile Analyzer ---
+  const analyzeProfile = async () => {
+    addMessage('bot', 'Analyzing your profile...');
+    setLoading(true);
+    try {
+      const res = await userAPI.getProfile();
+      const profile = res?.data || {};
+      const skills = Array.isArray(profile.skills) ? profile.skills : [];
+      const department = (profile.department || profile.specialization || '').toString().toLowerCase();
+
+      const suggestions = [];
+
+      // Skill improvement suggestion
+      const isDataRelated = /(data|it|computer|cs|ai|analytics|software)/.test(department);
+      if (isDataRelated) {
+        suggestions.push('Improve your data analysis skills (Power BI, SQL).');
+      } else {
+        suggestions.push('Add in-demand skills to your profile (e.g., Git, Excel).');
+      }
+
+      // Projects/internship suggestion
+      suggestions.push('Add your latest internship or project to your profile.');
+
+      // Networking/events suggestion
+      suggestions.push('Consider joining an alumni event to grow your network.');
+
+      if (suggestions.length === 0 || (!profile || (skills.length === 0 && !department))) {
+        addMessage('bot', 'Please update your profile to get better suggestions.');
+      } else {
+        addMessage('bot', `• ${suggestions[0]}\n• ${suggestions[1]}\n• ${suggestions[2]}`);
+      }
+    } catch (e) {
+      addMessage('bot', 'Please update your profile to get better suggestions.');
     }
     setLoading(false);
   };
@@ -150,14 +217,10 @@ const Chatbot = () => {
     setLoading(false);
   };
 
-  const handleGenericAIQuery = async (text) => {
+  const handleGenericQuery = async () => {
     setLoading(true);
-    try {
-      const res = await axios.post('/api/chatbot', { message: text });
-      addMessage('bot', res.data.reply);
-    } catch (err) {
-      addMessage('bot', 'Sorry, something went wrong. Please try again.');
-    }
+    await new Promise((r) => setTimeout(r, 300));
+    addMessage('bot', 'I can help with Events, FAQs, or profile analysis.');
     setLoading(false);
   };
 
@@ -170,19 +233,46 @@ const Chatbot = () => {
 
     const lowerCaseText = text.toLowerCase();
 
+    // Direct keyword routes
     if (lowerCaseText.includes('event')) {
       await fetchEvents();
-    } else if (lowerCaseText.includes('mentor') || lowerCaseText.includes('recommend')) {
-      await fetchMentors();
-    } else if (lowerCaseText.includes('forum') || lowerCaseText.includes('post')) {
-      await fetchForumPosts();
-    } else {
-      await handleGenericAIQuery(text);
+      return;
     }
+
+    if (lowerCaseText.includes('analyze') || lowerCaseText.includes('analyse') ||
+        (lowerCaseText.includes('improve') && lowerCaseText.includes('profile')) ||
+        lowerCaseText.includes('analyze my profile')) {
+      await analyzeProfile();
+      return;
+    }
+
+    // FAQ direct question matching
+    const maybeAnswer = findFaqAnswer(lowerCaseText);
+    if (maybeAnswer) {
+      addMessage('bot', maybeAnswer);
+      return;
+    }
+
+    if (lowerCaseText.includes('faq') || lowerCaseText.includes('help')) {
+      await showTopFaqs();
+      return;
+    }
+
+    // Fallback
+    await handleGenericQuery();
   };
 
-  const handleQuickAction = (action) => {
-    handleUserMessage(`/${action}`);
+  const handleQuickAction = async (action) => {
+    if (action === 'events') {
+      addMessage('user', 'Show me upcoming events.');
+      await fetchEvents();
+    } else if (action === 'faq') {
+      addMessage('user', 'Show FAQs');
+      await showTopFaqs();
+    } else if (action === 'analyze') {
+      addMessage('user', 'Analyze my profile.');
+      await analyzeProfile();
+    }
   };
 
   return (
@@ -242,8 +332,6 @@ const Chatbot = () => {
                     {msg.component && (
                       <div className="mt-2 w-full max-w-sm space-y-2">
                         {msg.component.type === 'events' && msg.component.items.map(renderEventCard)}
-                        {msg.component.type === 'mentors' && msg.component.items.map(renderMentorCard)}
-                        {msg.component.type === 'forum' && msg.component.items.map(renderForumPostCard)}
                       </div>
                     )}
                   </motion.div>
