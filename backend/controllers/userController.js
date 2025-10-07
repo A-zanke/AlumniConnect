@@ -147,6 +147,11 @@ async function followUser(req, res) {
       targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
       await currentUser.save();
       await targetUser.save();
+      // Also remove from connections if present to ensure permanent removal across UIs
+      currentUser.connections = (currentUser.connections || []).filter(id => id.toString() !== targetUserId.toString());
+      targetUser.connections = (targetUser.connections || []).filter(id => id.toString() !== currentUserId.toString());
+      await currentUser.save();
+      await targetUser.save();
       res.json({ message: 'Unfollowed successfully', isFollowing: false });
     } else {
       currentUser.following = [...(currentUser.following || []), targetUserId];
