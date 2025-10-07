@@ -2,6 +2,15 @@
 const axios = require('axios');
 require('dotenv').config();
 
+// NOTE: This controller does not depend on database models, but some
+// environments previously imported models here using ESM (import ... from '../models/Event').
+// To avoid ERR_MODULE_NOT_FOUND on Node >=20 ESM resolver, we explicitly avoid ESM imports
+// and optionally load models with CommonJS require including the .js extension.
+// If these models are not needed they won't be used; if present, requiring with extension
+// guarantees resolution on Windows paths as well.
+try { require('../models/Event.js'); } catch (_) {}
+try { require('../models/Alumni.js'); } catch (_) {}
+
 async function getAIResponse(message) {
   // Use OpenRouter API for real AI answers
   const apiKey = process.env.OPENROUTER_API_KEY;
