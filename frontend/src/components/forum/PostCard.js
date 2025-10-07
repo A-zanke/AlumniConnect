@@ -18,8 +18,11 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   const [showOptions, setShowOptions] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [reactionCount, setReactionCount] = useState(post.reactionsCount || 0);
+  const [reactionCount, setReactionCount] = useState(
+    (Array.isArray(post.reactions) ? post.reactions.length : undefined) ?? post.reactionsCount ?? 0
+  );
   const [showReactionsPicker, setShowReactionsPicker] = useState(false);
+  const [userReaction, setUserReaction] = useState(null);
   const [showReactors, setShowReactors] = useState(false);
   const [reactors, setReactors] = useState([]);
   const navigate = useNavigate();
@@ -51,12 +54,50 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     { key: 'sad', label: '😢' },
     { key: 'angry', label: '😡' }
   ];
+  const EMOJI_BY_KEY = useMemo(() => Object.fromEntries(REACTIONS.map(r => [r.key, r.label])), []);
+
+  const computeCounts = (reactionsArr = []) => {
+    if (!Array.isArray(reactionsArr)) return {};
+    return reactionsArr.reduce((acc, r) => {
+      const t = r?.type || 'like';
+      acc[t] = (acc[t] || 0) + 1;
+      return acc;
+    }, {});
+  };
+
+  const [reactionCounts, setReactionCounts] = useState(() => computeCounts(post.reactions));
+
+  const topReactions = useMemo(() => {
+    const entries = Object.entries(reactionCounts || {}).filter(([, c]) => c > 0);
+    entries.sort((a, b) => b[1] - a[1]);
+    const top = entries.slice(0, 3);
+    const total = entries.reduce((s, [, c]) => s + c, 0);
+    const topSum = top.reduce((s, [, c]) => s + c, 0);
+    const rest = Math.max(total - topSum, 0);
+    return { top, rest, total };
+  }, [reactionCounts]);
+
+  // Get top 3 reactions for summary display (array of [type,count])
+  const getTopReactions = useMemo(() => {
+    const entries = Object.entries(reactionCounts)
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    return entries;
+  }, [reactionCounts]);
 
   const handleReaction = async (type = 'like') => {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      await forumAPI.addReaction(post._id, type);
+      const res = await forumAPI.addReaction(post._id, type);
+      // Prefer realtime event, but update optimistically when API returns
+      const data = res?.data?.data;
+      if (data) {
+        setReactionCount(data.total ?? reactionCount);
+        setReactionCounts(data.counts ?? reactionCounts);
+        setUserReaction(data.reactionType ?? null);
+      }
       onChanged && onChanged();
       setShowReactionsPicker(false);
     } catch (error) {
@@ -136,8 +177,8 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   };
 
   const Author = () => {
-    if (!post.author) {
-      return <span className="text-gray-500 font-medium">Unknown</span>;
+    if (post.isAnonymous || !post.author) {
+      return <span className="text-gray-500 font-medium">{post.isAnonymous ? 'Anonymous' : 'Unknown'}</span>;
     }
     return (
       <Link
@@ -158,9 +199,22 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     s.emit('forum:join_post', { postId: post._id });
     s.on('forum:reaction_updated', (payload) => {
       if (payload?.postId === post._id) {
-        setReactionCount(payload.reactions || 0);
+        setReactionCount(payload.total || 0);
+        if (payload.counts) setReactionCounts(payload.counts);
       }
     });
+    // Fetch initial reaction summary (server truth)
+    (async () => {
+      try {
+        const res = await forumAPI.getReactions(post._id);
+        const data = res?.data?.data;
+        if (data) {
+          setReactionCount(data.total || 0);
+          setReactionCounts(data.counts || {});
+          setUserReaction(data.userReaction || null);
+        }
+      } catch {}
+    })();
     return () => {
       try { s.emit('forum:leave_post', { postId: post._id }); } catch {}
       try { s.disconnect(); } catch {}
@@ -364,23 +418,33 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
 
           <div className="flex items-center gap-2 relative">
             {/* Reactions */}
-            <div className="flex items-center gap-2">
+            <div
+              className="flex items-center gap-2 relative"
+              onMouseEnter={() => setShowReactionsPicker(true)}
+              onMouseLeave={() => setShowReactionsPicker(false)}
+            >
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowReactionsPicker(v => !v)}
                 disabled={isLoading}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
-                  post.hasUserReacted
+                  userReaction
                     ? 'bg-red-50 text-red-600 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-700 hover:bg-red-50 hover:text-red-600'
                 }`}
                 title="React"
               >
-                <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
+                {userReaction ? (
+                  <span className="text-lg" aria-label={userReaction}>{EMOJI_BY_KEY[userReaction] || '👍'}</span>
+                ) : (
+                  <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
+                )}
                 <span onClick={(e) => { e.stopPropagation(); openReactors(); }} className="cursor-pointer" title="View who reacted">
                   {reactionCount}
                 </span>
               </motion.button>
+
+              {/* Reaction Picker */}
               {showReactionsPicker && (
                 <div className="absolute -top-12 left-0 bg-white border border-gray-200 rounded-full shadow p-2 flex gap-2 z-10">
                   {REACTIONS.map(r => (
@@ -393,6 +457,20 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                       {r.label}
                     </button>
                   ))}
+                </div>
+              )}
+              {/* Inline top-3 summary next to the button */}
+              {topReactions.total > 0 && (
+                <div className="flex items-center gap-1 text-sm text-gray-600 ml-1">
+                  {topReactions.top.map(([type, count]) => (
+                    <span key={type} className="flex items-center gap-0.5">
+                      <span className="text-base leading-none">{EMOJI_BY_KEY[type] || '👍'}</span>
+                      <span className="font-medium">{count}</span>
+                    </span>
+                  ))}
+                  {topReactions.rest > 0 && (
+                    <span className="text-xs text-gray-500">+{topReactions.rest}</span>
+                  )}
                 </div>
               )}
             </div>

@@ -19,7 +19,8 @@ const {
   reportTarget,
   leaderboard,
   getPollOptionVoters,
-  reactToComment
+  reactToComment,
+  getReactionSummary
 } = require('../controllers/forumController');
 
 const storage = multer.diskStorage({
@@ -40,6 +41,7 @@ router.post('/posts', protect, upload.array('media', 5), createPost); // Allow u
 router.get('/posts/:id', protect, getPost);
 router.post('/posts/:id/upvote', protect, toggleUpvotePost);
 router.post('/posts/:id/reactions', protect, addReaction); // New reaction endpoint
+router.get('/posts/:id/reactions', protect, getReactionSummary);
 router.post('/posts/:id/share', protect, sharePost);
 router.delete('/posts/:id', protect, deletePost); // Delete endpoint
 router.post('/posts/:id/bookmark', protect, toggleBookmark);
