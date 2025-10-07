@@ -26,12 +26,14 @@ const quickActions = [
 const Chatbot = () => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { sender: 'bot', text: 'Hi! Ask about events, FAQs, or profile tips.' }
+    { sender: 'bot', text: 'Hi there 👋! Need help with events, FAQs, or your profile?' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef(null);
   const { user } = useAuth();
+  const [awaiting, setAwaiting] = useState(null); // e.g., 'recommendations'
+  const lastProfileRef = useRef(null);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -64,29 +66,38 @@ const Chatbot = () => {
     setLoading(false);
   };
 
+  // --- Helpers ---
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   // --- FAQ Helper ---
   const FAQS = [
-    { q: 'how can i register for an event', a: "Go to Events → Click Register button." },
-    { q: 'how do i update my profile', a: "Open Profile → Edit → Save changes." },
-    { q: 'how can i contact alumni support', a: "Email: alumni@college.edu" },
-    { q: 'how to reset password', a: "Click ‘Forgot Password’ on login page." },
-    { q: 'where can i find mentorship programs', a: "Check Mentorship tab under Dashboard." },
-    { q: 'how do i post in the forum', a: "Go to Forum → Create Post." },
-    { q: 'how can i change my email', a: "Profile → Edit email → Save." },
-    { q: 'how do i delete my account', a: "Contact support to request deletion." },
+    { q: 'How can I register for an event?', a: 'Go to Events → Click Register.' },
+    { q: 'How do I post in the forum?', a: 'Visit Forum → Create Post.' },
+    { q: 'How can I contact alumni support?', a: 'Email alumni@college.edu for support.' },
+    { q: 'How do I update my profile?', a: 'Open Profile → Edit → Save.' },
+    { q: 'How can I reset my password?', a: 'Click Forgot Password on login page.' },
+    { q: 'How do I find alumni mentorship?', a: 'Check Mentorship tab under Dashboard.' },
+    { q: 'How can I strengthen my resume?', a: 'Add certifications and achievements.' },
   ];
+
+  const showFaqButtons = async () => {
+    setLoading(true);
+    await sleep(250);
+    addMessage('bot', 'Pick a question:', { type: 'faq', items: FAQS });
+    setLoading(false);
+  };
 
   const handleFAQQuery = async (text) => {
     setLoading(true);
     try {
+      await sleep(250);
       const normalized = text.toLowerCase();
-      const match = FAQS.find(item => normalized.includes(item.q));
+      const match = FAQS.find(item => normalized.includes(item.q.toLowerCase()));
       if (match) {
         addMessage('bot', match.a);
       } else {
-        // Show curated quick answers (6 items) as short chat-style messages
-        const curated = FAQS.slice(0, 6);
-        curated.forEach(item => addMessage('bot', `${item.a}`));
+        // If no direct match, show buttons
+        addMessage('bot', 'Here are quick FAQs:', { type: 'faq', items: FAQS });
       }
     } finally {
       setLoading(false);
@@ -94,10 +105,40 @@ const Chatbot = () => {
   };
 
   // --- Profile Analyzer ---
+  const generateProfileSuggestions = (profileData) => {
+    const skills = Array.isArray(profileData.skills) ? profileData.skills : [];
+    const department = (profileData.department && profileData.department.name) || profileData.department || '';
+    const desiredRoles = profileData.desired_roles || [];
+    const projects = profileData.projects || profileData.detailed_projects || [];
+    const internships = profileData.internships || profileData.detailed_internships || [];
+
+    const suggestions = [];
+    if (!skills || skills.length < 3) {
+      const skillHint = /it|computer|cs|software|information/i.test(String(department))
+        ? 'Power BI and SQL'
+        : 'Power BI and Excel';
+      suggestions.push(`Add ${skillHint} to strengthen your profile.`);
+    } else {
+      suggestions.push('Highlight your top 3 skills.');
+    }
+    if ((!projects || projects.length === 0) && (!internships || internships.length === 0)) {
+      suggestions.push('Add a recent internship or project.');
+    } else {
+      suggestions.push('Summarize outcomes of a recent project.');
+    }
+    if (!desiredRoles || desiredRoles.length === 0) {
+      suggestions.push('Set your career goal in Profile → Edit.');
+    } else {
+      suggestions.push('Join an alumni event to grow your network.');
+    }
+    return suggestions.slice(0, 3);
+  };
+
   const analyzeProfile = async () => {
     setLoading(true);
     addMessage('bot', 'Analyzing...');
     try {
+      await sleep(350);
       let profileData = null;
       try {
         if (user?._id) {
@@ -105,7 +146,6 @@ const Chatbot = () => {
           profileData = res?.data?.data || null;
         }
       } catch (_) {
-        // Fallback to basic profile
         const res = await userAPI.getProfile();
         profileData = res?.data || null;
       }
@@ -115,37 +155,20 @@ const Chatbot = () => {
         return;
       }
 
+      lastProfileRef.current = profileData;
+
       const skills = Array.isArray(profileData.skills) ? profileData.skills : [];
-      const department = (profileData.department && profileData.department.name) || profileData.department || '';
-      const desiredRoles = profileData.desired_roles || [];
       const projects = profileData.projects || profileData.detailed_projects || [];
-      const internships = profileData.internships || profileData.detailed_internships || [];
+      const goal = (Array.isArray(profileData.desired_roles) && profileData.desired_roles[0])
+        || profileData.specialization
+        || profileData.current_job_title
+        || 'Not set';
 
-      const suggestions = [];
-
-      if (!skills || skills.length < 3) {
-        const skillHint = /it|computer|cs|software|information/i.test(String(department))
-          ? 'Power BI, SQL, Git'
-          : 'Power BI, Excel, Communication';
-        suggestions.push(`Improve your skills (e.g., ${skillHint}).`);
-      } else {
-        suggestions.push('Highlight your top 3 skills on your profile.');
-      }
-
-      if ((!projects || projects.length === 0) && (!internships || internships.length === 0)) {
-        suggestions.push('Add your latest internship or project to your profile.');
-      } else {
-        suggestions.push('Summarize outcomes of a recent project/internship.');
-      }
-
-      if (!desiredRoles || desiredRoles.length === 0) {
-        suggestions.push('Set your career goal in Profile → Edit.');
-      } else {
-        suggestions.push('Join an alumni event to grow your network.');
-      }
-
-      // Send 3 concise bullet-style messages
-      suggestions.slice(0, 3).forEach(s => addMessage('bot', `• ${s}`));
+      addMessage('bot', `You’ve added ${projects?.length || 0} projects and ${skills?.length || 0} skills.`);
+      addMessage('bot', `Goal: ${goal}.`);
+      addMessage('bot', 'You could highlight certifications and internships.');
+      addMessage('bot', 'Want improvement tips?');
+      setAwaiting('recommendations');
     } catch (err) {
       addMessage('bot', 'Please update your profile to get better suggestions.');
     } finally {
@@ -162,27 +185,73 @@ const Chatbot = () => {
 
     const lowerCaseText = text.toLowerCase();
 
+    if (awaiting === 'recommendations') {
+      if (/^(yes|yeah|yep|sure|ok|okay)\b/.test(lowerCaseText)) {
+        const data = lastProfileRef.current;
+        const recs = data ? generateProfileSuggestions(data) : [];
+        if (recs.length === 0) {
+          addMessage('bot', 'Please update your profile to get better suggestions.');
+        } else {
+          recs.forEach(r => addMessage('bot', `• ${r}`));
+        }
+      } else {
+        addMessage('bot', 'Okay. Ask me anytime.');
+      }
+      setAwaiting(null);
+      return;
+    }
+
+    // Casual conversation handling
+    if (/\b(hi|hello|hey)\b/.test(lowerCaseText)) {
+      addMessage('bot', 'Hi there! How can I help?');
+      return;
+    }
+    if (lowerCaseText.includes('how are you')) {
+      addMessage('bot', 'I’m doing great — how can I help?');
+      return;
+    }
+    if (lowerCaseText.includes('what is this website') || lowerCaseText.includes('what’s this website')) {
+      addMessage('bot', 'This platform connects alumni, students, and mentors.');
+      return;
+    }
+    if (lowerCaseText.includes('who built you')) {
+      addMessage('bot', 'I’m your Alumni Assistant — built to help you succeed!');
+      return;
+    }
+    if (lowerCaseText.includes("what's your name") || lowerCaseText.includes('whats your name') || lowerCaseText.includes('your name')) {
+      addMessage('bot', 'I’m your College AI Assistant 😊.');
+      return;
+    }
+    if (lowerCaseText.includes('build a strong profile') || lowerCaseText.includes('how can i build a strong profile')) {
+      addMessage('bot', 'Keep your skills, projects, and goals updated — consistency matters.');
+      return;
+    }
+
     if (lowerCaseText.includes('event') || lowerCaseText.startsWith('/events')) {
       await fetchEvents();
     } else if (
       lowerCaseText.includes('analyze my profile') ||
       (lowerCaseText.includes('analyze') && lowerCaseText.includes('profile')) ||
       lowerCaseText.includes('what can i improve') ||
+      lowerCaseText.includes('how can i improve my profile') ||
       lowerCaseText.startsWith('/analyze')
     ) {
       await analyzeProfile();
     } else if (
-      lowerCaseText.includes('faq') ||
+      lowerCaseText.includes('faq') || lowerCaseText.startsWith('/faq') ||
       lowerCaseText.includes('how do i') ||
       lowerCaseText.includes('how to') ||
       lowerCaseText.includes('reset password') ||
       lowerCaseText.includes('update my profile') ||
-      lowerCaseText.includes('register for an event') ||
-      lowerCaseText.startsWith('/faq')
+      lowerCaseText.includes('register for an event')
     ) {
-      await handleFAQQuery(text);
+      if (lowerCaseText.includes('faq') || lowerCaseText.startsWith('/faq')) {
+        await showFaqButtons();
+      } else {
+        await handleFAQQuery(text);
+      }
     } else {
-      addMessage('bot', 'I can help with events, FAQs, or profile tips.');
+      addMessage('bot', 'Sorry, I didn’t catch that. Could you rephrase?');
     }
   };
 
@@ -247,6 +316,19 @@ const Chatbot = () => {
                     {msg.component && (
                       <div className="mt-2 w-full max-w-sm space-y-2">
                         {msg.component.type === 'events' && msg.component.items.map(renderEventCard)}
+                        {msg.component.type === 'faq' && (
+                          <div className="grid grid-cols-1 gap-2">
+                            {msg.component.items.map((item, idx) => (
+                              <button
+                                key={idx}
+                                className="w-full text-left px-3 py-2 bg-white border border-indigo-100 rounded-lg hover:bg-indigo-50 text-indigo-700"
+                                onClick={() => handleUserMessage(item.q)}
+                              >
+                                {item.q}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </motion.div>
