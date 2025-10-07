@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 
 const CommentReactionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['like', 'love', 'laugh', 'wow', 'sad', 'fire'], required: true }
+  // Keep same reaction set as posts
+  type: { type: String, enum: ['like', 'love', 'laugh', 'wow', 'sad', 'angry'], required: true }
 }, { _id: false });
 
 const ForumCommentSchema = new mongoose.Schema({

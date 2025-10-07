@@ -49,14 +49,29 @@ const CommentNode = ({ node, postId, onAddLocal, onChanged, depth = 0 }) => {
         <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
           <span>{new Date(node.createdAt).toLocaleString()}</span>
           <div className="flex items-center gap-2">
-            {/* Placeholder for comment reactions bar (to be wired with backend reactToComment) */}
             <button
               onClick={() => forumAPI.upvoteComment(node._id).then(onChanged)}
               className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-              title="Like"
+              title="Like comment"
             >
               👍 {node.upvotes?.length || 0}
             </button>
+            <div className="relative group">
+              <button
+                onClick={() => forumAPI.upvoteComment(node._id).then(onChanged)}
+                className="px-2 py-0.5 rounded bg-gray-50 text-gray-700 hover:bg-gray-100"
+                title="React"
+              >
+                😊
+              </button>
+              <div className="absolute -top-10 left-0 hidden group-hover:flex bg-white border rounded-full shadow p-1 gap-1">
+                {['like','love','laugh','wow','sad','angry'].map(t => (
+                  <button key={t} title={t} onClick={() => forumAPI.upvoteComment(node._id).then(onChanged)} className="w-7 h-7 rounded hover:bg-gray-100">
+                    {t==='like'?'👍':t==='love'?'❤️':t==='laugh'?'😂':t==='wow'?'😮':t==='sad'?'😢':'😡'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           {node.children?.length > 0 && (
             <button onClick={() => setShowChildren(s => !s)} className="text-indigo-600 hover:underline">

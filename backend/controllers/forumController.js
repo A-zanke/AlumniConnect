@@ -255,6 +255,8 @@ exports.addReaction = async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const uid = req.user._id;
+    // Ensure reactions array exists
+    if (!Array.isArray(post.reactions)) post.reactions = [];
     const existingReactionIndex = post.reactions.findIndex(r => r.user.toString() === uid.toString());
 
     if (existingReactionIndex > -1) {
@@ -288,6 +290,7 @@ exports.addReaction = async (req, res) => {
       type: allowedReactions.has(r.type) ? r.type : 'like'
     }));
 
+    // Persist safely
     await post.save();
 
     // Compute per-type counts and ensure all keys exist for frontend mapping
@@ -539,6 +542,7 @@ exports.toggleUpvoteComment = async (req, res) => {
     const comment = await ForumComment.findById(req.params.commentId);
     if (!comment) return res.status(404).json({ message: 'Comment not found' });
     const uid = req.user._id;
+    if (!Array.isArray(comment.upvotes)) comment.upvotes = [];
     const has = comment.upvotes.some(id => id.toString() === uid.toString());
     if (has) {
       comment.upvotes = comment.upvotes.filter(id => id.toString() !== uid.toString());
@@ -558,19 +562,20 @@ exports.toggleUpvoteComment = async (req, res) => {
     res.json({ data: { upvotes: comment.upvotes.length, upvoted: !has } });
   } catch (err) {
     console.error('toggleUpvoteComment error:', err);
-    res.status(500).json({ message: 'Failed to toggle upvote' });
+    res.status(500).json({ message: 'Failed to toggle upvote', error: String(err && err.message ? err.message : err) });
   }
 };
 
 // Toggle/Switch emoji reaction on a comment
 exports.reactToComment = async (req, res) => {
   try {
-    const { type = 'like' } = req.body; // one of ['like','love','laugh','wow','sad','fire']
+    const { type = 'like' } = req.body; // one of ['like','love','laugh','wow','sad','angry']
     const comment = await ForumComment.findById(req.params.commentId);
     if (!comment) return res.status(404).json({ message: 'Comment not found' });
 
     const uid = req.user._id;
-    const idx = (comment.reactions || []).findIndex(r => r.user.toString() === uid.toString());
+    if (!Array.isArray(comment.reactions)) comment.reactions = [];
+    const idx = comment.reactions.findIndex(r => r.user.toString() === uid.toString());
     if (idx > -1) {
       if (comment.reactions[idx].type === type) {
         // Toggle off
@@ -586,13 +591,14 @@ exports.reactToComment = async (req, res) => {
     await comment.save();
 
     const counts = (comment.reactions || []).reduce((acc, r) => {
-      acc[r.type] = (acc[r.type] || 0) + 1; return acc;
+      const t = r.type || 'like';
+      acc[t] = (acc[t] || 0) + 1; return acc;
     }, {});
 
     res.json({ data: { total: comment.reactions.length, counts } });
   } catch (err) {
     console.error('reactToComment error:', err);
-    res.status(500).json({ message: 'Failed to react to comment' });
+    res.status(500).json({ message: 'Failed to react to comment', error: String(err && err.message ? err.message : err) });
   }
 };
 
