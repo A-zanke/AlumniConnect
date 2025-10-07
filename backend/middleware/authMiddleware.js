@@ -1,41 +1,55 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+// =============================
+// 🔒 Protect Middleware
+// =============================
 const protect = async (req, res, next) => {
-  let token;
-
-  // Check Authorization header (Bearer token)
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-  // Check cookie
-  else if (req.cookies && req.cookies.jwt) {
-    token = req.cookies.jwt;
-  }
-
-  if (!token) {
-    return res.status(401).json({ message: 'Not authorized, no token' });
-  }
-
   try {
+    // Get token from header
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select('-password');
+
+    // Get user from token
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    // Set user in request
+    req.user = user;
     next();
+
   } catch (error) {
-    res.status(401).json({ message: 'Not authorized, token failed' });
+    console.error('Auth middleware error:', error);
+    res.status(401).json({ message: 'Not authorized' });
   }
 };
 
-const roleMiddleware = (...roles) => (req, res, next) => {
-  if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
-  const normalized = roles.map(r => r.toLowerCase());
-  if (!normalized.includes((req.user.role || '').toLowerCase())) {
-    return res.status(403).json({ message: 'Forbidden: insufficient role' });
-  }
-  next();
+// =============================
+// 🧩 Role Middleware
+// =============================
+const roleMiddleware = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Access denied: insufficient permissions' });
+    }
+
+    next();
+  };
 };
 
+// =============================
+// ✅ Export Both
+// =============================
 module.exports = { protect, roleMiddleware };

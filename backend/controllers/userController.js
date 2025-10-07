@@ -260,6 +260,39 @@ async function getPresence(req, res) {
   }
 }
 
+// Remove user avatar
+const removeUserAvatar = async (req, res) => {
+  try {
+    // Get user from auth middleware
+    const userId = req.user._id;
+    console.log('Removing avatar for user:', userId);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update user document
+    user.avatarUrl = null;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile picture removed successfully'
+    });
+
+  } catch (error) {
+    console.error('removeUserAvatar error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to remove profile picture'
+    });
+  }
+};
+
 module.exports = {
   getUserByUsername,
   getFollowing,
@@ -268,5 +301,6 @@ module.exports = {
   followUser,
   getSuggestedConnections,
   updatePresence,
-  getPresence
+  getPresence,
+  removeUserAvatar
 };

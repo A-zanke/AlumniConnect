@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -24,6 +24,7 @@ const HomePage = () => {
   const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const videoRefs = useRef([]);
 
   // Enhanced hero carousel - Replace paths with your actual asset files
   const heroSlides = [
@@ -255,6 +256,24 @@ const HomePage = () => {
     }
   }, [heroSlides.length, isPlaying]);
 
+  // Ensure current video is playing and others are paused to avoid white flash on switch
+  useEffect(() => {
+    heroSlides.forEach((slide, idx) => {
+      const vid = videoRefs.current[idx];
+      if (!vid || slide.type !== 'video') return;
+      try {
+        if (idx === currentHeroSlide) {
+          const p = vid.play?.();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } else {
+          vid.pause?.();
+        }
+      } catch (e) {
+        // no-op
+      }
+    });
+  }, [currentHeroSlide, heroSlides]);
+
   // Testimonials auto-scroll
   useEffect(() => {
     const interval = setInterval(() => {
@@ -324,62 +343,32 @@ const HomePage = () => {
       <section className="relative h-screen overflow-hidden" id="home">
         {/* Background Carousel with Video Support */}
         <div className="hero-overlay">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentHeroSlide}
-              className="absolute inset-0"
-              initial={{ opacity: 0}}
-              animate={{ opacity: 1}}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1 }}
-            >
-              {heroSlides[currentHeroSlide].type === 'video' ? (
+          <div className="absolute inset-0 bg-black">
+            {heroSlides.map((slide, idx) => (
+              slide.type === 'video' ? (
                 <video
-                  className="w-full h-full object-cover"
-                  autoPlay
+                  key={`video-${idx}`}
+                  ref={(el) => (videoRefs.current[idx] = el)}
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${idx === currentHeroSlide ? 'opacity-100' : 'opacity-0'}`}
                   muted
+                  playsInline
                   loop
-                  
+                  preload="auto"
                 >
-                  <source src={heroSlides[currentHeroSlide].src} type="video/mp4" />
-                  Your browser does not support the video tag.
+                  <source src={slide.src} type="video/mp4" />
                 </video>
               ) : (
                 <img
-                  src={heroSlides[currentHeroSlide].src}
-                  alt={heroSlides[currentHeroSlide].alt}
-                  className="w-full h-full object-cover"
+                  key={`img-${idx}`}
+                  src={slide.src}
+                  alt={slide.alt}
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${idx === currentHeroSlide ? 'opacity-100' : 'opacity-0'}`}
                 />
-              )}
-              
-  
-              {/* </div> */}
-            </motion.div>
-          </AnimatePresence>
+              )
+            ))}
+          </div>
         </div>
 
-        {/* Carousel Controls */}
-        <div className="absolute top-1/2 left-4 transform -translate-y-1/2 z-20">
-          <motion.button
-            onClick={() => setCurrentHeroSlide((prev) => (prev - 1 + heroSlides.length) % heroSlides.length)}
-            className="bg-white/20 backdrop-blur-md border border-white/30 text-white p-3 rounded-full hover:bg-white/30 transition-all duration-300"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <FaChevronLeft size={20} />
-          </motion.button>
-        </div>
-        
-        <div className="absolute top-1/2 right-4 transform -translate-y-1/2 z-20">
-          <motion.button
-            onClick={() => setCurrentHeroSlide((prev) => (prev + 1) % heroSlides.length)}
-            className="bg-white/20 backdrop-blur-md border border-white/30 text-white p-3 rounded-full hover:bg-white/30 transition-all duration-300"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <FaChevronRight size={20} />
-          </motion.button>
-        </div>
 
         {/* Play/Pause Control */}
         {/* <div className="absolute bottom-20 right-8 z-20">

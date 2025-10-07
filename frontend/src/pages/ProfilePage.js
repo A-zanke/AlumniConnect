@@ -39,6 +39,7 @@ import { FaGraduationCap } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import axios from 'axios';
+import { DEFAULT_PROFILE_IMAGE } from '../constants/images';
 
 const COMMON_SKILLS = [
   'JavaScript',
@@ -704,9 +705,9 @@ const ProfilePage = () => {
               >
                 <img 
                   className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200" 
-                  src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : '/default-avatar.png'} 
+                  src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : DEFAULT_PROFILE_IMAGE} 
                   alt={user.name} 
-                  onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+                  onError={e => { e.target.onerror = null; e.target.src = DEFAULT_PROFILE_IMAGE; }}
                 />
               </motion.div>
               
@@ -826,6 +827,7 @@ const ProfilePage = () => {
                   handleChange={handleChange} 
                   avatarFile={avatarFile} 
                   setAvatarFile={setAvatarFile} 
+                  handleDeleteAvatar={handleDeleteAvatar}
                   handleSubmit={handleSubmit} 
                 />
               )}
@@ -863,7 +865,11 @@ const OverviewSection = ({ user }) => (
         {user.department && (
           <div className="flex items-center gap-3">
             <FaGraduationCap className="text-slate-500" />
-            <span className="text-slate-700">{user.department} • Year {user.year || '-'} • Grad {user.graduationYear || '-'}</span>
+            <span className="text-slate-700">
+              {user.role === 'alumni'
+                ? `${user.department} • Grad ${user.graduationYear || '-'}`
+                : `${user.department} • Year ${user.year || '-'} • Grad ${user.graduationYear || '-'}`}
+            </span>
           </div>
         )}
       </div>
@@ -913,6 +919,89 @@ const OverviewSection = ({ user }) => (
             <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm">
               +{user.skills.length - 6} more
             </span>
+          )}
+        </div>
+      </motion.div>
+    )}
+
+    {/* Student Preferences Card */}
+    {user.role === 'student' && (
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
+        <h3 className="text-xl font-bold text-slate-800 mb-4">Student Preferences</h3>
+        <div className="space-y-3">
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Career Interests:</span>
+            {Array.isArray(user.careerInterests) && user.careerInterests.length > 0 ? (
+              <span className="ml-2 text-slate-800">{user.careerInterests.join(', ')}</span>
+            ) : (
+              <span className="ml-2 text-slate-800">Not provided</span>
+            )}
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">College Activities / Clubs:</span>
+            {Array.isArray(user.activities) && user.activities.length > 0 ? (
+              <span className="ml-2 text-slate-800">{user.activities.join(', ')}</span>
+            ) : (
+              <span className="ml-2 text-slate-800">Not provided</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Open to Mentorship from Alumni:</span>
+            <span className="text-slate-800">{user.mentorshipOpen ? 'Yes' : 'No'}</span>
+          </div>
+        </div>
+      </motion.div>
+    )}
+
+    {/* Alumni Details Card */}
+    {user.role === 'alumni' && (
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
+        <h3 className="text-xl font-bold text-slate-800 mb-4">Alumni Details</h3>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Degree:</span>
+            <span className="text-slate-800">{user.degree || 'Not provided'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Current Company / Organization:</span>
+            <span className="text-slate-800">{user.company || 'Not provided'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Current Role / Designation:</span>
+            <span className="text-slate-800">{user.position || user.current_job_title || 'Not provided'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-500">Industry / Domain:</span>
+            <span className="text-slate-800">{user.industry || 'Not provided'}</span>
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-500">Guidance Areas:</span>
+            {Array.isArray(user.guidanceAreas) && user.guidanceAreas.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {user.guidanceAreas.map((g, i) => (
+                  <span key={`${g}-${i}`} className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium">{g}</span>
+                ))}
+              </div>
+            ) : (
+              <span className="ml-2 text-slate-800">Not provided</span>
+            )}
+          </div>
+          {user.mentorshipAvailable && (
+            <div>
+              <span className="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">
+                Available for Mentorship
+              </span>
+            </div>
           )}
         </div>
       </motion.div>
@@ -1045,51 +1134,84 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
             transition={{ delay: 0.2 }}
           >
             <h3 className="text-lg font-bold text-slate-800 mb-4">Education</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
-                <select
-                  name="department"
-                  value={formData.department}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                >
-                  <option value="">Select</option>
-                  <option value="CSE">CSE</option>
-                  <option value="IDS">IDS</option>
-                  <option value="Electronics">Electronics</option>
-                  <option value="Mechanical">Mechanical</option>
-                  <option value="Civil">Civil</option>
-                  <option value="IT">IT</option>
-                </select>
+            {user.role === 'alumni' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
+                  <select
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="">Select</option>
+                    <option value="CSE">CSE</option>
+                    <option value="AIDS">AIDS</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Mechanical">Mechanical</option>
+                    <option value="Civil">Civil</option>
+                    <option value="IT">IT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Graduation Year</label>
+                  <input
+                    type="number"
+                    name="graduationYear"
+                    value={formData.graduationYear}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                    placeholder="2020"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Current Year</label>
-                <select
-                  name="year"
-                  value={formData.year}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                >
-                  <option value="">Select</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                </select>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
+                  <select
+                    name="department"
+                    value={formData.department}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  >
+                    <option value="">Select</option>
+                    <option value="CSE">CSE</option>
+                    <option value="AIDS">AIDS</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Mechanical">Mechanical</option>
+                    <option value="Civil">Civil</option>
+                    <option value="IT">IT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Current Year</label>
+                  <select
+                    name="year"
+                    value={formData.year}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus-border-transparent transition-all duration-300"
+                  >
+                    <option value="">Select</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Expected Graduation Year</label>
+                  <input
+                    type="number"
+                    name="graduationYear"
+                    value={formData.graduationYear}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                    placeholder="2025"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Expected Graduation Year</label>
-                <input
-                  type="number"
-                  name="graduationYear"
-                  value={formData.graduationYear}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  placeholder="2025"
-                />
-              </div>
-            </div>
+            )}
           </motion.div>
 
           {/* Social Links */}
@@ -1230,7 +1352,7 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Current Role / Designation</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Job Role</label>
                   <input
                     type="text"
                     name="position"
@@ -1301,28 +1423,30 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
           </div>
         </motion.div>
 
-        <motion.div
-          className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
-          <div className="space-y-3">
-            <div>
-              <span className="text-sm font-semibold text-slate-500">Job Title:</span>
-              <p className="text-slate-800">{user.current_job_title || 'Not provided'}</p>
+        {user.role === 'alumni' && (
+          <motion.div
+            className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
+            <div className="space-y-3">
+              <div>
+                <span className="text-sm font-semibold text-slate-500">Job Role:</span>
+                <p className="text-slate-800">{user.position || user.current_job_title || 'Not provided'}</p>
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-slate-500">Company:</span>
+                <p className="text-slate-800">{user.company || 'Not provided'}</p>
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-slate-500">Industry:</span>
+                <p className="text-slate-800">{user.industry || 'Not provided'}</p>
+              </div>
             </div>
-            <div>
-              <span className="text-sm font-semibold text-slate-500">Company:</span>
-              <p className="text-slate-800">{user.company || 'Not provided'}</p>
-            </div>
-            <div>
-              <span className="text-sm font-semibold text-slate-500">Industry:</span>
-              <p className="text-slate-800">{user.industry || 'Not provided'}</p>
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
       </div>
     )}
   </div>
@@ -1476,9 +1600,9 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
                   <a href={profileUrl} className="focus:outline-none">
                     <img 
                       className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
-                      src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : '/default-avatar.png'} 
+                      src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : DEFAULT_PROFILE_IMAGE} 
                       alt={connection.name} 
-                      onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+                      onError={e => { e.target.onerror = null; e.target.src = DEFAULT_PROFILE_IMAGE; }}
                     />
                   </a>
                   <div className="flex-1">
@@ -1693,7 +1817,7 @@ const PostsSection = ({ posts, showCreatePost, setShowCreatePost, postData, setP
 );
 
 // Settings Section Component
-const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData, handleChange, avatarFile, setAvatarFile, handleSubmit }) => (
+const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData, handleChange, avatarFile, setAvatarFile, handleDeleteAvatar, handleSubmit }) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
@@ -1731,10 +1855,7 @@ const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData,
             Cancel
           </motion.button>
           <motion.button
-            onClick={() => {
-              setAvatarFile(null);
-              handleSubmit({ target: { name: 'avatarUrl', value: null } });
-            }}
+            onClick={handleDeleteAvatar}
             className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}

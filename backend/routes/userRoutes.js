@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/authMiddleware');
+const { protect, auth } = require('../middleware/authMiddleware');
 const { 
   getUserByUsername, 
   getFollowing, 
@@ -9,7 +9,8 @@ const {
   followUser, 
   getSuggestedConnections,
   updatePresence,
-  getPresence
+  getPresence,
+  removeUserAvatar
 } = require('../controllers/userController');
 const chatbotController = require('../controllers/chatbotController');
 
@@ -82,4 +83,8 @@ router.get('/:userId/presence', protect, getPresence);
 // AI Chatbot endpoint
 router.post('/chatbot', chatbotController.chatbotReply);
 
-module.exports = router; 
+// Remove user avatar
+router.delete('/remove-avatar', protect, removeUserAvatar);
+
+
+module.exports = router;
