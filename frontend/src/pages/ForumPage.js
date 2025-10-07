@@ -10,7 +10,7 @@ import PostCard from '../components/forum/PostCard';
 import Guidelines from '../components/forum/Guidelines';
 import Leaderboard from '../components/forum/Leaderboard';
 
-const CATEGORIES = ['All','Career','Higher Studies','Internships','Hackathons','Projects','Alumni Queries'];
+const CATEGORIES = ['All','Career','Higher Studies','Internships','Hackathons','Projects'];
 const SORTS = [
   { key: 'recent', label: 'Most Recent' },
   { key: 'upvoted', label: 'Most Upvoted' },
