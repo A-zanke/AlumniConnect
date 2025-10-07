@@ -18,7 +18,9 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   const [showOptions, setShowOptions] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [reactionCount, setReactionCount] = useState(post.reactionsCount || 0);
+  const [reactionCount, setReactionCount] = useState(
+    (Array.isArray(post.reactions) ? post.reactions.length : undefined) ?? post.reactionsCount ?? 0
+  );
   const [showReactionsPicker, setShowReactionsPicker] = useState(false);
   const [showReactors, setShowReactors] = useState(false);
   const [reactors, setReactors] = useState([]);
@@ -51,12 +53,40 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     { key: 'sad', label: '😢' },
     { key: 'angry', label: '😡' }
   ];
+  const EMOJI_BY_KEY = useMemo(() => Object.fromEntries(REACTIONS.map(r => [r.key, r.label])), []);
+
+  const computeCounts = (reactionsArr = []) => {
+    if (!Array.isArray(reactionsArr)) return {};
+    return reactionsArr.reduce((acc, r) => {
+      const t = r?.type || 'like';
+      acc[t] = (acc[t] || 0) + 1;
+      return acc;
+    }, {});
+  };
+
+  const [reactionCounts, setReactionCounts] = useState(() => computeCounts(post.reactions));
+
+  const topReactions = useMemo(() => {
+    const entries = Object.entries(reactionCounts || {}).filter(([, c]) => c > 0);
+    entries.sort((a, b) => b[1] - a[1]);
+    const top = entries.slice(0, 3);
+    const total = entries.reduce((s, [, c]) => s + c, 0);
+    const topSum = top.reduce((s, [, c]) => s + c, 0);
+    const rest = Math.max(total - topSum, 0);
+    return { top, rest, total };
+  }, [reactionCounts]);
 
   const handleReaction = async (type = 'like') => {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      await forumAPI.addReaction(post._id, type);
+      const res = await forumAPI.addReaction(post._id, type);
+      // Prefer realtime event, but update optimistically when API returns
+      const data = res?.data?.data;
+      if (data) {
+        setReactionCount(data.total ?? reactionCount);
+        setReactionCounts(data.counts ?? reactionCounts);
+      }
       onChanged && onChanged();
       setShowReactionsPicker(false);
     } catch (error) {
@@ -158,7 +188,8 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     s.emit('forum:join_post', { postId: post._id });
     s.on('forum:reaction_updated', (payload) => {
       if (payload?.postId === post._id) {
-        setReactionCount(payload.reactions || 0);
+        setReactionCount(payload.total || 0);
+        if (payload.counts) setReactionCounts(payload.counts);
       }
     });
     return () => {
@@ -364,7 +395,21 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
 
           <div className="flex items-center gap-2 relative">
             {/* Reactions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
+              {/* Summary above the like button */}
+              {topReactions.total > 0 && (
+                <div className="absolute -top-7 left-0 bg-white/90 backdrop-blur border border-gray-200 shadow px-2 py-0.5 rounded-full flex items-center gap-1">
+                  {topReactions.top.map(([type, count]) => (
+                    <span key={type} className="flex items-center gap-0.5 text-sm">
+                      <span className="text-base leading-none">{EMOJI_BY_KEY[type] || '👍'}</span>
+                      <span className="text-gray-600 text-xs">{count}</span>
+                    </span>
+                  ))}
+                  {topReactions.rest > 0 && (
+                    <span className="text-xs text-gray-500">+{topReactions.rest}</span>
+                  )}
+                </div>
+              )}
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowReactionsPicker(v => !v)}
