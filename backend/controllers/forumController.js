@@ -10,16 +10,16 @@ const selectUserPublic = 'name username avatarUrl role department year industry 
 
 exports.createPost = async (req, res) => {
   try {
-    const { title, content, category, tags, isAnonymous, mentions, pollQuestion, pollOptions, mediaLinks } = req.body;
+    const { title, content, category, tags, mentions, pollQuestion, pollOptions, mediaLinks } = req.body;
 
     const post = new ForumPost({
-      author: isAnonymous ? undefined : req.user._id,
-      isAnonymous: Boolean(isAnonymous),
+      author: req.user._id,
+      isAnonymous: false,
       title,
       content,
       category,
       tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : []),
-      mentions: Array.isArray(mentions) ? mentions : []
+      mentions: []
     });
 
     // Handle multiple files
@@ -46,6 +46,31 @@ exports.createPost = async (req, res) => {
         options: pollOptions.map(text => ({ text, votes: [] })),
         voters: []
       };
+    }
+
+    // Resolve mentions from explicit array and content text (@username or ObjectId)
+    try {
+      const set = new Set();
+      if (Array.isArray(mentions)) {
+        for (const m of mentions) {
+          if (!m) continue;
+          const s = String(m).trim();
+          if (/^[0-9a-fA-F]{24}$/.test(s)) set.add(s);
+          else set.add(s.replace(/^@/, ''));
+        }
+      }
+      const contentMatches = String(content || '').match(/@([a-zA-Z0-9_]+)/g) || [];
+      contentMatches.forEach(m => set.add(m.replace('@', '')));
+      const raw = Array.from(set);
+      const ids = raw.filter(x => /^[0-9a-fA-F]{24}$/.test(x));
+      const usernames = raw.filter(x => !/^[0-9a-fA-F]{24}$/.test(x));
+      let users = [];
+      if (usernames.length > 0) {
+        users = await User.find({ username: { $in: usernames } }).select('_id');
+      }
+      post.mentions = [...ids, ...users.map(u => u._id)];
+    } catch (e) {
+      post.mentions = [];
     }
 
     await post.save();
@@ -184,18 +209,21 @@ exports.addReaction = async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const uid = req.user._id;
-    const existingReactionIndex = post.reactions.findIndex(r => 
-      r.user.toString() === uid.toString()
-    );
+    const existingReactionIndex = post.reactions.findIndex(r => r.user.toString() === uid.toString());
 
     if (existingReactionIndex > -1) {
-      // Remove existing reaction
-      post.reactions.splice(existingReactionIndex, 1);
+      const currentType = post.reactions[existingReactionIndex].type;
+      if (currentType === reactionType) {
+        // Toggle off same reaction
+        post.reactions.splice(existingReactionIndex, 1);
+      } else {
+        // Switch to a different reaction type (no duplicate by same user)
+        post.reactions[existingReactionIndex].type = reactionType;
+      }
     } else {
       // Add new reaction
       post.reactions.push({ user: uid, type: reactionType });
-      
-      // Notify author unless anonymous or self
+      // Notify author unless self
       if (post.author && post.author.toString() !== uid.toString()) {
         await Notification.create({
           recipient: post.author,
@@ -208,11 +236,31 @@ exports.addReaction = async (req, res) => {
     }
 
     await post.save();
-    
-    const hasReacted = existingReactionIndex === -1;
+
+    // Compute per-type counts
+    const counts = (post.reactions || []).reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Emit real-time reaction update with breakdown
+    try {
+      if (global.io) {
+        global.io.to(`forum_post_${post._id}`).emit('forum:reaction_updated', {
+          postId: post._id.toString(),
+          total: post.reactions.length,
+          counts
+        });
+      }
+    } catch (e) {
+      console.error('addReaction emit error:', e);
+    }
+
+    const hasReacted = post.reactions.some(r => r.user.toString() === uid.toString());
     res.json({ 
       data: { 
-        reactions: post.reactions.length, 
+        total: post.reactions.length,
+        counts,
         hasReacted,
         reactionType: hasReacted ? reactionType : null
       } 
@@ -253,17 +301,17 @@ exports.toggleUpvotePost = async (req, res) => {
 
 exports.sharePost = async (req, res) => {
   try {
-    const { connectionIds, message } = req.body;
+    const { connectionIds = [], message } = req.body;
     const post = await ForumPost.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const uid = req.user._id;
-    
+
     // Verify all connectionIds are actual connections
-    const user = await User.findById(uid).populate('connections', '_id');
-    const validConnections = connectionIds.filter(id => 
-      user.connections.some(conn => conn._id.toString() === id)
-    );
+    const user = await User.findById(uid).select('connections').populate('connections', '_id');
+    const myConnections = Array.isArray(user?.connections) ? user.connections : [];
+    const incoming = Array.isArray(connectionIds) ? connectionIds : [];
+    const validConnections = incoming.filter(id => myConnections.some(conn => conn._id.toString() === id));
 
     if (validConnections.length === 0) {
       return res.status(400).json({ message: 'No valid connections selected' });
@@ -277,16 +325,37 @@ exports.sharePost = async (req, res) => {
     });
     await post.save();
 
-    // Notify shared connections
-    await Promise.all(validConnections.map(connId => 
-      Notification.create({
+    // Notify shared connections and create chat message per recipient
+    const Message = require('../models/Message');
+    await Promise.all(validConnections.map(async (connId) => {
+      await Notification.create({
         recipient: connId,
         sender: uid,
         type: 'share',
         content: `${req.user.name} shared a forum post with you: ${post.title}`,
         metadata: { postId: post._id, message }
-      })
-    ));
+      });
+      // Create chat message with link
+      const chat = await Message.create({
+        from: uid,
+        to: connId,
+        content: message ? `${message}\n\n${post.title}` : `${post.title}`,
+        attachments: [`/forum/${post._id}`]
+      });
+      // Emit chat event to recipient
+      try {
+        if (global.io) {
+          global.io.to(connId).emit('chat:receive', {
+            _id: chat._id,
+            from: String(uid),
+            to: String(connId),
+            content: chat.content,
+            attachments: [`/api/forum/posts/${post._id}`],
+            createdAt: chat.createdAt
+          });
+        }
+      } catch {}
+    }));
 
     res.json({ 
       data: { 
@@ -324,18 +393,38 @@ exports.deletePost = async (req, res) => {
 
 exports.createComment = async (req, res) => {
   try {
-    const { content, parentComment, mentions, isAnonymous } = req.body;
+    const { content, parentComment, mentions } = req.body;
 
     const post = await ForumPost.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
+    // Resolve mentions
+    let mentionIds = [];
+    try {
+      const set = new Set();
+      if (Array.isArray(mentions)) {
+        for (const m of mentions) {
+          if (!m) continue; const s = String(m).trim();
+          if (/^[0-9a-fA-F]{24}$/.test(s)) set.add(s); else set.add(s.replace(/^@/, ''));
+        }
+      }
+      const matches = String(content || '').match(/@([a-zA-Z0-9_]+)/g) || [];
+      matches.forEach(m => set.add(m.replace('@', '')));
+      const raw = Array.from(set);
+      const ids = raw.filter(x => /^[0-9a-fA-F]{24}$/.test(x));
+      const usernames = raw.filter(x => !/^[0-9a-fA-F]{24}$/.test(x));
+      let users = [];
+      if (usernames.length > 0) users = await User.find({ username: { $in: usernames } }).select('_id');
+      mentionIds = [...ids, ...users.map(u => u._id)];
+    } catch (e) { mentionIds = []; }
+
     const comment = await ForumComment.create({
       post: post._id,
       parentComment: parentComment || null,
-      author: isAnonymous ? undefined : req.user._id,
-      isAnonymous: Boolean(isAnonymous),
+      author: req.user._id,
+      isAnonymous: false,
       content,
-      mentions: Array.isArray(mentions) ? mentions : []
+      mentions: mentionIds
     });
 
     // Update post comment count
@@ -397,23 +486,81 @@ exports.toggleUpvoteComment = async (req, res) => {
   }
 };
 
+// Toggle/Switch emoji reaction on a comment
+exports.reactToComment = async (req, res) => {
+  try {
+    const { type = 'like' } = req.body; // one of ['like','love','laugh','wow','sad','fire']
+    const comment = await ForumComment.findById(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+
+    const uid = req.user._id;
+    const idx = (comment.reactions || []).findIndex(r => r.user.toString() === uid.toString());
+    if (idx > -1) {
+      if (comment.reactions[idx].type === type) {
+        // Toggle off
+        comment.reactions.splice(idx, 1);
+      } else {
+        // Switch type
+        comment.reactions[idx].type = type;
+      }
+    } else {
+      comment.reactions.push({ user: uid, type });
+    }
+
+    await comment.save();
+
+    const counts = (comment.reactions || []).reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1; return acc;
+    }, {});
+
+    res.json({ data: { total: comment.reactions.length, counts } });
+  } catch (err) {
+    console.error('reactToComment error:', err);
+    res.status(500).json({ message: 'Failed to react to comment' });
+  }
+};
+
 exports.votePoll = async (req, res) => {
   try {
     const post = await ForumPost.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
     if (!post || !post.poll) return res.status(404).json({ message: 'Poll not found' });
 
     const uid = req.user._id.toString();
-    if (post.poll.voters.some(v => v.toString() === uid)) {
-      return res.status(400).json({ message: 'You have already voted in this poll' });
-    }
+    // Treat allowMultipleVotes as true by default if undefined
+    const allowMultiple = post.poll.allowMultipleVotes !== false;
 
     const { optionIndex } = req.body;
-    if (typeof optionIndex !== 'number' || optionIndex < 0 || optionIndex >= post.poll.options.length) {
+    const indices = Array.isArray(optionIndex) ? optionIndex : [optionIndex];
+
+    // Validate indices
+    if (!indices.every(i => typeof i === 'number' && i >= 0 && i < post.poll.options.length)) {
       return res.status(400).json({ message: 'Invalid poll option' });
     }
 
-    post.poll.options[optionIndex].votes.push(req.user._id);
-    post.poll.voters.push(req.user._id);
+    if (!allowMultiple) {
+      // Single-vote: block if already voted anywhere
+      if (post.poll.voters.some(v => v.toString() === uid)) {
+        return res.status(400).json({ message: 'You have already voted in this poll' });
+      }
+      // Record single vote (first index only)
+      const i = indices[0];
+      post.poll.options[i].votes.push(req.user._id);
+      post.poll.voters.push(req.user._id);
+    } else {
+      // Multi-select: allow voting for multiple options; avoid duplicates
+      let votedAtLeastOne = false;
+      indices.forEach(i => {
+        const already = post.poll.options[i].votes.some(v => v.toString() === uid);
+        if (!already) {
+          post.poll.options[i].votes.push(req.user._id);
+          votedAtLeastOne = true;
+        }
+      });
+      if (votedAtLeastOne && !post.poll.voters.some(v => v.toString() === uid)) {
+        post.poll.voters.push(req.user._id);
+      }
+    }
+
     await post.save();
 
     const totalVotes = post.poll.options.reduce((sum, opt) => sum + opt.votes.length, 0);
@@ -423,6 +570,19 @@ exports.votePoll = async (req, res) => {
       votes: opt.votes.length,
       percentage: totalVotes > 0 ? Math.round((opt.votes.length / totalVotes) * 100) : 0
     }));
+
+    // Emit real-time update to all viewers of this post
+    try {
+      if (global.io) {
+        global.io.to(`forum_post_${post._id}`).emit('forum:poll_updated', {
+          postId: post._id.toString(),
+          results,
+          totalVotes
+        });
+      }
+    } catch (e) {
+      console.error('votePoll emit error:', e);
+    }
 
     res.json({ data: { results, totalVotes, hasVoted: true } });
   } catch (err) {
@@ -533,5 +693,24 @@ exports.leaderboard = async (req, res) => {
   } catch (err) {
     console.error('leaderboard error:', err);
     res.status(500).json({ message: 'Failed to load leaderboard' });
+  }
+};
+
+// Get voters for a specific poll option
+exports.getPollOptionVoters = async (req, res) => {
+  try {
+    const { id, index } = req.params;
+    const post = await ForumPost.findOne({ _id: id, isDeleted: { $ne: true } });
+    if (!post || !post.poll) return res.status(404).json({ message: 'Poll not found' });
+    const optionIndex = parseInt(index, 10);
+    if (Number.isNaN(optionIndex) || optionIndex < 0 || optionIndex >= post.poll.options.length) {
+      return res.status(400).json({ message: 'Invalid poll option' });
+    }
+    const voterIds = post.poll.options[optionIndex].votes || [];
+    const voters = await User.find({ _id: { $in: voterIds } }).select(selectUserPublic);
+    res.json({ data: voters });
+  } catch (err) {
+    console.error('getPollOptionVoters error:', err);
+    res.status(500).json({ message: 'Failed to load voters' });
   }
 };

@@ -19,8 +19,14 @@ const notificationSchema = new mongoose.Schema(
       enum: ['pending', 'accepted', 'declined', null],
       default: null,
     },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false
+    }
   },
-  { timestamps: true }
+  {
+    timestamps: true
+  }
 );
 
 // Index for faster queries

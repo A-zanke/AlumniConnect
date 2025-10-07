@@ -68,7 +68,7 @@ const ShareModal = ({ post, onClose, onShared }) => {
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden"
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -84,7 +84,7 @@ const ShareModal = ({ post, onClose, onShared }) => {
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-6 flex-1 overflow-y-auto">
             {/* Post Preview */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
               <h4 className="font-medium text-gray-900 mb-2">{post.title}</h4>

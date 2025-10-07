@@ -69,6 +69,6 @@ const teacherSchema = new mongoose.Schema({
 teacherSchema.index({ name: 'text', username: 'text', skills: 'text', department: 1 });
 teacherSchema.index({ role: 1, department: 1 });
 
-const Teacher = mongoose.model('Teacher', teacherSchema);
+const Teacher = mongoose.model('Teacher', teacherSchema, 'teachers');
 
 module.exports = Teacher; 

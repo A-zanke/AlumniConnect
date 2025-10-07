@@ -6,6 +6,7 @@ import {
   FiMessageSquare, FiHeart, FiShare2, FiBookmark, FiMoreHorizontal,
   FiChevronLeft, FiChevronRight, FiTrash2, FiFlag, FiExternalLink
 } from 'react-icons/fi';
+import { io } from 'socket.io-client';
 import { toast } from 'react-toastify';
 import ShareModal from './ShareModal';
 import Poll from './Poll';
@@ -17,6 +18,10 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   const [showOptions, setShowOptions] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [reactionCount, setReactionCount] = useState(post.reactionsCount || 0);
+  const [showReactionsPicker, setShowReactionsPicker] = useState(false);
+  const [showReactors, setShowReactors] = useState(false);
+  const [reactors, setReactors] = useState([]);
   const navigate = useNavigate();
 
   const preview = useMemo(() => {
@@ -38,18 +43,39 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     return post.media?.filter(m => m.type === 'pdf') || [];
   }, [post.media]);
 
-  const handleReaction = async () => {
+  const REACTIONS = [
+    { key: 'like', label: '👍' },
+    { key: 'love', label: '❤️' },
+    { key: 'laugh', label: '😂' },
+    { key: 'wow', label: '😮' },
+    { key: 'sad', label: '😢' },
+    { key: 'angry', label: '😡' }
+  ];
+
+  const handleReaction = async (type = 'like') => {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      await forumAPI.addReaction(post._id, 'like');
+      await forumAPI.addReaction(post._id, type);
       onChanged && onChanged();
-      toast.success('Reaction added!');
+      setShowReactionsPicker(false);
     } catch (error) {
       console.error('Error adding reaction:', error);
-      toast.error('Failed to add reaction');
+      toast.error('Failed to react');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const openReactors = async () => {
+    try {
+      const res = await forumAPI.getPost(post._id);
+      const reactions = res.data?.data?.post?.reactions || [];
+      const list = reactions.map(r => ({ user: r.user, type: r.type }));
+      setReactors(list);
+      setShowReactors(true);
+    } catch (e) {
+      console.error('Failed to load reactors', e);
     }
   };
 
@@ -111,11 +137,11 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
 
   const Author = () => {
     if (post.isAnonymous || !post.author) {
-      return <span className="text-gray-500 font-medium">Anonymous</span>;
+      return <span className="text-gray-500 font-medium">{post.isAnonymous ? 'Anonymous' : 'Unknown'}</span>;
     }
     return (
-      <Link 
-        to={`/profile/${post.author.username || post.author._id}`} 
+      <Link
+        to={`/profile/${post.author.username || post.author._id}`}
         className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
       >
         {post.author.name}
@@ -124,6 +150,22 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   };
 
   const canDelete = post.author && currentUser && post.author._id === currentUser._id;
+
+  React.useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !post?._id) return;
+    const s = io('/', { auth: { token } });
+    s.emit('forum:join_post', { postId: post._id });
+    s.on('forum:reaction_updated', (payload) => {
+      if (payload?.postId === post._id) {
+        setReactionCount(payload.reactions || 0);
+      }
+    });
+    return () => {
+      try { s.emit('forum:leave_post', { postId: post._id }); } catch {}
+      try { s.disconnect(); } catch {}
+    };
+  }, [post?._id]);
 
   return (
     <motion.div 
@@ -162,7 +204,15 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                       </button>
                     )}
                     <button
-                      onClick={() => {/* Report functionality */}}
+                      onClick={async () => {
+                        try {
+                          await forumAPI.reportTarget(post._id, 'post', 'Inappropriate');
+                          setShowOptions(false);
+                          toast.success('Reported to moderators');
+                        } catch (e) {
+                          toast.error('Failed to report');
+                        }
+                      }}
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                     >
                       <FiFlag className="text-sm" />
@@ -209,6 +259,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
+                onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
               />
               {images.length > 1 && (
                 <>
@@ -311,36 +362,40 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Reaction Button */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={handleReaction}
-              disabled={isLoading}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
-                post.hasUserReacted
-                  ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                  : 'bg-gray-50 text-gray-700 hover:bg-red-50 hover:text-red-600'
-              }`}
-            >
-              <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
-              <span>{post.reactionsCount || 0}</span>
-            </motion.button>
-
-            {/* Upvote Button */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={handleUpvote}
-              disabled={isLoading}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
-                post.hasUserUpvoted
-                  ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                  : 'bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600'
-              }`}
-            >
-              <span>▲</span>
-              <span>{post.upvotesCount || 0}</span>
-            </motion.button>
+          <div className="flex items-center gap-2 relative">
+            {/* Reactions */}
+            <div className="flex items-center gap-2">
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowReactionsPicker(v => !v)}
+                disabled={isLoading}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
+                  post.hasUserReacted
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                    : 'bg-gray-50 text-gray-700 hover:bg-red-50 hover:text-red-600'
+                }`}
+                title="React"
+              >
+                <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
+                <span onClick={(e) => { e.stopPropagation(); openReactors(); }} className="cursor-pointer" title="View who reacted">
+                  {reactionCount}
+                </span>
+              </motion.button>
+              {showReactionsPicker && (
+                <div className="absolute -top-12 left-0 bg-white border border-gray-200 rounded-full shadow p-2 flex gap-2 z-10">
+                  {REACTIONS.map(r => (
+                    <button
+                      key={r.key}
+                      onClick={() => handleReaction(r.key)}
+                      className="w-8 h-8 rounded-full hover:bg-gray-100 text-lg"
+                      title={r.key}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Comment Button */}
             <Link
@@ -384,6 +439,30 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
           onClose={() => setShowShareModal(false)}
           onShared={onChanged}
         />
+      )}
+
+      {/* Reactors Modal */}
+      {showReactors && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setShowReactors(false)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-semibold text-gray-900">Reactions</div>
+              <button className="text-gray-500 hover:text-gray-700" onClick={() => setShowReactors(false)}>Close</button>
+            </div>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {reactors.length === 0 && <div className="text-sm text-gray-500">No reactions yet</div>}
+              {reactors.map((r, idx) => (
+                <div key={idx} className="flex items-center gap-3">
+                  <span className="text-lg">
+                    {r.type === 'like' ? '👍' : r.type === 'love' ? '❤️' : r.type === 'laugh' ? '😂' : r.type === 'wow' ? '😮' : r.type === 'sad' ? '😢' : '😡'}
+                  </span>
+                  <img src={r.user?.avatarUrl || '/default-avatar.png.jpg'} alt={r.user?.name} className="w-8 h-8 rounded-full object-cover" />
+                  <div className="font-medium text-gray-900">{r.user?.name || 'User'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </motion.div>
   );

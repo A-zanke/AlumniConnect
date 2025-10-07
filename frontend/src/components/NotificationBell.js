@@ -34,6 +34,16 @@ const NotificationBell = () => {
   // Calculate unread count
   const unreadCount = items.filter(item => !item.read).length;
 
+  const markAllAsRead = async () => {
+    try {
+      await axios.put('/api/notifications/read-all');
+      // Optimistically update local state
+      setItems(prev => prev.map(n => ({ ...n, read: true })));
+    } catch (e) {
+      console.error('Error marking all as read', e);
+    }
+  };
+
   useEffect(() => {
     const onClick = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
@@ -133,7 +143,18 @@ const NotificationBell = () => {
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
-              <span className="text-sm text-gray-500">{unreadCount} new</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500">{unreadCount} new</span>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllAsRead}
+                    className="px-3 py-1 text-sm rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600 transition-colors"
+                    title="Mark all as read"
+                  >
+                    Mark all as read
+                  </button>
+                )}
+              </div>
             </div>
             <div className="max-h-96 overflow-y-auto">
               {items.length === 0 ? (

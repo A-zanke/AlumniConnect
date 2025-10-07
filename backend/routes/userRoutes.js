@@ -11,6 +11,7 @@ const {
   updatePresence,
   getPresence
 } = require('../controllers/userController');
+const chatbotController = require('../controllers/chatbotController');
 
 // Public route to get user profile by username
 router.get('/username/:username', getUserByUsername);
@@ -38,7 +39,6 @@ router.get('/:userId', protect, async (req, res) => {
         additionalData = {
           department: studentData.department,
           year: studentData.year,
-          division: studentData.division,
           batch: studentData.batch,
           rollNumber: studentData.rollNumber,
           major: studentData.major,
@@ -103,5 +103,8 @@ router.get('/mutual/connections', protect, getMyMutualConnections);
 // Presence routes
 router.put('/presence', protect, updatePresence);
 router.get('/:userId/presence', protect, getPresence);
+
+// AI Chatbot endpoint
+router.post('/chatbot', chatbotController.chatbotReply);
 
 module.exports = router; 

@@ -23,6 +23,7 @@ const { Server } = require('socket.io');
 const io = new Server(http, {
   cors: { origin: 'http://localhost:3000', credentials: true }
 });
+global.io = io;
 
 // Middleware to access io in controllers
 app.use((req, res, next) => {
@@ -102,11 +103,10 @@ const adminRoutes = require('./routes/adminRoutes');
 const messagesRoutes = require('./routes/messagesRoutes');
 const avatarRoutes = require('./routes/avatarRoutes');
 const forumRoutes = require('./routes/forumRoutes');
+const chatbotRoutes = require('./routes/chatbotRoutes');
+
 app.use('/api/forum', forumRoutes);
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
+app.use('/api/chatbot', chatbotRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -242,5 +242,22 @@ io.on('connection', (socket) => {
     } catch (e) {
       console.error('Socket chat error:', e);
     }
+  });
+
+  socket.join(socket.userId);
+
+  // Forum rooms
+  socket.on('forum:join_post', (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.join(`forum_post_${postId}`);
+    } catch (e) {}
+  });
+
+  socket.on('forum:leave_post', (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.leave(`forum_post_${postId}`);
+    } catch (e) {}
   });
 });

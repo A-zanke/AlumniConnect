@@ -47,8 +47,8 @@ const ForumPage = () => {
 
       // Apply navigation filters
       if (activeNav === 'my-posts') {
-        // This would need to be implemented in backend
-        params.author = 'current-user'; // Backend should handle this
+        // Use special flag recognized by backend as current user
+        params.userId = 'me';
       }
 
       const res = await forumAPI.listPosts(params);

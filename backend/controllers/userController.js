@@ -20,7 +20,6 @@ async function getUserByUsername(req, res) {
         additionalData = {
           department: studentData.department,
           year: studentData.year,
-          division: studentData.division,
           batch: studentData.batch,
           rollNumber: studentData.rollNumber,
           major: studentData.major,

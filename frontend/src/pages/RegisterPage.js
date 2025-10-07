@@ -372,7 +372,7 @@ const RegisterPage = () => {
                 required
                 placeholder="Create a password"
               />
-              <small>Min 6 chars and include a number</small>
+              <small>Min 6 characters. Use a mix for better security.</small>
             </div>
 
             <div className="register-field">

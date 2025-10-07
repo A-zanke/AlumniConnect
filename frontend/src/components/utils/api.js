@@ -2,7 +2,7 @@ import axios from 'axios';
 import { toast } from 'react-toastify';
 
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000'
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
 });
 
 apiClient.interceptors.request.use(
@@ -75,7 +75,7 @@ export const postsAPI = {
         formData.append('tags', postData.tags);
       }
       return apiClient.post('/api/posts', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
     }
     return apiClient.post('/api/posts', postData);
@@ -84,7 +84,8 @@ export const postsAPI = {
   likePost: (id) => apiClient.put(`/api/posts/${id}/like`),
   unlikePost: (id) => apiClient.put(`/api/posts/${id}/unlike`),
   commentOnPost: (id, text) => apiClient.post(`/api/posts/${id}/comment`, { text }),
-  deleteComment: (postId, commentId) => apiClient.delete(`/api/posts/${postId}/comment/${commentId}`)
+  deleteComment: (postId, commentId) =>
+    apiClient.delete(`/api/posts/${postId}/comment/${commentId}`),
 };
 
 export const eventsAPI = {
@@ -98,7 +99,7 @@ export const eventsAPI = {
       appendToFormData(formData, key, eventData[key]);
     });
     return apiClient.post('/api/events', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
   updateEvent: (id, eventData) => {
@@ -107,14 +108,14 @@ export const eventsAPI = {
       appendToFormData(formData, key, eventData[key]);
     });
     return apiClient.put(`/api/events/${id}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
   deleteEvent: (id) => apiClient.delete(`/api/events/${id}`),
   rsvpEvent: (id) => apiClient.post(`/api/events/${id}/rsvp`),
   getPendingEvents: () => apiClient.get('/api/admin/events/pending'),
   approveEvent: (id) => apiClient.put(`/api/events/${id}/approve`),
-  rejectEvent: (id) => apiClient.put(`/api/events/${id}/reject`)
+  rejectEvent: (id) => apiClient.put(`/api/events/${id}/reject`),
 };
 
 export const connectionAPI = {
@@ -126,7 +127,7 @@ export const connectionAPI = {
   getConnections: () => apiClient.get('/api/connections'),
   getPendingRequests: () => apiClient.get('/api/connections/requests'),
   getSuggestedConnections: () => apiClient.get('/api/connections/suggested'),
-  getRequestHistory: () => apiClient.get('/api/connections/requests/history')
+  getRequestHistory: () => apiClient.get('/api/connections/requests/history'),
 };
 
 export const userAPI = {
@@ -137,26 +138,44 @@ export const userAPI = {
   getUserByUsername: (username) => apiClient.get(`/api/users/username/${username}`),
   getUserById: (userId) => apiClient.get(`/api/users/${userId}`),
   updateProfile: (userData, avatar = null) => {
-    if (avatar) {
+    if (avatar || Object.keys(userData).some(key => userData[key] !== undefined)) { // Only send formData if avatar or other data exists
       const formData = new FormData();
-      Object.keys(userData).forEach(key => {
+      Object.keys(userData).forEach((key) => {
         if (key === 'socials' && typeof userData[key] === 'object') {
-          Object.keys(userData[key]).forEach(socialKey => {
-            formData.append(`socials[${socialKey}]`, userData[key][socialKey]);
+          Object.keys(userData[key]).forEach((socialKey) => {
+            if (userData[key][socialKey] !== undefined) {
+              formData.append(`socials[${socialKey}]`, userData[key][socialKey]);
+            }
           });
-        } else {
+        } else if (Array.isArray(userData[key])) {
+          userData[key].forEach(item => formData.append(`${key}[]`, item)); // For array fields
+        }
+        else if (typeof userData[key] === 'object' && userData[key] !== null) {
+          // Handle nested objects if necessary, e.g., higher_studies
+          Object.keys(userData[key]).forEach(nestedKey => {
+            if (userData[key][nestedKey] !== undefined) {
+              formData.append(`${key}[${nestedKey}]`, userData[key][nestedKey]);
+            }
+          })
+        }
+        else if (userData[key] !== undefined) {
           formData.append(key, userData[key]);
         }
       });
-      formData.append('avatar', avatar);
+      if (avatar) {
+        formData.append('avatar', avatar);
+      }
       return apiClient.put('/api/auth/profile', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
     }
+    // If no avatar and no other user data to update, send a simple PUT
     return apiClient.put('/api/auth/profile', userData);
   },
+  // NEW: Function to delete user avatar
+  deleteAvatar: () => apiClient.delete('/api/auth/profile/avatar'), // New endpoint for avatar deletion
   updatePresence: (isOnline) => apiClient.put('/api/users/presence', { isOnline }),
-  getPresence: (userId) => apiClient.get(`/api/users/${userId}/presence`)
+  getPresence: (userId) => apiClient.get(`/api/users/${userId}/presence`),
 };
 
 export const fetchMessages = async (userId) => {
@@ -177,7 +196,7 @@ export const sendMessage = async (userId, content, image = null) => {
       formData.append('image', image);
     }
     const response = await apiClient.post(`/api/messages/${userId}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
   } catch (error) {
@@ -191,7 +210,7 @@ export const followAPI = {
   getMutualConnections: (userId) => apiClient.get(`/api/users/${userId}/mutual`),
   getMyMutualConnections: () => apiClient.get('/api/users/mutual/connections'),
   followUser: (userId) => apiClient.post(`/api/users/${userId}/follow`),
-  getSuggestedConnections: () => apiClient.get('/api/users/suggested/connections')
+  getSuggestedConnections: () => apiClient.get('/api/users/suggested/connections'),
 };
 
 export default axios;

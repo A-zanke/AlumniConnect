@@ -9,7 +9,6 @@ import { getAvatarUrl } from '../components/utils/helpers';
 import ConnectionButton from '../components/network/ConnectionButton';
 
 // Feather icons (Fi = Feather Icons)
-
 import {
   FiUser,
   FiInfo,
@@ -35,15 +34,49 @@ import {
   FiPlus,
   FiShare,
   FiTrash2,
-} from "react-icons/fi";
-import { FaGraduationCap } from "react-icons/fa";
+} from 'react-icons/fi';
+import { FaGraduationCap } from 'react-icons/fa';
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from 'framer-motion';
 
 import axios from 'axios';
 
 const COMMON_SKILLS = [
-  'JavaScript','TypeScript','React','Node.js','Express','MongoDB','SQL','PostgreSQL','Python','Django','Flask','Java','Spring','C++','C#','Go','Rust','Next.js','Tailwind CSS','HTML','CSS','Sass','Kotlin','Swift','AWS','GCP','Azure','Docker','Kubernetes','Git','Figma','UI/UX','Machine Learning','Deep Learning','NLP'
+  'JavaScript',
+  'TypeScript',
+  'React',
+  'Node.js',
+  'Express',
+  'MongoDB',
+  'SQL',
+  'PostgreSQL',
+  'Python',
+  'Django',
+  'Flask',
+  'Java',
+  'Spring',
+  'C++',
+  'C#',
+  'Go',
+  'Rust',
+  'Next.js',
+  'Tailwind CSS',
+  'HTML',
+  'CSS',
+  'Sass',
+  'Kotlin',
+  'Swift',
+  'AWS',
+  'GCP',
+  'Azure',
+  'Docker',
+  'Kubernetes',
+  'Git',
+  'Figma',
+  'UI/UX',
+  'Machine Learning',
+  'Deep Learning',
+  'NLP',
 ];
 
 const ProfilePage = () => {
@@ -61,7 +94,7 @@ const ProfilePage = () => {
   const [allConnections, setAllConnections] = useState([]); // For total unique connections
   const [posts, setPosts] = useState([]);
   const [showCreatePost, setShowCreatePost] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
@@ -82,7 +115,7 @@ const ProfilePage = () => {
     higher_studies: {
       degree: '',
       university: '',
-      specialization: ''
+      specialization: '',
     },
     current_job_title: '',
     company: '',
@@ -96,13 +129,13 @@ const ProfilePage = () => {
     entrepreneurship: '',
     linkedin: '',
     github: '',
-    website: ''
+    website: '',
   });
 
   const [postData, setPostData] = useState({
     content: '',
     audience: 'public',
-    media: null
+    media: null,
   });
 
   const isOwnProfile = !userId && !username;
@@ -110,6 +143,41 @@ const ProfilePage = () => {
   useEffect(() => {
     if (isOwnProfile) {
       setUser(currentUser);
+      // Initialize formData with current user's data when it's own profile
+      if (currentUser) {
+        setFormData({
+          name: currentUser.name || '',
+          bio: currentUser.bio || '',
+          skills: currentUser.skills || [],
+          socials: currentUser.socials || { linkedin: '', github: '', twitter: '', website: '' },
+          specialization: currentUser.specialization || '',
+          projects: currentUser.projects || [],
+          desired_roles: currentUser.desired_roles || [],
+          preferred_industries: currentUser.preferred_industries || [],
+          higher_studies_interest: currentUser.higher_studies_interest || 'Maybe',
+          entrepreneurship_interest: currentUser.entrepreneurship_interest || 'Maybe',
+          internships: currentUser.internships || [],
+          hackathons: currentUser.hackathons || [],
+          research_papers: currentUser.research_papers || [],
+          mentorship_needs: currentUser.mentorship_needs || [],
+          preferred_location: currentUser.preferred_location || '',
+          preferred_mode: currentUser.preferred_mode || ['Email'],
+          higher_studies: currentUser.higher_studies || { degree: '', university: '', specialization: '' },
+          current_job_title: currentUser.current_job_title || '',
+          company: currentUser.company || '',
+          industry: currentUser.industry || '',
+          past_experience: currentUser.past_experience || [],
+          mentorship_interests: currentUser.mentorship_interests || [],
+          preferred_students: currentUser.preferred_students || [],
+          availability: currentUser.availability || 'Monthly',
+          certifications: currentUser.certifications || [],
+          publications: currentUser.publications || [],
+          entrepreneurship: currentUser.entrepreneurship || '',
+          linkedin: currentUser.linkedin || '',
+          github: currentUser.github || '',
+          website: currentUser.website || ''
+        });
+      }
       fetchUserConnections();
       fetchUserPosts();
     } else {
@@ -119,8 +187,10 @@ const ProfilePage = () => {
 
 
 
+  // This useEffect now primarily updates formData when a *fetched* user profile changes
+  // For own profile, formData initialization is handled in the first useEffect to avoid race conditions
   useEffect(() => {
-    if (user) {
+    if (user && !isOwnProfile) {
       setFormData({
         name: user.name || '',
         bio: user.bio || '',
@@ -154,7 +224,8 @@ const ProfilePage = () => {
         website: user.website || ''
       });
     }
-  }, [user]);
+  }, [user, isOwnProfile]); // Only run if user changes or it's not own profile
+
 
   const fetchUserProfile = async () => {
     try {
@@ -183,15 +254,15 @@ const ProfilePage = () => {
     try {
       const [sentRes, receivedRes] = await Promise.all([
         connectionAPI.getConnections(), // connections I sent/accepted
-        connectionAPI.getPendingRequests() // requests I received (pending)
+        connectionAPI.getPendingRequests(), // requests I received (pending)
       ]);
       // sentRes.data: my connections (array of users)
       // receivedRes.data: pending requests (array of users who sent me requests)
       const sent = sentRes.data || [];
-      const received = (receivedRes.data?.map?.(r => r.fromUser) || []);
+      const received = receivedRes.data?.map?.((r) => r.fromUser) || [];
       // Merge, deduplicate by _id
       const all = [...sent, ...received].reduce((acc, user) => {
-        if (!acc.find(u => u._id === user._id)) acc.push(user);
+        if (!acc.find((u) => u._id === user._id)) acc.push(user);
         return acc;
       }, []);
       setConnections(sent); // still show direct connections in main list
@@ -240,32 +311,38 @@ const ProfilePage = () => {
     if (name.startsWith('socials.')) {
       const field = name.replace('socials.', '');
       setFormData({ ...formData, socials: { ...formData.socials, [field]: value } });
+    } else if (name.startsWith('higher_studies.')) {
+      const field = name.replace('higher_studies.', '');
+      setFormData(prev => ({
+        ...prev,
+        higher_studies: { ...prev.higher_studies, [field]: value }
+      }));
     } else {
       setFormData({ ...formData, [name]: value });
     }
   };
 
   const normalizedSkills = useMemo(
-    () => (formData.skills || []).map(s => s.trim()).filter(Boolean),
+    () => (formData.skills || []).map((s) => s.trim()).filter(Boolean),
     [formData.skills]
   );
 
   const suggestions = useMemo(() => {
     const q = skillInput.trim().toLowerCase();
     if (!q) return [];
-    return COMMON_SKILLS
-      .filter(s => s.toLowerCase().includes(q) && !normalizedSkills.some(k => k.toLowerCase() === s.toLowerCase()))
-      .slice(0, 6);
+    return COMMON_SKILLS.filter(
+      (s) => s.toLowerCase().includes(q) && !normalizedSkills.some((k) => k.toLowerCase() === s.toLowerCase())
+    ).slice(0, 6);
   }, [skillInput, normalizedSkills]);
 
   const commitSkillInput = () => {
     const raw = skillInput.trim();
     if (!raw) return;
-    const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+    const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
     if (parts.length === 0) return;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      skills: Array.from(new Set([...(prev.skills || []), ...parts]))
+      skills: Array.from(new Set([...(prev.skills || []), ...parts])),
     }));
     setSkillInput('');
   };
@@ -278,48 +355,77 @@ const ProfilePage = () => {
   };
 
   const addSuggested = (s) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      skills: Array.from(new Set([...(prev.skills || []), s]))
+      skills: Array.from(new Set([...(prev.skills || []), s])),
     }));
     setSkillInput('');
   };
 
   const removeSkill = (skill) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      skills: (prev.skills || []).filter(s => s.toLowerCase() !== skill.toLowerCase())
+      skills: (prev.skills || []).filter((s) => s.toLowerCase() !== skill.toLowerCase()),
     }));
   };
 
   const handleArrayFieldChange = (fieldName, value) => {
-    const arrayValue = value.split(',').map(item => item.trim()).filter(item => item);
-    setFormData(prev => ({ ...prev, [fieldName]: arrayValue }));
+    const arrayValue = value.split(',').map((item) => item.trim()).filter((item) => item);
+    setFormData((prev) => ({ ...prev, [fieldName]: arrayValue }));
   };
 
   const handleCheckboxArrayChange = (fieldName, value, checked) => {
-    setFormData(prev => {
+    setFormData((prev) => {
       const currentArray = prev[fieldName] || [];
       if (checked) return { ...prev, [fieldName]: [...currentArray, value] };
-      return { ...prev, [fieldName]: currentArray.filter(item => item !== value) };
+      return { ...prev, [fieldName]: currentArray.filter((item) => item !== value) };
     });
   };
 
   const handleSubmit = async (e) => {
-    if (e) e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     try {
+      setLoading(true);
+      // Pass formData and avatarFile to the context's updateProfile
       const result = await updateProfile(formData, avatarFile);
       if (result.success) {
         toast.success('Profile updated successfully');
         setIsEditing(false);
-        setAvatarFile(null);
-        setUser(prev => ({ ...prev, ...formData }));
+        setAvatarFile(null); // Clear selected avatar file after successful upload
+        // Update local user state with the latest from the context (or directly from result)
+        // The updateProfile context function should ideally return the updated user object or trigger context re-fetch
+        setUser(result.user || currentUser); // Assuming result.user contains the updated user
       } else {
         toast.error(result.error || 'Failed to update profile');
       }
     } catch (error) {
       console.error('Profile update error:', error);
       toast.error('Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAvatar = async () => {
+    try {
+      setLoading(true);
+      const response = await userAPI.deleteAvatar();
+      if (response.data.success) {
+        toast.success('Profile picture deleted successfully!');
+        // Update AuthContext user and local user state
+        // The `updateProfile` in AuthContext should handle setting avatarUrl to null
+        updateProfile({ ...currentUser, avatarUrl: null }); // This will update the AuthContext
+        setUser(prev => ({ ...prev, avatarUrl: null })); // Update local state for immediate UI reflect
+      } else {
+        toast.error(response.data.message || 'Failed to delete profile picture.');
+      }
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
+      toast.error('Failed to delete profile picture.');
+    } finally {
+      setLoading(false);
+      setIsEditing(false); // Exit editing mode after deletion
+      setAvatarFile(null); // Clear any pending avatar upload
     }
   };
 
@@ -339,7 +445,7 @@ const ProfilePage = () => {
       }
 
       const response = await axios.post('/api/posts', formDataToSend, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       if (response.data) {
@@ -358,13 +464,13 @@ const ProfilePage = () => {
     try {
       await axios.delete(`/api/posts/${postId}`);
       toast.success('Post deleted successfully');
-      setPosts(prev => prev.filter(post => post._id !== postId));
+      setPosts((prev) => prev.filter((post) => post._id !== postId));
     } catch (error) {
       console.error('Post deletion error:', error);
       toast.error('Failed to delete post');
     }
   };
-
+  
   const handleMessageUser = (targetUserId) => {
     navigate(`/messages?user=${targetUserId}`);
   };
@@ -529,17 +635,12 @@ const ProfilePage = () => {
                 whileHover={{ scale: 1.05 }}
                 transition={{ duration: 0.2 }}
               >
-                {user.avatarUrl ? (
-                  <img 
-                    className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200" 
-                    src={getAvatarUrl(user.avatarUrl)} 
-                    alt={user.name} 
-                  />
-                ) : (
-                  <div className="h-24 w-24 rounded-full bg-gradient-to-r from-indigo-600 to-orange-600 flex items-center justify-center border-4 border-white shadow-xl ring-4 ring-orange-200">
-                    <span className="text-3xl font-bold text-white">{user.name?.charAt(0).toUpperCase()}</span>
-                  </div>
-                )}
+                <img 
+                  className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200" 
+                  src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : '/default-avatar.png'} 
+                  alt={user.name} 
+                  onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+                />
               </motion.div>
               
               <div className="flex-1 text-center md:text-left">
@@ -1206,71 +1307,57 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
     >
       {(allConnections && allConnections.length > 0) ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {allConnections.map((connection, index) => (
-            <motion.div
-              key={connection._id}
-              className="bg-white/80 rounded-xl p-4 border border-slate-200 hover:shadow-lg transition-all duration-300"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 * index }}
-              whileHover={{ y: -5 }}
-            >
-              <div className="flex items-center gap-3 mb-3">
-                {/* Avatar clickable */}
-                {(() => {
-                  const profileUrl = connection.username
-                    ? `/profile/${connection.username}`
-                    : `/profile/id/${connection._id}`;
-                  return (
-                    <>
-                      {connection.avatarUrl ? (
-                        <a href={profileUrl} className="focus:outline-none">
-                          <img 
-                            className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
-                            src={getAvatarUrl(connection.avatarUrl)} 
-                            alt={connection.name} 
-                          />
-                        </a>
-                      ) : (
-                        <a href={profileUrl} className="focus:outline-none">
-                          <div className="h-12 w-12 rounded-full bg-gradient-to-r from-indigo-600 to-orange-600 flex items-center justify-center text-white font-bold border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition">
-                            {connection.name?.charAt(0).toUpperCase()}
-                          </div>
-                        </a>
-                      )}
-                      <div className="flex-1">
-                        {/* Name clickable */}
-                        <a href={profileUrl} className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block">
-                          {connection.name}
-                        </a>
-                        <p className="text-sm text-slate-500 capitalize">{connection.role}</p>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-              <div className="flex gap-2">
-                <motion.button
-                  onClick={() => handleMessageUser(connection._id)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <FiMessageCircle size={14} />
-                  Message
-                </motion.button>
-                <motion.button
-                  onClick={() => handleConnectionAction('remove', connection._id)}
-                  className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  {/* Unfollow icon and label */}
-                  <FiUserX size={14} /> Unfollow
-                </motion.button>
-              </div>
-            </motion.div>
-          ))}
+          {allConnections.map((connection, index) => {
+            const profileUrl = connection.username
+              ? `/profile/${connection.username}`
+              : `/profile/id/${connection._id}`;
+            return (
+              <motion.div
+                key={connection._id}
+                className="bg-white/80 rounded-xl p-4 border border-slate-200 hover:shadow-lg transition-all duration-300"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 * index }}
+                whileHover={{ y: -5 }}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <a href={profileUrl} className="focus:outline-none">
+                    <img 
+                      className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
+                      src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : '/default-avatar.png'} 
+                      alt={connection.name} 
+                      onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+                    />
+                  </a>
+                  <div className="flex-1">
+                    <a href={profileUrl} className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block">
+                      {connection.name}
+                    </a>
+                    <p className="text-sm text-slate-500 capitalize">{connection.role}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <motion.button
+                    onClick={() => handleMessageUser(connection._id)}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <FiMessageCircle size={14} />
+                    Message
+                  </motion.button>
+                  <motion.button
+                    onClick={() => handleConnectionAction('remove', connection._id)}
+                    className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <FiUserX size={14} /> Unfollow
+                  </motion.button>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12">
@@ -1490,6 +1577,18 @@ const SettingsSection = ({ user, isEditing, setIsEditing, formData, handleChange
           >
             <FiX size={18} />
             Cancel
+          </motion.button>
+          <motion.button
+            onClick={() => {
+              setAvatarFile(null);
+              handleSubmit({ target: { name: 'avatarUrl', value: null } });
+            }}
+            className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiTrash2 size={18} />
+            Delete Profile Picture
           </motion.button>
         </div>
       )}

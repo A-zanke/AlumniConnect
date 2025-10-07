@@ -36,20 +36,17 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: 'Username already taken' });
     }
 
-    // Relaxed password policy: at least 6 chars and one number
-    const relaxedPasswordPolicy = /^(?=.*\d).{6,}$/;
-    if (!relaxedPasswordPolicy.test(password)) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters and include a number' });
+    // Relaxed password validation: accept common passwords but require minimum length
+    const acceptablePassword = /^.{6,}$/;
+    if (!acceptablePassword.test(password)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    // Require email verified (registration flow should verify before saving)
+    // Check email verification via OTP if available; proceed even if not verified
     const verifiedOtp = await Otp.findOne({ email, consumed: true }).sort({ createdAt: -1 });
     const isEmailVerified = Boolean(verifiedOtp);
-    if (!isEmailVerified) {
-      return res.status(400).json({ message: 'Please verify your email via OTP before registration' });
-    }
 
-    // Create user
+    // Create user in User collection
     const user = await User.create({
       username,
       password,
@@ -61,6 +58,78 @@ const registerUser = async (req, res) => {
       graduationYear,
       emailVerified: isEmailVerified
     });
+
+    // Also create in respective role collection (best-effort; do not fail registration on error)
+    const roleLower = (role || 'student').toLowerCase();
+    try {
+      if (roleLower === 'student') {
+        const Student = require('../models/Student');
+        const Department = require('../models/Department');
+        let departmentId;
+        if (department) {
+          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          if (!dep) {
+            // Create department if missing; store provided string as both code and name for simplicity
+            dep = await Department.create({ code: String(department), name: String(department) });
+          }
+          departmentId = dep._id;
+        }
+        await Student.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          department: departmentId,
+          year,
+          graduationYear,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'alumni') {
+        const Alumni = require('../models/Alumni');
+        await Alumni.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          graduationYear,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'teacher') {
+        const Teacher = require('../models/Teacher');
+        const Department = require('../models/Department');
+        let departmentId;
+        if (department) {
+          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          if (!dep) {
+            dep = await Department.create({ code: String(department), name: String(department) });
+          }
+          departmentId = dep._id;
+        }
+        await Teacher.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          department: departmentId,
+          emailVerified: isEmailVerified
+        });
+      } else if (roleLower === 'admin') {
+        const Admin = require('../models/Admin');
+        await Admin.create({
+          _id: user._id,
+          name,
+          username,
+          email,
+          password: user.password,
+          emailVerified: isEmailVerified
+        });
+      }
+    } catch (e) {
+      console.error('Role profile creation failed:', e?.message || e);
+    }
 
     if (user) {
       // Set JWT as cookie
@@ -280,10 +349,10 @@ const resetPassword = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Relaxed password policy aligned with registration
-    const relaxedPasswordPolicy = /^(?=.*\d).{6,}$/;
-    if (!relaxedPasswordPolicy.test(newPassword)) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters and include a number' });
+    // Relaxed password validation for reset as well
+    const acceptablePassword = /^.{6,}$/;
+    if (!acceptablePassword.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
     user.password = newPassword;
@@ -390,9 +459,15 @@ const updateUserProfile = async (req, res) => {
         const studentData = await Student.findOne({ email: user.email });
         if (studentData) {
           // Update student-specific fields
-          if (req.body.department) studentData.department = req.body.department;
+          if (req.body.department) {
+            const Department = require('../models/Department');
+            let dep = await Department.findOne({ code: req.body.department }) || await Department.findOne({ name: req.body.department });
+            if (!dep) {
+              dep = await Department.create({ code: String(req.body.department), name: String(req.body.department) });
+            }
+            studentData.department = dep._id;
+          }
           if (req.body.year) studentData.year = req.body.year;
-          if (req.body.division) studentData.division = req.body.division;
           if (req.body.batch) studentData.batch = req.body.batch;
           if (req.body.rollNumber) studentData.rollNumber = req.body.rollNumber;
           if (req.body.major) studentData.major = req.body.major;
