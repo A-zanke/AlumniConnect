@@ -210,6 +210,7 @@ export const followAPI = {
   getMutualConnections: (userId) => apiClient.get(`/api/users/${userId}/mutual`),
   getMyMutualConnections: () => apiClient.get('/api/users/mutual/connections'),
   followUser: (userId) => apiClient.post(`/api/users/${userId}/follow`),
+  unfollowUser: (userId) => apiClient.post(`/api/users/${userId}/unfollow`),
   getSuggestedConnections: () => apiClient.get('/api/users/suggested/connections'),
 };
 

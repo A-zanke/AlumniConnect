@@ -7,6 +7,7 @@ const {
   getMutualConnections, 
   getMyMutualConnections,
   followUser, 
+  unfollowUser,
   getSuggestedConnections,
   updatePresence,
   getPresence
@@ -97,6 +98,7 @@ router.get('/:userId', protect, async (req, res) => {
 router.get('/:userId/following', protect, getFollowing);
 router.get('/:userId/mutual', protect, getMutualConnections);
 router.post('/:userId/follow', protect, followUser);
+router.post('/:userId/unfollow', protect, unfollowUser);
 router.get('/suggested/connections', protect, getSuggestedConnections);
 router.get('/mutual/connections', protect, getMyMutualConnections);
 

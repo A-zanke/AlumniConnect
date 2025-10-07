@@ -26,7 +26,7 @@ const NetworkPage = () => {
   const [error, setError] = useState(null);
   const [following, setFollowing] = useState([]);
   const [mutualConnections, setMutualConnections] = useState([]);
-  const [suggestedConnections, setSuggestedConnections] = useState([]);
+  // Suggested tab removed per request
   const [pendingRequests, setPendingRequests] = useState([]);
   const [requestHistory, setRequestHistory] = useState([]);
   const [stats, setStats] = useState({
@@ -44,17 +44,13 @@ const NetworkPage = () => {
       
       console.log('Fetching network data for user:', user._id);
       
-      const [followingRes, mutualRes, suggestedRes, requestsRes, historyRes] = await Promise.all([
+      const [followingRes, mutualRes, requestsRes, historyRes] = await Promise.all([
         followAPI.getFollowing(user._id).catch(err => {
           console.error('Error fetching following:', err);
           return { data: [] };
         }),
         followAPI.getMyMutualConnections().catch(err => {
           console.error('Error fetching mutual connections:', err);
-          return { data: [] };
-        }),
-        followAPI.getSuggestedConnections().catch(err => {
-          console.error('Error fetching suggested connections:', err);
           return { data: [] };
         }),
         connectionAPI.getPendingRequests().catch(err => {
@@ -70,31 +66,25 @@ const NetworkPage = () => {
       console.log('API Responses:', {
         following: followingRes.data,
         mutual: mutualRes.data,
-        suggested: suggestedRes.data,
         requests: requestsRes.data,
         history: historyRes.data
       });
 
       const followingData = followingRes.data?.data || followingRes.data || [];
       const mutualData = mutualRes.data?.data || mutualRes.data || [];
-      const suggestedData = suggestedRes.data?.data || suggestedRes.data || [];
       const requestsData = requestsRes.data?.data || requestsRes.data || [];
       const historyData = historyRes.data?.data || historyRes.data || [];
 
       setFollowing(followingData);
       setMutualConnections(mutualData);
-      setSuggestedConnections(suggestedData);
       setPendingRequests(requestsData);
       setRequestHistory(historyData);
       
-      // Calculate stats - Total connections = following + mutuals (unique)
-      const allConnections = new Set();
-      followingData.forEach(user => allConnections.add(user._id));
-      mutualData.forEach(user => allConnections.add(user._id));
-      
+      // Calculate stats
       setStats({
-        totalConnections: allConnections.size,
-        mutualConnections: mutualData.length || 0
+        totalConnections: followingData.length || 0, // for Following tab display only
+        mutualConnections: mutualData.length || 0,
+        followingCount: followingData.length || 0
       });
 
       setError(null);
@@ -243,8 +233,8 @@ const NetworkPage = () => {
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Connections</p>
-              <h3 className="text-2xl font-bold text-gray-900">{stats.totalConnections}</h3>
+              <p className="text-sm text-gray-600">Following</p>
+              <h3 className="text-2xl font-bold text-gray-900">{stats.followingCount || stats.totalConnections}</h3>
             </div>
             <FaUserFriends className="text-3xl text-primary-600" />
           </div>
@@ -277,7 +267,7 @@ const NetworkPage = () => {
             } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
           >
             <FaUserFriends className="mr-2" />
-            Following ({stats.totalConnections})
+            Following ({stats.followingCount || stats.totalConnections})
           </button>
           <button
             onClick={() => setActiveTab('mutual')}
@@ -290,17 +280,7 @@ const NetworkPage = () => {
             <FaNetworkWired className="mr-2" />
             Mutual Connections ({stats.mutualConnections})
           </button>
-          <button
-            onClick={() => setActiveTab('suggested')}
-            className={`${
-              activeTab === 'suggested'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
-          >
-            <FaHeart className="mr-2" />
-            Suggested
-          </button>
+          {/* Suggested tab removed */}
           <button
             onClick={() => setActiveTab('requests')}
             className={`${
@@ -335,8 +315,8 @@ const NetworkPage = () => {
       {activeTab === 'following' ? (
         <div>
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Total Connections: {stats.totalConnections}</h2>
-            <p className="text-gray-600">All users you follow and mutual connections</p>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Total Connections: {stats.followingCount || stats.totalConnections}</h2>
+            <p className="text-gray-600">All users you follow</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {following.length === 0 ? (
