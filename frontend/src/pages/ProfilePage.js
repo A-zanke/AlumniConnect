@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useParams, useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import Spinner from '../components/ui/Spinner';
-import FileInput from '../components/ui/FileInput';
-import { connectionAPI, userAPI } from '../components/utils/api';
-import { getAvatarUrl } from '../components/utils/helpers';
-import ConnectionButton from '../components/network/ConnectionButton';
+import React, { useState, useEffect, useMemo } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useParams, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import Spinner from "../components/ui/Spinner";
+import FileInput from "../components/ui/FileInput";
+import { connectionAPI, userAPI } from "../components/utils/api";
+import { getAvatarUrl } from "../components/utils/helpers";
+import ConnectionButton from "../components/network/ConnectionButton";
 
 // Feather icons (Fi = Feather Icons)
 import {
@@ -34,50 +34,50 @@ import {
   FiPlus,
   FiShare,
   FiTrash2,
-} from 'react-icons/fi';
-import { FaGraduationCap } from 'react-icons/fa';
+} from "react-icons/fi";
+import { FaGraduationCap } from "react-icons/fa";
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "framer-motion";
 
-import axios from 'axios';
-import { DEFAULT_PROFILE_IMAGE } from '../constants/images';
+import axios from "axios";
+import { DEFAULT_PROFILE_IMAGE } from "../constants/images";
 
 const COMMON_SKILLS = [
-  'JavaScript',
-  'TypeScript',
-  'React',
-  'Node.js',
-  'Express',
-  'MongoDB',
-  'SQL',
-  'PostgreSQL',
-  'Python',
-  'Django',
-  'Flask',
-  'Java',
-  'Spring',
-  'C++',
-  'C#',
-  'Go',
-  'Rust',
-  'Next.js',
-  'Tailwind CSS',
-  'HTML',
-  'CSS',
-  'Sass',
-  'Kotlin',
-  'Swift',
-  'AWS',
-  'GCP',
-  'Azure',
-  'Docker',
-  'Kubernetes',
-  'Git',
-  'Figma',
-  'UI/UX',
-  'Machine Learning',
-  'Deep Learning',
-  'NLP',
+  "JavaScript",
+  "TypeScript",
+  "React",
+  "Node.js",
+  "Express",
+  "MongoDB",
+  "SQL",
+  "PostgreSQL",
+  "Python",
+  "Django",
+  "Flask",
+  "Java",
+  "Spring",
+  "C++",
+  "C#",
+  "Go",
+  "Rust",
+  "Next.js",
+  "Tailwind CSS",
+  "HTML",
+  "CSS",
+  "Sass",
+  "Kotlin",
+  "Swift",
+  "AWS",
+  "GCP",
+  "Azure",
+  "Docker",
+  "Kubernetes",
+  "Git",
+  "Figma",
+  "UI/UX",
+  "Machine Learning",
+  "Deep Learning",
+  "NLP",
 ];
 
 const ProfilePage = () => {
@@ -89,39 +89,39 @@ const ProfilePage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [skillInput, setSkillInput] = useState('');
-  const [activeSection, setActiveSection] = useState('overview');
+  const [skillInput, setSkillInput] = useState("");
+  const [activeSection, setActiveSection] = useState("overview");
   const [connections, setConnections] = useState([]);
   const [allConnections, setAllConnections] = useState([]); // For total unique connections
   const [posts, setPosts] = useState([]);
   const [showCreatePost, setShowCreatePost] = useState(false);
 
   const [formData, setFormData] = useState({
-    name: '',
-    bio: '',
-    department: '',
-    year: '',
-    graduationYear: '',
-    degree: '',
-    company: '',
-    position: '',
-    industry: '',
+    name: "",
+    bio: "",
+    department: "",
+    year: "",
+    graduationYear: "",
+    degree: "",
+    company: "",
+    position: "",
+    industry: "",
     skills: [],
     careerInterests: [],
     activities: [],
     mentorshipAvailable: false,
     guidanceAreas: [],
-    socials: { linkedin: '', github: '', website: '', portfolio: '' },
+    socials: { linkedin: "", github: "", website: "", portfolio: "" },
     mentorshipOpen: false,
-    phoneNumber: '',
-    personalVisibility: 'private',
-    profileVisibility: 'public',
-    password: ''
+    phoneNumber: "",
+    personalVisibility: "private",
+    profileVisibility: "public",
+    password: "",
   });
 
   const [postData, setPostData] = useState({
-    content: '',
-    audience: 'public',
+    content: "",
+    audience: "public",
     media: null,
   });
 
@@ -132,26 +132,31 @@ const ProfilePage = () => {
       setUser(currentUser);
       if (currentUser) {
         setFormData({
-          name: currentUser.name || '',
-          bio: currentUser.bio || '',
-          department: currentUser.department || '',
-          year: currentUser.year || '',
-          graduationYear: currentUser.graduationYear || '',
-          degree: currentUser.degree || '',
-          company: currentUser.company || '',
-          position: currentUser.position || '',
-          industry: currentUser.industry || '',
+          name: currentUser.name || "",
+          bio: currentUser.bio || "",
+          department: currentUser.department || "",
+          year: currentUser.year || "",
+          graduationYear: currentUser.graduationYear || "",
+          degree: currentUser.degree || "",
+          company: currentUser.company || "",
+          position: currentUser.position || "",
+          industry: currentUser.industry || "",
           skills: currentUser.skills || [],
           careerInterests: currentUser.careerInterests || [],
           activities: currentUser.activities || [],
           mentorshipAvailable: Boolean(currentUser.mentorshipAvailable),
           guidanceAreas: currentUser.guidanceAreas || [],
-          socials: currentUser.socials || { linkedin: '', github: '', website: '', portfolio: '' },
+          socials: currentUser.socials || {
+            linkedin: "",
+            github: "",
+            website: "",
+            portfolio: "",
+          },
           mentorshipOpen: Boolean(currentUser.mentorshipOpen),
-          phoneNumber: currentUser.phoneNumber || '',
-          personalVisibility: currentUser.personalVisibility || 'private',
-          profileVisibility: currentUser.profileVisibility || 'public',
-          password: ''
+          phoneNumber: currentUser.phoneNumber || "",
+          personalVisibility: currentUser.personalVisibility || "private",
+          profileVisibility: currentUser.profileVisibility || "public",
+          password: "",
         });
       }
       fetchUserConnections();
@@ -161,37 +166,39 @@ const ProfilePage = () => {
     }
   }, [userId, username, currentUser]);
 
-
-
   // This useEffect now primarily updates formData when a *fetched* user profile changes
   // For own profile, formData initialization is handled in the first useEffect to avoid race conditions
   useEffect(() => {
     if (user && !isOwnProfile) {
       setFormData({
-        name: user.name || '',
-        bio: user.bio || '',
-        department: user.department || '',
-        year: user.year || '',
-        graduationYear: user.graduationYear || '',
-        degree: user.degree || '',
-        company: user.company || '',
-        position: user.position || '',
-        industry: user.industry || '',
+        name: user.name || "",
+        bio: user.bio || "",
+        department: user.department || "",
+        year: user.year || "",
+        graduationYear: user.graduationYear || "",
+        degree: user.degree || "",
+        company: user.company || "",
+        position: user.position || "",
+        industry: user.industry || "",
         skills: user.skills || [],
         careerInterests: user.careerInterests || [],
         activities: user.activities || [],
         mentorshipAvailable: Boolean(user.mentorshipAvailable),
         guidanceAreas: user.guidanceAreas || [],
-        socials: user.socials || { linkedin: '', github: '', website: '', portfolio: '' },
+        socials: user.socials || {
+          linkedin: "",
+          github: "",
+          website: "",
+          portfolio: "",
+        },
         mentorshipOpen: Boolean(user.mentorshipOpen),
-        phoneNumber: user.phoneNumber || '',
-        personalVisibility: user.personalVisibility || 'private',
-        profileVisibility: user.profileVisibility || 'public',
-        password: ''
+        phoneNumber: user.phoneNumber || "",
+        personalVisibility: user.personalVisibility || "private",
+        profileVisibility: user.profileVisibility || "public",
+        password: "",
       });
     }
   }, [user, isOwnProfile]);
-
 
   const fetchUserProfile = async () => {
     try {
@@ -202,13 +209,13 @@ const ProfilePage = () => {
       } else if (userId) {
         response = await userAPI.getUserById(userId);
       } else {
-        throw new Error('No user identifier provided');
+        throw new Error("No user identifier provided");
       }
       setUser(response.data?.data || response.data);
     } catch (error) {
-      console.error('Error fetching user profile:', error);
-      toast.error('Failed to load profile');
-      navigate('/');
+      console.error("Error fetching user profile:", error);
+      toast.error("Failed to load profile");
+      navigate("/");
     } finally {
       setLoading(false);
     }
@@ -234,17 +241,17 @@ const ProfilePage = () => {
       setConnections(sent); // still show direct connections in main list
       setAllConnections(all); // all unique connections (sent + received)
     } catch (error) {
-      console.error('Error fetching connections:', error);
+      console.error("Error fetching connections:", error);
     }
   };
 
   const fetchUserPosts = async () => {
     if (!currentUser) return;
     try {
-      const response = await axios.get('/api/posts/user-posts');
+      const response = await axios.get("/api/posts/user-posts");
       setPosts(response.data?.posts || []);
     } catch (error) {
-      console.error('Error fetching posts:', error);
+      console.error("Error fetching posts:", error);
     }
   };
 
@@ -252,14 +259,14 @@ const ProfilePage = () => {
     try {
       const userId = targetUserId || user?._id;
       if (!userId) {
-        toast.error('User ID not found');
+        toast.error("User ID not found");
         return;
       }
 
       switch (action) {
-        case 'remove':
+        case "remove":
           await connectionAPI.removeConnection(userId);
-          toast.success('Connection removed');
+          toast.success("Connection removed");
           break;
         default:
           break;
@@ -267,21 +274,24 @@ const ProfilePage = () => {
       // Always re-fetch connections after any action for real-time update
       if (isOwnProfile) fetchUserConnections();
     } catch (error) {
-      console.error('Connection action error:', error);
-      toast.error('Failed to perform action');
+      console.error("Connection action error:", error);
+      toast.error("Failed to perform action");
     }
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name.startsWith('socials.')) {
-      const field = name.replace('socials.', '');
-      setFormData({ ...formData, socials: { ...formData.socials, [field]: value } });
-    } else if (name.startsWith('higher_studies.')) {
-      const field = name.replace('higher_studies.', '');
-      setFormData(prev => ({
+    if (name.startsWith("socials.")) {
+      const field = name.replace("socials.", "");
+      setFormData({
+        ...formData,
+        socials: { ...formData.socials, [field]: value },
+      });
+    } else if (name.startsWith("higher_studies.")) {
+      const field = name.replace("higher_studies.", "");
+      setFormData((prev) => ({
         ...prev,
-        higher_studies: { ...prev.higher_studies, [field]: value }
+        higher_studies: { ...prev.higher_studies, [field]: value },
       }));
     } else {
       setFormData({ ...formData, [name]: value });
@@ -297,24 +307,29 @@ const ProfilePage = () => {
     const q = skillInput.trim().toLowerCase();
     if (!q) return [];
     return COMMON_SKILLS.filter(
-      (s) => s.toLowerCase().includes(q) && !normalizedSkills.some((k) => k.toLowerCase() === s.toLowerCase())
+      (s) =>
+        s.toLowerCase().includes(q) &&
+        !normalizedSkills.some((k) => k.toLowerCase() === s.toLowerCase())
     ).slice(0, 6);
   }, [skillInput, normalizedSkills]);
 
   const commitSkillInput = () => {
     const raw = skillInput.trim();
     if (!raw) return;
-    const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    const parts = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (parts.length === 0) return;
     setFormData((prev) => ({
       ...prev,
       skills: Array.from(new Set([...(prev.skills || []), ...parts])),
     }));
-    setSkillInput('');
+    setSkillInput("");
   };
 
   const onSkillKeyDown = (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
+    if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
       commitSkillInput();
     }
@@ -325,18 +340,23 @@ const ProfilePage = () => {
       ...prev,
       skills: Array.from(new Set([...(prev.skills || []), s])),
     }));
-    setSkillInput('');
+    setSkillInput("");
   };
 
   const removeSkill = (skill) => {
     setFormData((prev) => ({
       ...prev,
-      skills: (prev.skills || []).filter((s) => s.toLowerCase() !== skill.toLowerCase()),
+      skills: (prev.skills || []).filter(
+        (s) => s.toLowerCase() !== skill.toLowerCase()
+      ),
     }));
   };
 
   const handleArrayFieldChange = (fieldName, value) => {
-    const arrayValue = value.split(',').map((item) => item.trim()).filter((item) => item);
+    const arrayValue = value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item);
     setFormData((prev) => ({ ...prev, [fieldName]: arrayValue }));
   };
 
@@ -344,29 +364,32 @@ const ProfilePage = () => {
     setFormData((prev) => {
       const currentArray = prev[fieldName] || [];
       if (checked) return { ...prev, [fieldName]: [...currentArray, value] };
-      return { ...prev, [fieldName]: currentArray.filter((item) => item !== value) };
+      return {
+        ...prev,
+        [fieldName]: currentArray.filter((item) => item !== value),
+      };
     });
   };
 
   const handleSubmit = async (e) => {
-    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (e && typeof e.preventDefault === "function") e.preventDefault();
     try {
       setLoading(true);
       // Pass formData and avatarFile to the context's updateProfile
       const result = await updateProfile(formData, avatarFile);
       if (result.success) {
-        toast.success('Profile updated successfully');
+        toast.success("Profile updated successfully");
         setIsEditing(false);
         setAvatarFile(null); // Clear selected avatar file after successful upload
         // Update local user state with the latest from the context (or directly from result)
         // The updateProfile context function should ideally return the updated user object or trigger context re-fetch
         setUser(result.user || currentUser); // Assuming result.user contains the updated user
       } else {
-        toast.error(result.error || 'Failed to update profile');
+        toast.error(result.error || "Failed to update profile");
       }
     } catch (error) {
-      console.error('Profile update error:', error);
-      toast.error('Failed to update profile');
+      console.error("Profile update error:", error);
+      toast.error("Failed to update profile");
     } finally {
       setLoading(false);
     }
@@ -377,17 +400,19 @@ const ProfilePage = () => {
       setLoading(true);
       const response = await userAPI.deleteAvatar();
       if (response.data.success) {
-        toast.success('Profile picture deleted successfully!');
+        toast.success("Profile picture deleted successfully!");
         // Update AuthContext user and local user state
         // The `updateProfile` in AuthContext should handle setting avatarUrl to null
         updateProfile({ ...currentUser, avatarUrl: null }); // This will update the AuthContext
-        setUser(prev => ({ ...prev, avatarUrl: null })); // Update local state for immediate UI reflect
+        setUser((prev) => ({ ...prev, avatarUrl: null })); // Update local state for immediate UI reflect
       } else {
-        toast.error(response.data.message || 'Failed to delete profile picture.');
+        toast.error(
+          response.data.message || "Failed to delete profile picture."
+        );
       }
     } catch (error) {
-      console.error('Error deleting avatar:', error);
-      toast.error('Failed to delete profile picture.');
+      console.error("Error deleting avatar:", error);
+      toast.error("Failed to delete profile picture.");
     } finally {
       setLoading(false);
       setIsEditing(false); // Exit editing mode after deletion
@@ -397,57 +422,19 @@ const ProfilePage = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate("/login");
   };
-
-  const handleCreatePost = async (e) => {
-    if (e) e.preventDefault();
-    try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('content', postData.content);
-      formDataToSend.append('audience', postData.audience);
-      if (postData.media) {
-        formDataToSend.append('media', postData.media);
-      }
-
-      const response = await axios.post('/api/posts', formDataToSend, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      if (response.data) {
-        toast.success('Post created successfully');
-        setPostData({ content: '', audience: 'public', media: null });
-        setShowCreatePost(false);
-        fetchUserPosts();
-      }
-    } catch (error) {
-      console.error('Post creation error:', error);
-      toast.error('Failed to create post');
-    }
-  };
-
-  const handleDeletePost = async (postId) => {
-    try {
-      await axios.delete(`/api/posts/${postId}`);
-      toast.success('Post deleted successfully');
-      setPosts((prev) => prev.filter((post) => post._id !== postId));
-    } catch (error) {
-      console.error('Post deletion error:', error);
-      toast.error('Failed to delete post');
-    }
-  };
-  
   const handleMessageUser = (targetUserId) => {
     navigate(`/messages?user=${targetUserId}`);
   };
 
   // Sidebar Menu Items
   const menuItems = [
-    { id: 'overview', label: 'Profile Overview', icon: FiUser },
-    { id: 'about', label: 'About', icon: FiInfo },
-    { id: 'skills', label: 'Skills', icon: FiAward },
-    { id: 'connections', label: 'Connections', icon: FiUsers },
-    { id: 'settings', label: 'Settings', icon: FiSettings },
+    { id: "overview", label: "Profile Overview", icon: FiUser },
+    { id: "about", label: "About", icon: FiInfo },
+    { id: "skills", label: "Skills", icon: FiAward },
+    { id: "connections", label: "Connections", icon: FiUsers },
+    { id: "settings", label: "Settings", icon: FiSettings },
   ];
 
   if (loading) {
@@ -468,10 +455,14 @@ const ProfilePage = () => {
           <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
             <FiUserX className="w-8 h-8 text-red-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Profile Not Found</h2>
-          <p className="text-gray-600 mb-6">The profile you're looking for doesn't exist or has been removed.</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Profile Not Found
+          </h2>
+          <p className="text-gray-600 mb-6">
+            The profile you're looking for doesn't exist or has been removed.
+          </p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate("/")}
             className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
           >
             Go Home
@@ -519,8 +510,8 @@ const ProfilePage = () => {
                 onClick={() => setActiveSection(item.id)}
                 className={`w-full flex items-center justify-between p-4 rounded-xl text-left transition-all duration-300 group ${
                   activeSection === item.id
-                    ? 'bg-gradient-to-r from-indigo-600 to-orange-600 text-white shadow-lg shadow-indigo-500/30'
-                    : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                    ? "bg-gradient-to-r from-indigo-600 to-orange-600 text-white shadow-lg shadow-indigo-500/30"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white"
                 }`}
                 initial={{ x: -50, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
@@ -532,8 +523,8 @@ const ProfilePage = () => {
                   <motion.div
                     className={`p-2 rounded-lg ${
                       activeSection === item.id
-                        ? 'bg-white/20'
-                        : 'bg-slate-800 group-hover:bg-slate-700'
+                        ? "bg-white/20"
+                        : "bg-slate-800 group-hover:bg-slate-700"
                     }`}
                     whileHover={{ scale: 1.1, rotate: 5 }}
                     transition={{ duration: 0.2 }}
@@ -544,9 +535,9 @@ const ProfilePage = () => {
                 </div>
                 <motion.div
                   initial={{ opacity: 0 }}
-                  animate={{ 
+                  animate={{
                     opacity: activeSection === item.id ? 1 : 0,
-                    x: activeSection === item.id ? 0 : -10
+                    x: activeSection === item.id ? 0 : -10,
                   }}
                   transition={{ duration: 0.2 }}
                 >
@@ -585,7 +576,7 @@ const ProfilePage = () => {
       )}
 
       {/* Right Content Area */}
-      <div className={`flex-1 ${isOwnProfile ? '' : 'w-full'}`}>
+      <div className={`flex-1 ${isOwnProfile ? "" : "w-full"}`}>
         {/* Profile Header */}
         <motion.div
           className="bg-white/80 backdrop-blur-sm border-b border-indigo-100 sticky top-0 z-10"
@@ -600,14 +591,21 @@ const ProfilePage = () => {
                 whileHover={{ scale: 1.05 }}
                 transition={{ duration: 0.2 }}
               >
-                <img 
-                  className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200" 
-                  src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : DEFAULT_PROFILE_IMAGE} 
-                  alt={user.name} 
-                  onError={e => { e.target.onerror = null; e.target.src = DEFAULT_PROFILE_IMAGE; }}
+                <img
+                  className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200"
+                  src={
+                    user.avatarUrl
+                      ? getAvatarUrl(user.avatarUrl)
+                      : DEFAULT_PROFILE_IMAGE
+                  }
+                  alt={user.name}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = DEFAULT_PROFILE_IMAGE;
+                  }}
                 />
               </motion.div>
-              
+
               <div className="flex-1 text-center md:text-left">
                 <motion.h1
                   className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-indigo-600 bg-clip-text text-transparent"
@@ -634,7 +632,7 @@ const ProfilePage = () => {
                   {user.role}
                 </motion.span>
               </div>
-              
+
               <motion.div
                 className="flex gap-3"
                 initial={{ x: 20, opacity: 0 }}
@@ -667,65 +665,55 @@ const ProfilePage = () => {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
-              {activeSection === 'overview' && <OverviewSection user={user} />}
-              {activeSection === 'about' && (
-                <AboutSection 
-                  user={user} 
-                  isEditing={isEditing} 
-                  setIsEditing={setIsEditing} 
-                  formData={formData} 
+              {activeSection === "overview" && <OverviewSection user={user} />}
+              {activeSection === "about" && (
+                <AboutSection
+                  user={user}
+                  isEditing={isEditing}
+                  setIsEditing={setIsEditing}
+                  formData={formData}
                   setFormData={setFormData}
-                  handleChange={handleChange} 
-                  handleSubmit={handleSubmit} 
+                  handleChange={handleChange}
+                  handleSubmit={handleSubmit}
                 />
               )}
-              {activeSection === 'skills' && (
-                <SkillsSection 
-                  user={user} 
-                  isEditing={isEditing} 
-                  setIsEditing={setIsEditing} 
-                  formData={formData} 
-                  skillInput={skillInput} 
-                  setSkillInput={setSkillInput} 
-                  onSkillKeyDown={onSkillKeyDown} 
-                  suggestions={suggestions} 
-                  addSuggested={addSuggested} 
-                  removeSkill={removeSkill} 
-                  commitSkillInput={commitSkillInput} 
-                  handleSubmit={handleSubmit} 
+              {activeSection === "skills" && (
+                <SkillsSection
+                  user={user}
+                  isEditing={isEditing}
+                  setIsEditing={setIsEditing}
+                  formData={formData}
+                  skillInput={skillInput}
+                  setSkillInput={setSkillInput}
+                  onSkillKeyDown={onSkillKeyDown}
+                  suggestions={suggestions}
+                  addSuggested={addSuggested}
+                  removeSkill={removeSkill}
+                  commitSkillInput={commitSkillInput}
+                  handleSubmit={handleSubmit}
                 />
               )}
-              {activeSection === 'connections' && (
-                <ConnectionsSection 
+              {activeSection === "connections" && (
+                <ConnectionsSection
                   connections={connections}
                   allConnections={allConnections}
                   handleMessageUser={handleMessageUser}
                   handleConnectionAction={handleConnectionAction}
                 />
               )}
-              {activeSection === 'posts' && (
-                <PostsSection 
-                  posts={posts}
-                  showCreatePost={showCreatePost}
-                  setShowCreatePost={setShowCreatePost}
-                  postData={postData}
-                  setPostData={setPostData}
-                  handleCreatePost={handleCreatePost}
-                  handleDeletePost={handleDeletePost}
-                />
-              )}
-              {activeSection === 'settings' && (
-                <SettingsSection 
-                  user={user} 
-                  isEditing={isEditing} 
-                  setIsEditing={setIsEditing} 
-                  formData={formData} 
+
+              {activeSection === "settings" && (
+                <SettingsSection
+                  user={user}
+                  isEditing={isEditing}
+                  setIsEditing={setIsEditing}
+                  formData={formData}
                   setFormData={setFormData}
-                  handleChange={handleChange} 
-                  avatarFile={avatarFile} 
-                  setAvatarFile={setAvatarFile} 
+                  handleChange={handleChange}
+                  avatarFile={avatarFile}
+                  setAvatarFile={setAvatarFile}
                   handleDeleteAvatar={handleDeleteAvatar}
-                  handleSubmit={handleSubmit} 
+                  handleSubmit={handleSubmit}
                 />
               )}
             </motion.div>
@@ -763,9 +751,11 @@ const OverviewSection = ({ user }) => (
           <div className="flex items-center gap-3">
             <FaGraduationCap className="text-slate-500" />
             <span className="text-slate-700">
-              {user.role === 'alumni'
-                ? `${user.department} • Grad ${user.graduationYear || '-'}`
-                : `${user.department} • Year ${user.year || '-'} • Grad ${user.graduationYear || '-'}`}
+              {user.role === "alumni"
+                ? `${user.department} • Grad ${user.graduationYear || "-"}`
+                : `${user.department} • Year ${user.year || "-"} • Grad ${
+                    user.graduationYear || "-"
+                  }`}
             </span>
           </div>
         )}
@@ -822,71 +812,112 @@ const OverviewSection = ({ user }) => (
     )}
 
     {/* Student Preferences Card */}
-    {user.role === 'student' && (
+    {user.role === "student" && (
       <motion.div
         className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.35 }}
       >
-        <h3 className="text-xl font-bold text-slate-800 mb-4">Student Preferences</h3>
+        <h3 className="text-xl font-bold text-slate-800 mb-4">
+          Student Preferences
+        </h3>
         <div className="space-y-3">
           <div>
-            <span className="text-sm font-semibold text-slate-500">Career Interests:</span>
-            {Array.isArray(user.careerInterests) && user.careerInterests.length > 0 ? (
-              <span className="ml-2 text-slate-800">{user.careerInterests.join(', ')}</span>
+            <span className="text-sm font-semibold text-slate-500">
+              Career Interests:
+            </span>
+            {Array.isArray(user.careerInterests) &&
+            user.careerInterests.length > 0 ? (
+              <span className="ml-2 text-slate-800">
+                {user.careerInterests.join(", ")}
+              </span>
             ) : (
               <span className="ml-2 text-slate-800">Not provided</span>
             )}
           </div>
           <div>
-            <span className="text-sm font-semibold text-slate-500">College Activities / Clubs:</span>
+            <span className="text-sm font-semibold text-slate-500">
+              College Activities / Clubs:
+            </span>
             {Array.isArray(user.activities) && user.activities.length > 0 ? (
-              <span className="ml-2 text-slate-800">{user.activities.join(', ')}</span>
+              <span className="ml-2 text-slate-800">
+                {user.activities.join(", ")}
+              </span>
             ) : (
               <span className="ml-2 text-slate-800">Not provided</span>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-500">Open to Mentorship from Alumni:</span>
-            <span className="text-slate-800">{user.mentorshipOpen ? 'Yes' : 'No'}</span>
+            <span className="text-sm font-semibold text-slate-500">
+              Open to Mentorship from Alumni:
+            </span>
+            <span className="text-slate-800">
+              {user.mentorshipOpen ? "Yes" : "No"}
+            </span>
           </div>
         </div>
       </motion.div>
     )}
 
     {/* Alumni Details Card */}
-    {user.role === 'alumni' && (
+    {user.role === "alumni" && (
       <motion.div
         className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.35 }}
       >
-        <h3 className="text-xl font-bold text-slate-800 mb-4">Alumni Details</h3>
+        <h3 className="text-xl font-bold text-slate-800 mb-4">
+          Alumni Details
+        </h3>
         <div className="space-y-3">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-500">Degree:</span>
-            <span className="text-slate-800">{user.degree || 'Not provided'}</span>
+            <span className="text-sm font-semibold text-slate-500">
+              Degree:
+            </span>
+            <span className="text-slate-800">
+              {user.degree || "Not provided"}
+            </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-500">Current Company / Organization:</span>
-            <span className="text-slate-800">{user.company || 'Not provided'}</span>
+            <span className="text-sm font-semibold text-slate-500">
+              Current Company / Organization:
+            </span>
+            <span className="text-slate-800">
+              {user.company || "Not provided"}
+            </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-500">Current Role / Designation:</span>
-            <span className="text-slate-800">{user.position || user.current_job_title || 'Not provided'}</span>
+            <span className="text-sm font-semibold text-slate-500">
+              Current Role / Designation:
+            </span>
+            <span className="text-slate-800">
+              {user.position || user.current_job_title || "Not provided"}
+            </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-500">Industry / Domain:</span>
-            <span className="text-slate-800">{user.industry || 'Not provided'}</span>
+            <span className="text-sm font-semibold text-slate-500">
+              Industry / Domain:
+            </span>
+            <span className="text-slate-800">
+              {user.industry || "Not provided"}
+            </span>
           </div>
           <div>
-            <span className="text-sm font-semibold text-slate-500">Guidance Areas:</span>
-            {Array.isArray(user.guidanceAreas) && user.guidanceAreas.length > 0 ? (
+            <span className="text-sm font-semibold text-slate-500">
+              Guidance Areas:
+            </span>
+            {Array.isArray(user.guidanceAreas) &&
+            user.guidanceAreas.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {user.guidanceAreas.map((g, i) => (
-                  <span key={`${g}-${i}`} className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium">{g}</span>
+                  <span
+                    key={`${g}-${i}`}
+                    className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium"
+                  >
+                    {g}
+                  </span>
                 ))}
               </div>
             ) : (
@@ -905,7 +936,7 @@ const OverviewSection = ({ user }) => (
     )}
 
     {/* Social Links Card */}
-    {user.socials && Object.values(user.socials).some(link => link) && (
+    {user.socials && Object.values(user.socials).some((link) => link) && (
       <motion.div
         className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
         initial={{ opacity: 0, y: 20 }}
@@ -918,25 +949,45 @@ const OverviewSection = ({ user }) => (
         </h3>
         <div className="space-y-3">
           {user.socials.linkedin && (
-            <a href={user.socials.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+            <a
+              href={user.socials.linkedin}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors"
+            >
               <FiLinkedin />
               <span>LinkedIn</span>
             </a>
           )}
           {user.socials.github && (
-            <a href={user.socials.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+            <a
+              href={user.socials.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors"
+            >
               <FiGithub />
               <span>GitHub</span>
             </a>
           )}
           {user.socials.website && (
-            <a href={user.socials.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+            <a
+              href={user.socials.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors"
+            >
               <FiGlobe />
               <span>Website</span>
             </a>
           )}
           {user.socials.portfolio && (
-            <a href={user.socials.portfolio} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors">
+            <a
+              href={user.socials.portfolio}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 text-slate-700 hover:text-indigo-600 transition-colors"
+            >
               <FiGlobe />
               <span>Portfolio</span>
             </a>
@@ -948,7 +999,15 @@ const OverviewSection = ({ user }) => (
 );
 
 // About Section Component
-const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, handleChange, handleSubmit }) => (
+const AboutSection = ({
+  user,
+  isEditing,
+  setIsEditing,
+  formData,
+  setFormData,
+  handleChange,
+  handleSubmit,
+}) => (
   <div className="space-y-6">
     {/* Header */}
     <div className="flex justify-between items-center">
@@ -997,10 +1056,14 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
           >
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Basic Information</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-4">
+              Basic Information
+            </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Name</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Name
+                </label>
                 <input
                   type="text"
                   name="name"
@@ -1010,7 +1073,9 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Bio</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Bio
+                </label>
                 <textarea
                   name="bio"
                   value={formData.bio}
@@ -1031,84 +1096,32 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
             transition={{ delay: 0.2 }}
           >
             <h3 className="text-lg font-bold text-slate-800 mb-4">Education</h3>
-            {user.role === 'alumni' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
-                  <select
-                    name="department"
-                    value={formData.department}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  >
-                    <option value="">Select</option>
-                    <option value="CSE">CSE</option>
-                    <option value="AIDS">AIDS</option>
-                    <option value="Electronics">Electronics</option>
-                    <option value="Mechanical">Mechanical</option>
-                    <option value="Civil">Civil</option>
-                    <option value="IT">IT</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Graduation Year</label>
-                  <input
-                    type="number"
-                    name="graduationYear"
-                    value={formData.graduationYear}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                    placeholder="2020"
-                  />
-                </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Department
+                </label>
+                <input
+                  type="text"
+                  value={user?.department || ""} // use backend registration value
+                  readOnly
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-100 text-slate-700"
+                />
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
-                  <select
-                    name="department"
-                    value={formData.department}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  >
-                    <option value="">Select</option>
-                    <option value="CSE">CSE</option>
-                    <option value="AIDS">AIDS</option>
-                    <option value="Electronics">Electronics</option>
-                    <option value="Mechanical">Mechanical</option>
-                    <option value="Civil">Civil</option>
-                    <option value="IT">IT</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Current Year</label>
-                  <select
-                    name="year"
-                    value={formData.year}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus-border-transparent transition-all duration-300"
-                  >
-                    <option value="">Select</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Expected Graduation Year</label>
-                  <input
-                    type="number"
-                    name="graduationYear"
-                    value={formData.graduationYear}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                    placeholder="2025"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Graduation Year
+                </label>
+                <input
+                  type="number"
+                  value={user?.graduationYear || ""} // use backend registration value
+                  readOnly
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-100 text-slate-700"
+                  placeholder="2020"
+                />
               </div>
-            )}
+            </div>
           </motion.div>
 
           {/* Social Links */}
@@ -1118,10 +1131,14 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Social Links</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-4">
+              Social Links
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">LinkedIn URL</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  LinkedIn URL
+                </label>
                 <input
                   type="url"
                   name="socials.linkedin"
@@ -1132,7 +1149,9 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">GitHub / Portfolio URL</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  GitHub / Portfolio URL
+                </label>
                 <input
                   type="url"
                   name="socials.github"
@@ -1143,7 +1162,9 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Portfolio</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Portfolio
+                </label>
                 <input
                   type="url"
                   name="socials.portfolio"
@@ -1154,7 +1175,9 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Website</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Website
+                </label>
                 <input
                   type="url"
                   name="socials.website"
@@ -1166,65 +1189,128 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
               </div>
             </div>
           </motion.div>
-
           {/* Student-specific fields */}
-          {user.role === 'student' && (
+          {user.role === "student" && (
             <motion.div
               className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50 lg:col-span-2"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
             >
-              <h3 className="text-lg font-bold text-slate-800 mb-4">Student Preferences</h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-4">
+                Student Preferences
+              </h3>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Career Interests */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Career Interests</label>
-                  <select
-                    multiple
-                    value={formData.careerInterests}
-                    onChange={(e) => setFormData(prev => ({ ...prev, careerInterests: Array.from(e.target.selectedOptions).map(o => o.value) }))}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  >
-                    <option value="Internships">Internships</option>
-                    <option value="Research">Research</option>
-                    <option value="Startups">Startups</option>
-                    <option value="Higher Studies">Higher Studies</option>
-                  </select>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Career Interests
+                  </label>
+                  <div className="flex flex-col space-y-2">
+                    {[
+                      "Internships",
+                      "Research",
+                      "Startups",
+                      "Higher Studies",
+                    ].map((option) => (
+                      <label
+                        key={option}
+                        className="flex items-center space-x-3"
+                      >
+                        <input
+                          type="checkbox"
+                          value={option}
+                          checked={formData.careerInterests.includes(option)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormData((prev) => ({
+                              ...prev,
+                              careerInterests: checked
+                                ? [...prev.careerInterests, option]
+                                : prev.careerInterests.filter(
+                                    (item) => item !== option
+                                  ),
+                            }));
+                          }}
+                          className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-slate-700">{option}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+
+                {/* College Activities / Clubs */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">College Activities / Clubs (comma separated)</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    College Activities / Clubs (comma separated)
+                  </label>
                   <input
                     type="text"
-                    value={(formData.activities || []).join(', ')}
-                    onChange={(e) => setFormData(prev => ({ ...prev, activities: e.target.value.split(',').map(s=>s.trim()).filter(Boolean) }))}
+                    value={
+                      formData.activitiesText ||
+                      (Array.isArray(formData.activities)
+                        ? formData.activities.join(", ")
+                        : "")
+                    }
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        activitiesText: text, // keep raw text for smooth typing
+                        activities: text
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean), // maintain array
+                      }));
+                    }}
+                    placeholder="e.g., SIH Hackathon, Anchoring, Sports Club"
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
                   />
                 </div>
+
+                {/* Mentorship Open */}
                 <div className="flex items-center gap-3">
                   <input
                     id="mentorshipOpen"
                     type="checkbox"
                     checked={!!formData.mentorshipOpen}
-                    onChange={(e) => setFormData(prev => ({ ...prev, mentorshipOpen: e.target.checked }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        mentorshipOpen: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                   />
-                  <label htmlFor="mentorshipOpen" className="text-sm font-semibold text-slate-700">Open to mentorship from alumni</label>
+                  <label
+                    htmlFor="mentorshipOpen"
+                    className="text-sm font-semibold text-slate-700"
+                  >
+                    Open to mentorship from alumni
+                  </label>
                 </div>
               </div>
             </motion.div>
           )}
 
           {/* Alumni-specific fields */}
-          {user.role === 'alumni' && (
+          {user.role === "alumni" && (
             <motion.div
               className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50 lg:col-span-2"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.45 }}
             >
-              <h3 className="text-lg font-bold text-slate-800 mb-4">Alumni Details</h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-4">
+                Alumni Details
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Degree</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Degree
+                  </label>
                   <select
                     name="degree"
                     value={formData.degree}
@@ -1239,7 +1325,9 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Current Company / Organization</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Current Company / Organization
+                  </label>
                   <input
                     type="text"
                     name="company"
@@ -1249,7 +1337,9 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Job Role</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Job Role
+                  </label>
                   <input
                     type="text"
                     name="position"
@@ -1259,7 +1349,9 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Industry / Domain</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Industry / Domain
+                  </label>
                   <input
                     type="text"
                     name="industry"
@@ -1269,29 +1361,63 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
                     placeholder="IT, Finance, Research, Startup, Education, etc."
                   />
                 </div>
+
+                {/* Guidance Areas as checkboxes */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Guidance Areas</label>
-                  <select
-                    multiple
-                    value={formData.guidanceAreas}
-                    onChange={(e) => setFormData(prev => ({ ...prev, guidanceAreas: Array.from(e.target.selectedOptions).map(o => o.value) }))}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  >
-                    <option value="Jobs">Jobs</option>
-                    <option value="Internships">Internships</option>
-                    <option value="Higher Studies">Higher Studies</option>
-                    <option value="Startups">Startups</option>
-                    <option value="Research">Research</option>
-                  </select>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Guidance Areas
+                  </label>
+                  <div className="flex flex-col space-y-2">
+                    {[
+                      "Jobs",
+                      "Internships",
+                      "Higher Studies",
+                      "Startups",
+                      "Research",
+                    ].map((area) => (
+                      <label key={area} className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          value={area}
+                          checked={formData.guidanceAreas.includes(area)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormData((prev) => ({
+                              ...prev,
+                              guidanceAreas: checked
+                                ? [...prev.guidanceAreas, area]
+                                : prev.guidanceAreas.filter(
+                                    (item) => item !== area
+                                  ),
+                            }));
+                          }}
+                          className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <span className="text-slate-700">{area}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Simple mentorship checkbox */}
                 <div className="flex items-center gap-3">
                   <input
                     id="mentorshipAvailable"
                     type="checkbox"
                     checked={!!formData.mentorshipAvailable}
-                    onChange={(e) => setFormData(prev => ({ ...prev, mentorshipAvailable: e.target.checked }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        mentorshipAvailable: e.target.checked,
+                      }))
+                    }
                   />
-                  <label htmlFor="mentorshipAvailable" className="text-sm font-semibold text-slate-700">Available for mentorship</label>
+                  <label
+                    htmlFor="mentorshipAvailable"
+                    className="text-sm font-semibold text-slate-700"
+                  >
+                    Available for mentorship
+                  </label>
                 </div>
               </div>
             </motion.div>
@@ -1307,39 +1433,57 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <h3 className="text-lg font-bold text-slate-800 mb-4">Personal Information</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-4">
+            Personal Information
+          </h3>
           <div className="space-y-3">
             <div>
-              <span className="text-sm font-semibold text-slate-500">Name:</span>
-              <p className="text-slate-800">{user.name || 'Not provided'}</p>
+              <span className="text-sm font-semibold text-slate-500">
+                Name:
+              </span>
+              <p className="text-slate-800">{user.name || "Not provided"}</p>
             </div>
             <div>
               <span className="text-sm font-semibold text-slate-500">Bio:</span>
-              <p className="text-slate-800">{user.bio || 'Not provided'}</p>
+              <p className="text-slate-800">{user.bio || "Not provided"}</p>
             </div>
           </div>
         </motion.div>
 
-        {user.role === 'alumni' && (
+        {user.role === "alumni" && (
           <motion.div
             className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Professional Information</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-4">
+              Professional Information
+            </h3>
             <div className="space-y-3">
               <div>
-                <span className="text-sm font-semibold text-slate-500">Job Role:</span>
-                <p className="text-slate-800">{user.position || user.current_job_title || 'Not provided'}</p>
+                <span className="text-sm font-semibold text-slate-500">
+                  Job Role:
+                </span>
+                <p className="text-slate-800">
+                  {user.position || user.current_job_title || "Not provided"}
+                </p>
               </div>
               <div>
-                <span className="text-sm font-semibold text-slate-500">Company:</span>
-                <p className="text-slate-800">{user.company || 'Not provided'}</p>
+                <span className="text-sm font-semibold text-slate-500">
+                  Company:
+                </span>
+                <p className="text-slate-800">
+                  {user.company || "Not provided"}
+                </p>
               </div>
               <div>
-                <span className="text-sm font-semibold text-slate-500">Industry:</span>
-                <p className="text-slate-800">{user.industry || 'Not provided'}</p>
+                <span className="text-sm font-semibold text-slate-500">
+                  Industry:
+                </span>
+                <p className="text-slate-800">
+                  {user.industry || "Not provided"}
+                </p>
               </div>
             </div>
           </motion.div>
@@ -1350,7 +1494,20 @@ const AboutSection = ({ user, isEditing, setIsEditing, formData, setFormData, ha
 );
 
 // Skills Section Component
-const SkillsSection = ({ user, isEditing, setIsEditing, formData, skillInput, setSkillInput, onSkillKeyDown, suggestions, addSuggested, removeSkill, commitSkillInput, handleSubmit }) => (
+const SkillsSection = ({
+  user,
+  isEditing,
+  setIsEditing,
+  formData,
+  skillInput,
+  setSkillInput,
+  onSkillKeyDown,
+  suggestions,
+  addSuggested,
+  removeSkill,
+  commitSkillInput,
+  handleSubmit,
+}) => (
   <div className="space-y-6">
     {/* Header */}
     <div className="flex justify-between items-center">
@@ -1400,9 +1557,16 @@ const SkillsSection = ({ user, isEditing, setIsEditing, formData, skillInput, se
           <div className="w-full px-4 py-3 border border-slate-300 rounded-xl focus-within:ring-2 focus-within:ring-indigo-500 transition bg-white">
             <div className="flex flex-wrap gap-2 mb-2">
               {formData.skills.map((skill) => (
-                <span key={skill} className="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-indigo-100 to-orange-100 text-indigo-800 text-sm font-medium transition transform hover:scale-105">
+                <span
+                  key={skill}
+                  className="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-indigo-100 to-orange-100 text-indigo-800 text-sm font-medium transition transform hover:scale-105"
+                >
                   {skill}
-                  <button type="button" onClick={() => removeSkill(skill)} className="ml-2 text-indigo-700 hover:text-indigo-900">
+                  <button
+                    type="button"
+                    onClick={() => removeSkill(skill)}
+                    className="ml-2 text-indigo-700 hover:text-indigo-900"
+                  >
                     <FiX />
                   </button>
                 </span>
@@ -1419,7 +1583,7 @@ const SkillsSection = ({ user, isEditing, setIsEditing, formData, skillInput, se
             />
             {suggestions.length > 0 && (
               <div className="mt-2 bg-white border rounded-xl shadow-lg p-2 grid grid-cols-2 gap-2">
-                {suggestions.map(s => (
+                {suggestions.map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -1460,13 +1624,20 @@ const SkillsSection = ({ user, isEditing, setIsEditing, formData, skillInput, se
 );
 
 // Connections Section Component
-const ConnectionsSection = ({ connections, allConnections, handleMessageUser, handleConnectionAction }) => (
+const ConnectionsSection = ({
+  connections,
+  allConnections,
+  handleMessageUser,
+  handleConnectionAction,
+}) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">My Connections</h2>
       <div className="flex items-center gap-4">
         <div className="text-center">
-          <div className="text-2xl font-bold text-indigo-600">{allConnections ? allConnections.length : connections.length}</div>
+          <div className="text-2xl font-bold text-indigo-600">
+            {allConnections ? allConnections.length : connections.length}
+          </div>
           <div className="text-sm text-slate-500">Total Connections</div>
         </div>
       </div>
@@ -1478,7 +1649,7 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
     >
-      {(allConnections && allConnections.length > 0) ? (
+      {allConnections && allConnections.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {allConnections.map((connection, index) => {
             const profileUrl = connection.username
@@ -1495,18 +1666,30 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
               >
                 <div className="flex items-center gap-3 mb-3">
                   <a href={profileUrl} className="focus:outline-none">
-                    <img 
+                    <img
                       className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
-                      src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : DEFAULT_PROFILE_IMAGE} 
-                      alt={connection.name} 
-                      onError={e => { e.target.onerror = null; e.target.src = DEFAULT_PROFILE_IMAGE; }}
+                      src={
+                        connection.avatarUrl
+                          ? getAvatarUrl(connection.avatarUrl)
+                          : DEFAULT_PROFILE_IMAGE
+                      }
+                      alt={connection.name}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = DEFAULT_PROFILE_IMAGE;
+                      }}
                     />
                   </a>
                   <div className="flex-1">
-                    <a href={profileUrl} className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block">
+                    <a
+                      href={profileUrl}
+                      className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block"
+                    >
                       {connection.name}
                     </a>
-                    <p className="text-sm text-slate-500 capitalize">{connection.role}</p>
+                    <p className="text-sm text-slate-500 capitalize">
+                      {connection.role}
+                    </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1520,7 +1703,9 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
                     Message
                   </motion.button>
                   <motion.button
-                    onClick={() => handleConnectionAction('remove', connection._id)}
+                    onClick={() =>
+                      handleConnectionAction("remove", connection._id)
+                    }
                     className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -1537,176 +1722,12 @@ const ConnectionsSection = ({ connections, allConnections, handleMessageUser, ha
           <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
             <FiUsers className="w-8 h-8 text-slate-400" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-800 mb-2">No connections yet</h3>
-          <p className="text-slate-500">Start connecting with your alumni, teachers, and peers!</p>
-        </div>
-      )}
-    </motion.div>
-  </div>
-);
-
-// Posts Section Component
-const PostsSection = ({ posts, showCreatePost, setShowCreatePost, postData, setPostData, handleCreatePost, handleDeletePost }) => (
-  <div className="space-y-6">
-    <div className="flex justify-between items-center">
-      <h2 className="text-2xl font-bold text-slate-800">My Posts</h2>
-      <motion.button
-        onClick={() => setShowCreatePost(true)}
-        className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        <FiPlus size={18} />
-        Create Post
-      </motion.button>
-    </div>
-
-    {/* Create Post Modal */}
-    <AnimatePresence>
-      {showCreatePost && (
-        <motion.div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={() => setShowCreatePost(false)}
-        >
-          <motion.div
-            className="bg-white rounded-2xl p-6 w-full max-w-2xl"
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-800">Create New Post</h3>
-              <button
-                onClick={() => setShowCreatePost(false)}
-                className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <FiX size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreatePost} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Content</label>
-                <textarea
-                  value={postData.content}
-                  onChange={(e) => setPostData({...postData, content: e.target.value})}
-                  rows={4}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  placeholder="What's on your mind?"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Audience</label>
-                <select
-                  value={postData.audience}
-                  onChange={(e) => setPostData({...postData, audience: e.target.value})}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                >
-                  <option value="public">Public</option>
-                  <option value="alumni">Alumni Only</option>
-                  <option value="teachers">Teachers Only</option>
-                  <option value="students">Students Only</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Media (Optional)</label>
-                <FileInput
-                  accept="image/*,video/*"
-                  onChange={(file) => setPostData({...postData, media: file})}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <motion.button
-                  type="submit"
-                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <FiShare size={18} />
-                  Post
-                </motion.button>
-                <motion.button
-                  type="button"
-                  onClick={() => setShowCreatePost(false)}
-                  className="px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </form>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-
-    {/* Posts List */}
-    <motion.div
-      className="space-y-4"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.1 }}
-    >
-      {posts.length > 0 ? (
-        posts.map((post, index) => (
-          <motion.div
-            key={post._id}
-            className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 * index }}
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <p className="text-slate-800 leading-relaxed">{post.content}</p>
-                <div className="flex items-center gap-4 mt-2">
-                  <span className="text-sm text-slate-500">
-                    {new Date(post.createdAt).toLocaleDateString()}
-                  </span>
-                  <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-medium capitalize">
-                    {post.audience}
-                  </span>
-                </div>
-              </div>
-              <motion.button
-                onClick={() => handleDeletePost(post._id)}
-                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <FiTrash2 size={16} />
-              </motion.button>
-            </div>
-
-            {post.mediaUrl && (
-              <div className="mt-4">
-                {post.mediaUrl.includes('video') ? (
-                  <video controls className="w-full rounded-xl">
-                    <source src={post.mediaUrl} type="video/mp4" />
-                  </video>
-                ) : (
-                  <img src={post.mediaUrl} alt="Post media" className="w-full rounded-xl" />
-                )}
-              </div>
-            )}
-          </motion.div>
-        ))
-      ) : (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-            <FiFileText className="w-8 h-8 text-slate-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-slate-800 mb-2">No posts yet</h3>
-          <p className="text-slate-500">Create your first post to share with the community!</p>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">
+            No connections yet
+          </h3>
+          <p className="text-slate-500">
+            Start connecting with your alumni, teachers, and peers!
+          </p>
         </div>
       )}
     </motion.div>
@@ -1714,7 +1735,18 @@ const PostsSection = ({ posts, showCreatePost, setShowCreatePost, postData, setP
 );
 
 // Settings Section Component
-const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData, handleChange, avatarFile, setAvatarFile, handleDeleteAvatar, handleSubmit }) => (
+const SettingsSection = ({
+  user,
+  isEditing,
+  setIsEditing,
+  formData,
+  setFormData,
+  handleChange,
+  avatarFile,
+  setAvatarFile,
+  handleDeleteAvatar,
+  handleSubmit,
+}) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
@@ -1773,13 +1805,21 @@ const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData,
       {isEditing ? (
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Profile Picture</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Profile Picture
+            </label>
             <FileInput accept="image/*" onChange={setAvatarFile} />
-            {avatarFile && <p className="text-sm text-green-600 mt-2">✓ New image selected</p>}
+            {avatarFile && (
+              <p className="text-sm text-green-600 mt-2">
+                ✓ New image selected
+              </p>
+            )}
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Name</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Name
+            </label>
             <input
               type="text"
               name="name"
@@ -1791,83 +1831,28 @@ const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData,
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Email
+            </label>
             <input
               type="email"
               value={user.email}
               disabled
               className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-50 text-slate-500"
             />
-            <p className="text-sm text-slate-500 mt-1">Email cannot be changed</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Profile Visibility</label>
-            <select
-              name="profileVisibility"
-              value={formData.profileVisibility}
-              onChange={handleChange}
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-            >
-              <option value="public">Public</option>
-              <option value="connections">Connections Only</option>
-              <option value="private">Private</option>
-            </select>
-          </div>
-
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-            <p className="text-sm text-orange-800 font-medium">
-              Note: For real-time messaging features, verify your mobile number.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Mobile Number</label>
-              <input
-                type="tel"
-                name="phoneNumber"
-                value={formData.phoneNumber}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                placeholder="e.g., +91 9876543210"
-              />
-              <p className="text-xs text-slate-500 mt-1">Status: {user.phoneVerified ? 'Verified' : 'Not Verified'}</p>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Personal Details Visibility</label>
-              <select
-                name="personalVisibility"
-                value={formData.personalVisibility}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-              >
-                <option value="private">Private</option>
-                <option value="public">Public</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Change Password</label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-              placeholder="Enter new password"
-            />
-            <p className="text-xs text-slate-500 mt-1">Leave blank to keep your current password.</p>
           </div>
 
           <div className="pt-2">
             <motion.button
               type="button"
               onClick={() => {
-                if (window.confirm('Are you sure you want to delete your profile? This cannot be undone.')) {
+                if (
+                  window.confirm(
+                    "Are you sure you want to delete your profile? This cannot be undone."
+                  )
+                ) {
                   // placeholder; backend route to be added
-                  alert('Use admin to delete or add endpoint.');
+                  alert("Use admin to delete or add endpoint.");
                 }
               }}
               className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
@@ -1894,8 +1879,12 @@ const SettingsSection = ({ user, isEditing, setIsEditing, formData, setFormData,
             <p className="text-slate-800 capitalize">{user.role}</p>
           </div>
           <div>
-            <span className="text-sm font-semibold text-slate-500">Member Since:</span>
-            <p className="text-slate-800">{new Date(user.createdAt).toLocaleDateString()}</p>
+            <span className="text-sm font-semibold text-slate-500">
+              Member Since:
+            </span>
+            <p className="text-slate-800">
+              {new Date(user.createdAt).toLocaleDateString()}
+            </p>
           </div>
         </div>
       )}
