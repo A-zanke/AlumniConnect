@@ -3,21 +3,24 @@ require('dotenv').config();
 const Event = require('../models/Event');
 const Alumni = require('../models/Alumni');
 const User = require('../models/User');
-const Skill = require('../models/Skill'); // Assuming you have a Skill model
 
-const userProfile = {
-  id: 123,
-  name: "Ashish Zanke",
-  department: "Information Technology",
-  batch: "2022"
-};
+// Updated FAQ content - short and message-style
+const faqData = [
+  { question: "How can I register for an event?", answer: "Go to Events → Click Register button." },
+  { question: "How do I update my profile?", answer: "Open Profile → Edit → Save changes." },
+  { question: "How can I contact alumni support?", answer: "Email: alumni@college.edu" },
+  { question: "How to reset password?", answer: "Click 'Forgot Password' on login page." },
+  { question: "Where can I find mentorship programs?", answer: "Check Mentorship tab under Dashboard." },
+  { question: "How do I post in the forum?", answer: "Go to Forum → Click 'Create Post'." },
+  { question: "How to connect with other alumni?", answer: "Use the Connections tab to find and connect." },
+  { question: "Where can I see my notifications?", answer: "Check the bell icon in the top navigation bar." }
+];
 
 async function getAIResponse(message) {
-  // Use OpenRouter API for real AI answers
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     console.error('OpenRouter API key not set. Check your .env file and restart the server.');
-    return 'OpenRouter API key not set. Please contact admin.';
+    return 'AI service is currently unavailable. Please try again later.';
   }
   try {
     const res = await axios.post(
@@ -25,7 +28,7 @@ async function getAIResponse(message) {
       {
         model: 'meta-llama/llama-3-8b-instruct',
         messages: [
-          { role: 'system', content: 'You are an expert alumni assistant for a college portal. Answer helpfully and concisely.' },
+          { role: 'system', content: 'You are a helpful alumni assistant. Keep responses short (1-2 sentences max) and professional.' },
           { role: 'user', content: message }
         ]
       },
@@ -40,29 +43,21 @@ async function getAIResponse(message) {
       return res.data.choices[0].message.content;
     } else {
       console.error('OpenRouter API response missing expected content:', res.data);
-      return 'AI did not return a valid answer.';
+      return 'I could not process that request. Please try again.';
     }
   } catch (err) {
     console.error('OpenRouter API error:', err.response ? err.response.data : err.message);
-    return 'Sorry, the AI service is currently unavailable.';
+    return 'AI service is currently unavailable. Please try again later.';
   }
 }
 
 const handleFAQ = async () => {
   try {
-    // Fetch FAQs from the database
-    const faqs = [
-        { question: "How can I register for an event?", answer: "Go to the Events page -> click 'Register'." },
-        { question: "How do I update my profile?", answer: "Navigate to your profile page and click the 'Edit Profile' button." },
-        { question: "How do I post in the forum?", answer: "Go to the Forum page -> click 'Create Post'." },
-        { question: "How do I contact an alumni mentor?", answer: "Go to the Mentorship page -> click 'Connect'." },
-        { question: "I forgot my password, what do I do?", answer: "Go to the 'Forgot Password' page and enter your email." }
-    ];
-    if (faqs && faqs.length > 0) {
-      const formattedFAQs = faqs.map((faq, index) => `${index + 1}. Q: ${faq.question}\nA: ${faq.answer}`);
-      return formattedFAQs.join('\n');
+    if (faqData && faqData.length > 0) {
+      const randomFaq = faqData[Math.floor(Math.random() * faqData.length)];
+      return `Q: ${randomFaq.question}\nA: ${randomFaq.answer}`;
     } else {
-      return "No FAQs found.";
+      return "No FAQs available right now.";
     }
   } catch (error) {
     console.error('FAQ API error:', error);
@@ -70,69 +65,111 @@ const handleFAQ = async () => {
   }
 };
 
-const handleAlumni = async () => {
+const handleEvents = async (userId) => {
   try {
-    // Fetch alumni from the database based on user's department
-    const alumni = await Alumni.find({ department: userProfile.department }).limit(5);
-    if (alumni && alumni.length > 0) {
-      const formattedAlumni = alumni.map((alumnus, index) => `${index + 1}. ${alumnus.name} - ${alumnus.position} at ${alumnus.company}\nProfile: /profile/${alumnus._id}`);
-      return formattedAlumni.join('\n');
+    const user = await User.findById(userId);
+    if (!user) return "Please log in to view events.";
+
+    let filter = { status: 'active' };
+    
+    // Filter events based on user role and department
+    if (user.role === 'student') {
+      filter.target_roles = 'student';
+      filter.target_student_combinations = {
+        $elemMatch: { department: user.department, year: user.year }
+      };
+    } else if (user.role === 'teacher') {
+      filter.target_roles = 'teacher';
+      filter.target_teacher_departments = user.department;
+    } else if (user.role === 'alumni') {
+      filter.target_roles = 'alumni';
+      filter.target_alumni_combinations = {
+        $elemMatch: { department: user.department, graduation_year: user.graduationYear }
+      };
+    }
+
+    const events = await Event.find(filter)
+      .populate('organizer', 'name email role department year graduationYear')
+      .sort({ startAt: 1 })
+      .limit(3);
+
+    if (events && events.length > 0) {
+      const eventList = events.map((event, index) => 
+        `${index + 1}. ${event.title} - ${new Date(event.startAt).toLocaleDateString()}`
+      ).join('\n');
+      return `Here are upcoming events:\n${eventList}`;
     } else {
-      return "No alumni recommendations available right now.";
+      return "No upcoming events found for your profile.";
     }
   } catch (error) {
-    console.error('Alumni API error:', error);
-    return "Sorry, I couldn't retrieve alumni recommendations right now.";
+    console.error('Events API error:', error);
+    return "Sorry, I couldn't fetch events right now.";
   }
 };
 
-const handleMentorship = async () => {
+const handleProfileAnalysis = async (userId) => {
   try {
-    // Fetch mentors from the database based on user's department
-    const mentors = await User.find({ department: userProfile.department, role: 'mentor' }).limit(5);
-    if (mentors && mentors.length > 0) {
-      const formattedMentors = mentors.map((mentor, index) => `${index + 1}. ${mentor.name} - ${mentor.expertise_area} at ${mentor.company}\nConnect: /connect/${mentor._id}`);
-      return formattedMentors.join('\n');
-    } else {
-      return "No mentors available right now. Check back later!";
+    const user = await User.findById(userId);
+    if (!user) return "Please log in to analyze your profile.";
+
+    const suggestions = [];
+    
+    // Check if profile is complete
+    if (!user.bio || user.bio.length < 10) {
+      suggestions.push("Add a detailed bio to your profile.");
     }
+    
+    if (!user.skills || user.skills.length < 3) {
+      suggestions.push("Add more skills to showcase your expertise.");
+    }
+    
+    if (!user.position || !user.company) {
+      suggestions.push("Update your current job details.");
+    }
+    
+    if (!user.socials || !user.socials.linkedin) {
+      suggestions.push("Add your LinkedIn profile for better networking.");
+    }
+
+    // Add skill-specific recommendations based on department
+    if (user.department === 'Information Technology') {
+      suggestions.push("Consider learning Power BI or SQL for data analytics.");
+    } else if (user.department === 'Computer Science') {
+      suggestions.push("Explore cloud technologies like AWS or Azure.");
+    } else if (user.department === 'Business') {
+      suggestions.push("Develop project management skills (PMP, Agile).");
+    }
+
+    if (suggestions.length === 0) {
+      return "Your profile looks great! Consider joining alumni events to grow your network.";
+    }
+
+    return suggestions.slice(0, 3).join('\n• ');
   } catch (error) {
-    console.error('Mentorship API error:', error);
-    return "Sorry, I couldn't retrieve mentors right now.";
+    console.error('Profile analysis error:', error);
+    return "Please update your profile to get better suggestions.";
   }
 };
 
-const handleProfile = async () => {
+const chatbotReply = async (req, res) => {
   try {
-    // Fetch user profile from the database
-    const user = await User.findById(userProfile.id);
-    if (user) {
-      return `Name: ${user.name}\nDepartment: ${user.department}\nBatch: ${user.batch}\nView Full Profile: /profile`;
-    } else {
-      return "Couldn't find your profile details.";
-    }
-  } catch (error) {
-    console.error('Profile API error:', error);
-    return "Sorry, I couldn't retrieve your profile right now.";
-  }
-};
+    const { message } = req.body;
+    const userId = req.user?._id;
 
-const handleSkills = async () => {
-  try {
-    // Fetch skill tips from the database based on user's department
-    const skills = await Skill.find({ department: userProfile.department }).limit(5);
+    if (!message || !message.trim()) {
+      return res.json({ reply: "Please send a message." });
+    }
+
+    const lowerCaseMessage = message.toLowerCase();
 
     let reply;
-    if (message.toLowerCase().includes('faq')) {
+
+    if (lowerCaseMessage.includes('faq') || lowerCaseMessage.includes('help')) {
       reply = await handleFAQ();
-    } else if (message.toLowerCase().includes('alumni')) {
-      reply = await handleAlumni();
-    } else if (message.toLowerCase().includes('mentorship')) {
-      reply = await handleMentorship();
-    } else if (message.toLowerCase().includes('profile')) {
-      reply = await handleProfile();
-    } else if (message.toLowerCase().includes('skills')) {
-      reply = await handleSkills();
+    } else if (lowerCaseMessage.includes('event') || lowerCaseMessage.includes('upcoming')) {
+      reply = await handleEvents(userId);
+    } else if (lowerCaseMessage.includes('analyze') || lowerCaseMessage.includes('profile') || lowerCaseMessage.includes('improve')) {
+      reply = await handleProfileAnalysis(userId);
     } else {
       reply = await getAIResponse(message);
     }
@@ -142,4 +179,8 @@ const handleSkills = async () => {
     console.error('Chatbot error:', err);
     res.status(500).json({ reply: 'Sorry, I could not process your request. Please try again.' });
   }
+};
+
+module.exports = {
+  chatbotReply
 };

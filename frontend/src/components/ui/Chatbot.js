@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
 import axios from 'axios';
-import { FiMessageCircle, FiSend, FiX, FiUser, FiUsers, FiCalendar, FiStar, FiHelpCircle, FiSmile, FiChevronDown, FiArrowRight } from 'react-icons/fi';
+import { FiMessageCircle, FiSend, FiX, FiUser, FiCalendar, FiHelpCircle, FiChevronDown, FiArrowRight } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
-// import {AuthContext} from '../../context/AuthContext';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 
@@ -11,63 +10,15 @@ import { Link } from 'react-router-dom';
 const renderEventCard = (event) => (
   <Link to={`/events/${event._id}`} className="block bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-indigo-100">
     <div className="font-semibold text-indigo-700">{event.title}</div>
-    <div className="text-sm text-gray-600">{new Date(event.date).toLocaleDateString()}</div>
+    <div className="text-sm text-gray-600">{new Date(event.startAt).toLocaleDateString()}</div>
     <p className="text-xs text-gray-500 mt-1">{event.description.substring(0, 50)}...</p>
   </Link>
-);
-
-const renderMentorCard = (mentor) => (
-  <Link to={`/profile/${mentor.username}`} className="block bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-indigo-100">
-    <div className="flex items-center gap-3">
-      <img src={mentor.profile_picture || '/default-avatar.png'} alt={mentor.name} className="w-10 h-10 rounded-full" />
-      <div>
-        <div className="font-semibold text-indigo-700">{mentor.name}</div>
-        <div className="text-sm text-gray-600">{mentor.current_job_title} at {mentor.company}</div>
-      </div>
-    </div>
-  </Link>
-);
-
-
-const renderForumPostCard = (post) => (
-  <Link to={`/forum/post/${post._id}`} className="block bg-white p-3 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-indigo-100">
-    <div className="font-semibold text-indigo-700">{post.title}</div>
-    <div className="text-sm text-gray-500">by {post.author?.name || 'Unknown'} • {post.comments.length} replies</div>
-  </Link>
-);
-
-const renderFaqCard = (faq) => (
-    <div className="bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-      <div className="font-semibold text-indigo-700">{faq.question}</div>
-      <p className="text-sm text-gray-600 mt-1">{faq.answer}</p>
-    </div>
-);
-
-const renderProfileCard = (profile) => (
-    <div className="bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-        <div className="font-semibold text-indigo-700">{profile.name}</div>
-        <div className="text-sm text-gray-600">{profile.department} - Batch of {profile.batch}</div>
-        <div className="text-sm text-gray-600 mt-1">Email: {profile.email}</div>
-        {profile.skills && <div className="text-xs text-gray-500 mt-2">Skills: {profile.skills.join(', ')}</div>}
-        <Link to={`/profile/${profile.username}`} className="text-sm font-semibold text-indigo-600 hover:underline mt-2 block">View Full Profile <FiArrowRight className="inline" /></Link>
-    </div>
-);
-
-const renderSkillCard = (tip) => (
-    <div className="bg-white p-3 rounded-lg shadow-sm border border-indigo-100">
-        <div className="font-semibold text-indigo-700">{tip.title}</div>
-        <p className="text-sm text-gray-600 mt-1">{tip.description}</p>
-        {tip.link && <a href={tip.link} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-indigo-600 hover:underline mt-2 block">Learn More <FiArrowRight className="inline" /></a>}
-    </div>
 );
 
 const quickActions = [
   { label: 'FAQ Helper', value: 'faq', icon: <FiHelpCircle /> },
   { label: 'Event Guide', value: 'events', icon: <FiCalendar /> },
-  { label: 'Alumni Recommendation', value: 'recommend', icon: <FiUsers /> },
-  { label: 'Mentorship Assistant', value: 'mentorship', icon: <FiStar /> },
-  { label: 'Profile Helper', value: 'profile', icon: <FiUser /> },
-  { label: 'Skill & Career Tips', value: 'skills', icon: <FiSmile /> },
+  { label: 'Profile Analyzer', value: 'analyze', icon: <FiUser /> },
 ];
 
 const Chatbot = () => {
@@ -86,24 +37,24 @@ const Chatbot = () => {
     }
   }, [messages, open, loading]);
 
-
   const addMessage = (sender, text, component = null) => {
     setMessages(msgs => [...msgs, { sender, text, component }]);
   };
+
   // --- API Fetching Functions ---
 
   const fetchEvents = async () => {
-    addMessage('bot', 'Sure, fetching relevant events for you...');
+    addMessage('bot', '🎉 Fetching upcoming events...');
     setLoading(true);
     try {
-      const { data } = await axios.get('/api/events', { params: { department: user?.department } });
+      const { data } = await axios.get('/api/events');
       if (data.length > 0) {
-        addMessage('bot', 'Here are some upcoming events you might be interested in:', {
+        addMessage('bot', 'Here are some upcoming events:', {
           type: 'events',
           items: data.slice(0, 3)
         });
       } else {
-        addMessage('bot', "I couldn't find any upcoming events for your department.");
+        addMessage('bot', "No upcoming events found right now.");
       }
     } catch (err) {
       addMessage('bot', 'Sorry, I had trouble fetching events.');
@@ -111,41 +62,26 @@ const Chatbot = () => {
     setLoading(false);
   };
 
-  const fetchMentors = async () => {
-    addMessage('bot', 'Finding some mentors who could be a great fit...');
+  const fetchFAQ = async () => {
+    addMessage('bot', '💡 Getting helpful info...');
     setLoading(true);
     try {
-      // Assuming an endpoint that provides recommendations
-      const { data } = await axios.get('/api/mentorship/recommendations');
-      if (data.length > 0) {
-        addMessage('bot', 'Here are some recommended mentors for you:', {
-          type: 'mentors',
-          items: data.slice(0, 3)
-        });
-      } else {
-        addMessage('bot', "I couldn't find any mentor recommendations at the moment.");
-      }
+      const res = await axios.post('/api/chatbot', { message: 'faq' });
+      addMessage('bot', res.data.reply);
     } catch (err) {
-      addMessage('bot', 'Sorry, I had trouble finding mentors.');
+      addMessage('bot', 'Sorry, I had trouble fetching FAQs.');
     }
     setLoading(false);
   };
 
-  const fetchForumPosts = async () => {
-    addMessage('bot', 'Let me check the latest forum discussions...');
+  const analyzeProfile = async () => {
+    addMessage('bot', '🔍 Analyzing your profile...');
     setLoading(true);
     try {
-      const { data } = await axios.get('/api/posts'); // Assuming this is the forum posts endpoint
-      if (data.posts.length > 0) {
-        addMessage('bot', 'Here are some of the latest posts from the forum:', {
-          type: 'forum',
-          items: data.posts.slice(0, 3)
-        });
-      } else {
-        addMessage('bot', 'The forum seems quiet right now. Why not start a discussion?');
-      }
+      const res = await axios.post('/api/chatbot', { message: 'analyze my profile' });
+      addMessage('bot', res.data.reply);
     } catch (err) {
-      addMessage('bot', 'Sorry, I had trouble fetching forum posts.');
+      addMessage('bot', 'Sorry, I had trouble analyzing your profile.');
     }
     setLoading(false);
   };
@@ -170,19 +106,25 @@ const Chatbot = () => {
 
     const lowerCaseText = text.toLowerCase();
 
-    if (lowerCaseText.includes('event')) {
+    if (lowerCaseText.includes('event') || lowerCaseText.includes('upcoming')) {
       await fetchEvents();
-    } else if (lowerCaseText.includes('mentor') || lowerCaseText.includes('recommend')) {
-      await fetchMentors();
-    } else if (lowerCaseText.includes('forum') || lowerCaseText.includes('post')) {
-      await fetchForumPosts();
+    } else if (lowerCaseText.includes('faq') || lowerCaseText.includes('help')) {
+      await fetchFAQ();
+    } else if (lowerCaseText.includes('analyze') || lowerCaseText.includes('profile') || lowerCaseText.includes('improve')) {
+      await analyzeProfile();
     } else {
       await handleGenericAIQuery(text);
     }
   };
 
   const handleQuickAction = (action) => {
-    handleUserMessage(`/${action}`);
+    if (action === 'faq') {
+      handleUserMessage('faq');
+    } else if (action === 'events') {
+      handleUserMessage('events');
+    } else if (action === 'analyze') {
+      handleUserMessage('analyze my profile');
+    }
   };
 
   return (
@@ -202,6 +144,7 @@ const Chatbot = () => {
           <FiMessageCircle size={28} />
         </button>
       </motion.div>
+      
       {/* Chatbot Modal */}
       <AnimatePresence>
         {open && (
@@ -227,6 +170,7 @@ const Chatbot = () => {
                   <FiX size={22} />
                 </button>
               </div>
+              
               <div className="flex-1 overflow-y-auto px-6 py-4 bg-gradient-to-br from-white to-slate-50">
                 {messages.map((msg, i) => (
                   <motion.div
@@ -242,8 +186,6 @@ const Chatbot = () => {
                     {msg.component && (
                       <div className="mt-2 w-full max-w-sm space-y-2">
                         {msg.component.type === 'events' && msg.component.items.map(renderEventCard)}
-                        {msg.component.type === 'mentors' && msg.component.items.map(renderMentorCard)}
-                        {msg.component.type === 'forum' && msg.component.items.map(renderForumPostCard)}
                       </div>
                     )}
                   </motion.div>
@@ -255,6 +197,7 @@ const Chatbot = () => {
                 )}
                 <div ref={chatEndRef} />
               </div>
+              
               <div className="px-6 py-4 border-t bg-white flex flex-col gap-2">
                 <div className="flex gap-2 flex-wrap mb-2">
                   {quickActions.map(a => (
