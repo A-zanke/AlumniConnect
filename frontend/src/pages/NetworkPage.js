@@ -567,63 +567,7 @@ const NetworkPage = () => {
             )}
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {suggestedConnections.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500">
-              <FaHeart className="text-6xl mx-auto mb-4 text-gray-300" />
-              <p className="text-xl font-medium">No suggestions available</p>
-              <p className="text-sm mt-2">Follow more people to get personalized suggestions</p>
-            </div>
-          ) : (
-            suggestedConnections.map((connection) => (
-              <motion.div
-                key={connection._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
-              >
-                <div className="flex items-center mb-4">
-                  {connection.avatarUrl ? (
-                    <img
-                      src={getAvatarUrl(connection.avatarUrl)}
-                      alt={connection.name || 'User'}
-                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                    />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                      {(connection.name || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="ml-4 flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">
-                      {connection.name || 'Unknown User'}
-                    </h3>
-                    <p className="text-sm text-gray-500 truncate">@{connection.username || 'unknown'}</p>
-                    <p className="text-xs text-gray-400 capitalize">{connection.role || 'user'}</p>
-                    <p className="text-xs text-blue-500 mt-1">💡 Suggested for you</p>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                <button
-                    onClick={() => handleFollow(connection._id)}
-                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                      <FaUserPlus className="mr-2" />
-                    Follow
-                </button>
-                  <Link
-                    to={`/profile/${connection.username || connection._id}`}
-                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    View Profile
-                  </Link>
-                </div>
-              </motion.div>
-            ))
-          )}
-        </div>
-      )}
+      ) : null}
     </div>
   );
 };
