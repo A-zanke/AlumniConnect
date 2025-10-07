@@ -22,6 +22,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     (Array.isArray(post.reactions) ? post.reactions.length : undefined) ?? post.reactionsCount ?? 0
   );
   const [showReactionsPicker, setShowReactionsPicker] = useState(false);
+  const [userReaction, setUserReaction] = useState(null);
   const [showReactors, setShowReactors] = useState(false);
   const [reactors, setReactors] = useState([]);
   const navigate = useNavigate();
@@ -95,6 +96,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
       if (data) {
         setReactionCount(data.total ?? reactionCount);
         setReactionCounts(data.counts ?? reactionCounts);
+        setUserReaction(data.reactionType ?? null);
       }
       onChanged && onChanged();
       setShowReactionsPicker(false);
@@ -209,6 +211,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
         if (data) {
           setReactionCount(data.total || 0);
           setReactionCounts(data.counts || {});
+          setUserReaction(data.userReaction || null);
         }
       } catch {}
     })();
@@ -415,33 +418,27 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
 
           <div className="flex items-center gap-2 relative">
             {/* Reactions */}
-            <div className="flex items-center gap-2 relative">
-              {/* Summary above the like button */}
-              {topReactions.total > 0 && (
-                <div className="absolute -top-7 left-0 bg-white/90 backdrop-blur border border-gray-200 shadow px-2 py-0.5 rounded-full flex items-center gap-1">
-                  {topReactions.top.map(([type, count]) => (
-                    <span key={type} className="flex items-center gap-0.5 text-sm">
-                      <span className="text-base leading-none">{EMOJI_BY_KEY[type] || '👍'}</span>
-                      <span className="text-gray-600 text-xs">{count}</span>
-                    </span>
-                  ))}
-                  {topReactions.rest > 0 && (
-                    <span className="text-xs text-gray-500">+{topReactions.rest}</span>
-                  )}
-                </div>
-              )}
+            <div
+              className="flex items-center gap-2 relative"
+              onMouseEnter={() => setShowReactionsPicker(true)}
+              onMouseLeave={() => setShowReactionsPicker(false)}
+            >
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowReactionsPicker(v => !v)}
                 disabled={isLoading}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
-                  post.hasUserReacted
-                    ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                    : 'bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600'
+                  userReaction
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                    : 'bg-gray-50 text-gray-700 hover:bg-red-50 hover:text-red-600'
                 }`}
                 title="React"
               >
-                <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
+                {userReaction ? (
+                  <span className="text-lg" aria-label={userReaction}>{EMOJI_BY_KEY[userReaction] || '👍'}</span>
+                ) : (
+                  <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
+                )}
                 <span onClick={(e) => { e.stopPropagation(); openReactors(); }} className="cursor-pointer" title="View who reacted">
                   {reactionCount}
                 </span>
@@ -462,8 +459,20 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                   ))}
                 </div>
               )}
-
-              {/* Reaction Summary is shown above the button via topReactions */}
+              {/* Inline top-3 summary next to the button */}
+              {topReactions.total > 0 && (
+                <div className="flex items-center gap-1 text-sm text-gray-600 ml-1">
+                  {topReactions.top.map(([type, count]) => (
+                    <span key={type} className="flex items-center gap-0.5">
+                      <span className="text-base leading-none">{EMOJI_BY_KEY[type] || '👍'}</span>
+                      <span className="font-medium">{count}</span>
+                    </span>
+                  ))}
+                  {topReactions.rest > 0 && (
+                    <span className="text-xs text-gray-500">+{topReactions.rest}</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Comment Button */}
