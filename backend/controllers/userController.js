@@ -311,6 +311,7 @@ module.exports = {
   getMutualConnections,
   getMyMutualConnections,
   followUser,
+  unfollowUser,
   getSuggestedConnections,
   updatePresence,
   getPresence
