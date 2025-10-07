@@ -201,6 +201,17 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
         if (payload.counts) setReactionCounts(payload.counts);
       }
     });
+    // Fetch initial reaction summary (server truth)
+    (async () => {
+      try {
+        const res = await forumAPI.getReactions(post._id);
+        const data = res?.data?.data;
+        if (data) {
+          setReactionCount(data.total || 0);
+          setReactionCounts(data.counts || {});
+        }
+      } catch {}
+    })();
     return () => {
       try { s.emit('forum:leave_post', { postId: post._id }); } catch {}
       try { s.disconnect(); } catch {}

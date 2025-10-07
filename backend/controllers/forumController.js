@@ -326,6 +326,27 @@ exports.addReaction = async (req, res) => {
   }
 };
 
+// Get reaction summary for a post (total, per-type counts, and current user's reaction)
+exports.getReactionSummary = async (req, res) => {
+  try {
+    const post = await ForumPost.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    const counts = (post.reactions || []).reduce((acc, r) => {
+      const t = r.type || 'like';
+      acc[t] = (acc[t] || 0) + 1;
+      return acc;
+    }, {});
+
+    const userReaction = (post.reactions || []).find(r => String(r.user) === String(req.user._id))?.type || null;
+
+    res.json({ data: { total: post.reactions?.length || 0, counts, userReaction } });
+  } catch (err) {
+    console.error('getReactionSummary error:', err);
+    res.status(500).json({ message: 'Failed to get reactions' });
+  }
+};
+
 exports.toggleUpvotePost = async (req, res) => {
   try {
     const post = await ForumPost.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
