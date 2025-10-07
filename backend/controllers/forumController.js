@@ -281,11 +281,19 @@ exports.addReaction = async (req, res) => {
       }
     }
 
+    // Sanitize any legacy reaction types to avoid validation errors
+    const allowedReactions = new Set(['like', 'love', 'laugh', 'wow', 'sad', 'angry']);
+    post.reactions = (post.reactions || []).map(r => ({
+      user: r.user,
+      type: allowedReactions.has(r.type) ? r.type : 'like'
+    }));
+
     await post.save();
 
-    // Compute per-type counts
+    // Compute per-type counts and ensure all keys exist for frontend mapping
     const counts = (post.reactions || []).reduce((acc, r) => {
-      acc[r.type] = (acc[r.type] || 0) + 1;
+      const t = r.type || 'like';
+      acc[t] = (acc[t] || 0) + 1;
       return acc;
     }, {});
 

@@ -13,6 +13,7 @@ const ForumPollSchema = new mongoose.Schema({
 
 const ForumReactionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  // Align allowed reaction types with frontend (👍 ❤️ 😂 😮 😢 😡)
   type: { type: String, enum: ['like', 'love', 'laugh', 'wow', 'sad', 'angry'], default: 'like' }
 }, { _id: false });
 

@@ -30,6 +30,7 @@ export const forumAPI = {
   },
   getPost: (id) => apiClient.get(`/api/forum/posts/${id}`),
   upvotePost: (id) => apiClient.post(`/api/forum/posts/${id}/upvote`),
+  // Support all reaction types: 'like'|'love'|'laugh'|'wow'|'sad'|'angry'
   addReaction: (id, reactionType = 'like') => apiClient.post(`/api/forum/posts/${id}/reactions`, { reactionType }),
   sharePost: (id, connectionIds, message = '') => apiClient.post(`/api/forum/posts/${id}/share`, { connectionIds, message }),
   deletePost: (id) => apiClient.delete(`/api/forum/posts/${id}`),
