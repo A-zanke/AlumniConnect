@@ -415,9 +415,6 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
 
           <div className="flex items-center gap-2 relative">
             {/* Reactions */}
-<<<<<<< HEAD
-            <div className="flex flex-col items-start gap-1">
-=======
             <div className="flex items-center gap-2 relative">
               {/* Summary above the like button */}
               {topReactions.total > 0 && (
@@ -433,7 +430,6 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                   )}
                 </div>
               )}
->>>>>>> d4549c5 (Refactor: Update forum reactions to use consistent emoji types)
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowReactionsPicker(v => !v)}
