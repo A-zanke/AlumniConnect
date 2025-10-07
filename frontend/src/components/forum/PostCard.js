@@ -18,7 +18,8 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   const [showOptions, setShowOptions] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [reactionCount, setReactionCount] = useState(post.reactionsCount || 0);
+  const [reactionCounts, setReactionCounts] = useState(post.reactionCounts || {});
+  const [userReaction, setUserReaction] = useState(post.userReaction || null);
   const [showReactionsPicker, setShowReactionsPicker] = useState(false);
   const [showReactors, setShowReactors] = useState(false);
   const [reactors, setReactors] = useState([]);
@@ -51,6 +52,25 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     { key: 'sad', label: '😢' },
     { key: 'angry', label: '😡' }
   ];
+
+  // Get top 3 reactions for summary display
+  const getTopReactions = useMemo(() => {
+    const entries = Object.entries(reactionCounts)
+      .filter(([_, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    return entries.map(([type, count]) => ({
+      type,
+      count,
+      emoji: REACTIONS.find(r => r.key === type)?.label || '👍'
+    }));
+  }, [reactionCounts]);
+
+  // Get current user's reaction emoji
+  const getCurrentReactionEmoji = () => {
+    if (!userReaction) return null;
+    return REACTIONS.find(r => r.key === userReaction)?.label || null;
+  };
 
   const handleReaction = async (type = 'like') => {
     if (isLoading) return;
@@ -158,7 +178,8 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     s.emit('forum:join_post', { postId: post._id });
     s.on('forum:reaction_updated', (payload) => {
       if (payload?.postId === post._id) {
-        setReactionCount(payload.reactions || 0);
+        setReactionCounts(payload.counts || {});
+        setUserReaction(payload.userReaction || null);
       }
     });
     return () => {
@@ -364,34 +385,55 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
 
           <div className="flex items-center gap-2 relative">
             {/* Reactions */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-start gap-1">
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowReactionsPicker(v => !v)}
                 disabled={isLoading}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
                   post.hasUserReacted
-                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                    : 'bg-gray-50 text-gray-700 hover:bg-red-50 hover:text-red-600'
+                    ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    : 'bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600'
                 }`}
                 title="React"
               >
-                <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
+                {getCurrentReactionEmoji() ? (
+                  <span className="text-lg">{getCurrentReactionEmoji()}</span>
+                ) : (
+                  <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
+                )}
                 <span onClick={(e) => { e.stopPropagation(); openReactors(); }} className="cursor-pointer" title="View who reacted">
-                  {reactionCount}
+                  {Object.values(reactionCounts).reduce((sum, count) => sum + count, 0)}
                 </span>
               </motion.button>
+
+              {/* Reaction Picker */}
               {showReactionsPicker && (
-                <div className="absolute -top-12 left-0 bg-white border border-gray-200 rounded-full shadow p-2 flex gap-2 z-10">
+                <div className="absolute -top-14 left-0 bg-white border border-gray-200 rounded-full shadow-lg p-2 flex gap-2 z-20">
                   {REACTIONS.map(r => (
                     <button
                       key={r.key}
                       onClick={() => handleReaction(r.key)}
-                      className="w-8 h-8 rounded-full hover:bg-gray-100 text-lg"
+                      className={`w-8 h-8 rounded-full hover:bg-gray-100 text-lg transition-all ${
+                        userReaction === r.key ? 'bg-blue-100 scale-110' : ''
+                      }`}
                       title={r.key}
                     >
                       {r.label}
                     </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Reaction Summary */}
+              {getTopReactions.length > 0 && (
+                <div className="flex items-center gap-1 text-sm text-gray-600">
+                  {getTopReactions.map((reaction, idx) => (
+                    <span key={reaction.type} className="flex items-center gap-1">
+                      <span className="text-base">{reaction.emoji}</span>
+                      <span className="font-medium">{reaction.count}</span>
+                      {idx < getTopReactions.length - 1 && <span className="text-gray-400">•</span>}
+                    </span>
                   ))}
                 </div>
               )}

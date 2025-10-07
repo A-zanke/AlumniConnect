@@ -121,10 +121,47 @@ exports.listPosts = async (req, res) => {
 
     const pipeline = [
       { $match: query },
-      { 
-        $addFields: { 
+      {
+        $addFields: {
           upvotesCount: { $size: { $ifNull: ['$upvotes', []] } },
           reactionsCount: { $size: { $ifNull: ['$reactions', []] } },
+          reactionCounts: {
+            $arrayToObject: {
+              $map: {
+                input: { $setUnion: ['$reactions.type'] },
+                as: 'type',
+                in: {
+                  k: '$$type',
+                  v: {
+                    $size: {
+                      $filter: {
+                        input: '$reactions',
+                        cond: { $eq: ['$$this.type', '$$type'] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          userReaction: {
+            $let: {
+              vars: {
+                userReactionObj: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$reactions',
+                        cond: { $eq: ['$$this.user', currentUserId] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$userReactionObj.type', null] }
+            }
+          },
           hasUserReacted: {
             $in: [currentUserId, { $ifNull: ['$reactions.user', []] }]
           },
@@ -134,7 +171,7 @@ exports.listPosts = async (req, res) => {
           hasUserBookmarked: {
             $in: [currentUserId, { $ifNull: ['$bookmarks', []] }]
           }
-        } 
+        }
       }
     ];
 
@@ -159,6 +196,8 @@ exports.listPosts = async (req, res) => {
         ...doc.toObject(),
         upvotesCount: p.upvotesCount,
         reactionsCount: p.reactionsCount,
+        reactionCounts: p.reactionCounts || {},
+        userReaction: p.userReaction,
         hasUserReacted: p.hasUserReacted,
         hasUserUpvoted: p.hasUserUpvoted,
         hasUserBookmarked: p.hasUserBookmarked
@@ -186,8 +225,15 @@ exports.getPost = async (req, res) => {
       .populate('author', selectUserPublic);
 
     const currentUserId = req.user._id;
+    const reactionCounts = (post.reactions || []).reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+    const userReaction = post.reactions.find(r => r.user._id.toString() === currentUserId.toString())?.type || null;
     const postData = {
       ...post.toObject(),
+      reactionCounts,
+      userReaction,
       hasUserReacted: post.reactions.some(r => r.user._id.toString() === currentUserId.toString()),
       hasUserUpvoted: post.upvotes.some(id => id.toString() === currentUserId.toString()),
       hasUserBookmarked: post.bookmarks.some(id => id.toString() === currentUserId.toString()),
@@ -249,7 +295,8 @@ exports.addReaction = async (req, res) => {
         global.io.to(`forum_post_${post._id}`).emit('forum:reaction_updated', {
           postId: post._id.toString(),
           total: post.reactions.length,
-          counts
+          counts,
+          userReaction: hasReacted ? reactionType : null
         });
       }
     } catch (e) {
