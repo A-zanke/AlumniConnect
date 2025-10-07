@@ -28,6 +28,7 @@ const NetworkPage = () => {
   const [mutualConnections, setMutualConnections] = useState([]);
   // Suggested tab removed per request
   const [pendingRequests, setPendingRequests] = useState([]);
+  // Request history is now shown inside Requests tab for 24h only
   const [requestHistory, setRequestHistory] = useState([]);
   const [stats, setStats] = useState({
     totalConnections: 0,
@@ -73,7 +74,13 @@ const NetworkPage = () => {
       const followingData = followingRes.data?.data || followingRes.data || [];
       const mutualData = mutualRes.data?.data || mutualRes.data || [];
       const requestsData = requestsRes.data?.data || requestsRes.data || [];
-      const historyData = historyRes.data?.data || historyRes.data || [];
+      // Filter history to only last 24 hours since resolution
+      const rawHistory = historyRes.data?.data || historyRes.data || [];
+      const now = Date.now();
+      const historyData = rawHistory.filter(item => {
+        const t = new Date(item.createdAt).getTime();
+        return Number.isFinite(t) && (now - t) <= 24 * 60 * 60 * 1000; // 24h
+      });
 
       setFollowing(followingData);
       setMutualConnections(mutualData);
@@ -111,6 +118,11 @@ const NetworkPage = () => {
     try {
       await connectionAPI.acceptRequest(connectionId);
       toast.success('Connection request accepted!');
+      // Keep a 24h history entry locally
+      setRequestHistory(prev => [{ _id: connectionId, status: 'accepted', createdAt: new Date().toISOString(), requesterId: (pendingRequests.find(r => r._id===connectionId)?.requester) }, ...prev]);
+      // Remove from pending immediately
+      setPendingRequests(prev => prev.filter(r => r._id !== connectionId));
+      // Also refresh following/mutual counts
       fetchNetworkData();
     } catch (error) {
       console.error('Error accepting request:', error);
@@ -122,6 +134,8 @@ const NetworkPage = () => {
     try {
       await connectionAPI.rejectRequest(connectionId);
       toast.success('Connection request rejected');
+      setRequestHistory(prev => [{ _id: connectionId, status: 'rejected', createdAt: new Date().toISOString(), requesterId: (pendingRequests.find(r => r._id===connectionId)?.requester) }, ...prev]);
+      setPendingRequests(prev => prev.filter(r => r._id !== connectionId));
       fetchNetworkData();
     } catch (error) {
       console.error('Error rejecting request:', error);
@@ -144,7 +158,13 @@ const NetworkPage = () => {
     try {
       await followAPI.unfollowUser(userId);
       toast.success('Successfully unfollowed');
-      fetchNetworkData(); // Refresh all data
+      // Optimistically update UI counts and list
+      setFollowing(prev => prev.filter(u => u._id !== userId));
+      setStats(prev => ({
+        ...prev,
+        followingCount: Math.max((prev.followingCount || 0) - 1, 0),
+        totalConnections: Math.max((prev.totalConnections || 0) - 1, 0)
+      }));
     } catch (error) {
       console.error('Error unfollowing user:', error);
       toast.error('Failed to unfollow user');
@@ -297,17 +317,7 @@ const NetworkPage = () => {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`${
-              activeTab === 'history'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
-          >
-            <FaUserTimes className="mr-2" />
-            Request History
-          </button>
+          {/* Request History tab removed */}
         </nav>
       </div>
 
@@ -509,63 +519,6 @@ const NetworkPage = () => {
               </motion.div>
             ))
           )}
-        </div>
-      ) : activeTab === 'history' ? (
-        <div>
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Request History</h2>
-            <p className="text-gray-600">All your connection requests and their status</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {requestHistory.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
-                <FaUserTimes className="text-6xl mx-auto mb-4 text-gray-300" />
-                <p className="text-xl font-medium">No request history</p>
-                <p className="text-sm mt-2">Your connection request history will appear here</p>
-              </div>
-            ) : (
-              requestHistory.map((request) => (
-                <motion.div
-                  key={request._id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
-                >
-                  <div className="flex items-center mb-4">
-                    {request.requesterId?.avatarUrl ? (
-                      <img
-                        src={getAvatarUrl(request.requesterId.avatarUrl)}
-                        alt={request.requesterId?.name || 'User'}
-                        className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                        {(request.requesterId?.name || 'U').charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="ml-4 flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-gray-900 truncate">
-                        {request.requesterId?.name || 'Unknown User'}
-                      </h3>
-                      <p className="text-sm text-gray-500 truncate">@{request.requesterId?.username || 'unknown'}</p>
-                      <p className="text-xs text-gray-400 capitalize">{request.requesterId?.role || 'user'}</p>
-                      <span className={`inline-block px-2 py-0.5 rounded text-[11px] mt-1 ${
-                        request.status === 'accepted' ? 'bg-green-100 text-green-700' :
-                        request.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {request.status === 'accepted' ? 'Accepted' :
-                         request.status === 'rejected' ? 'Rejected' : 'Pending'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {formatDate(request.createdAt)}
-                  </div>
-                </motion.div>
-              ))
-            )}
-          </div>
         </div>
       ) : null}
     </div>
