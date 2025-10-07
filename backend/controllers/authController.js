@@ -129,8 +129,6 @@ const registerUser = async (req, res) => {
       }
     } catch (e) {
       console.error('Role profile creation failed:', e?.message || e);
-    } catch (e) {
-      console.error('Role profile creation failed:', e?.message || e);
     }
 
     if (user) {
