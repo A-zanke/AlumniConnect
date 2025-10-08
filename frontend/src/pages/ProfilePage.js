@@ -747,15 +747,26 @@ const OverviewSection = ({ user }) => (
           <FiBriefcase className="text-slate-500" />
           <span className="text-slate-700 capitalize">{user.role}</span>
         </div>
-        {user.department && (
+        {(user.department || user.graduationYear || user.year) && (
           <div className="flex items-center gap-3">
-            <FaGraduationCap className="text-slate-500" />
             <span className="text-slate-700">
-              {user.role === "alumni"
-                ? `${user.department} • Grad ${user.graduationYear || "-"}`
-                : `${user.department} • Year ${user.year || "-"} • Grad ${
-                    user.graduationYear || "-"
-                  }`}
+              {user.role === "alumni" ? (
+                <>
+                  🏫 Department: {user.department || "Not specified"} 🎓
+                  Graduation: {user.graduationYear || ":"}
+                </>
+              ) : user.role === "student" ? (
+                <>
+                  🏫 Department: {user.department || "Not specified"} Year :{" "}
+                  {user.year || ":"} 🎓 Graduation {user.graduationYear || ":"}
+                </>
+              ) : (
+                // Teacher
+                <>
+                  🏫 Department: {user.department || "Not specified"} 🎓
+                  Graduation {user.graduationYear || ":"}
+                </>
+              )}
             </span>
           </div>
         )}
@@ -1115,10 +1126,27 @@ const AboutSection = ({
                 </label>
                 <input
                   type="number"
-                  value={user?.graduationYear || ""} // use backend registration value
-                  readOnly
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-100 text-slate-700"
-                  placeholder="2020"
+                  value={
+                    user?.role === "student" || user?.role === "teacher"
+                      ? formData?.graduationYear || ""
+                      : user?.graduationYear || ""
+                  }
+                  onChange={(e) => {
+                    if (user?.role === "student" || user?.role === "teacher") {
+                      const newYear = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        graduationYear: newYear,
+                      }));
+                    }
+                  }}
+                  readOnly={user?.role === "alumni"}
+                  className={`w-full px-4 py-3 border border-slate-300 rounded-xl text-slate-700 transition-all duration-200 ${
+                    user?.role === "alumni"
+                      ? "bg-slate-100 cursor-not-allowed"
+                      : "bg-white focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                  }`}
+                  placeholder="2025"
                 />
               </div>
             </div>
@@ -1447,6 +1475,30 @@ const AboutSection = ({
               <span className="text-sm font-semibold text-slate-500">Bio:</span>
               <p className="text-slate-800">{user.bio || "Not provided"}</p>
             </div>
+            {user.department && (
+              <div>
+                <span className="text-sm font-semibold text-slate-500">
+                  Department:
+                </span>
+                <p className="text-slate-800">{user.department}</p>
+              </div>
+            )}
+            {user.graduationYear && (
+              <div>
+                <span className="text-sm font-semibold text-slate-500">
+                  Graduation Year:
+                </span>
+                <p className="text-slate-800">{user.graduationYear}</p>
+              </div>
+            )}
+            {user.year && (
+              <div>
+                <span className="text-sm font-semibold text-slate-500">
+                  Current Year:
+                </span>
+                <p className="text-slate-800">{user.year}</p>
+              </div>
+            )}
           </div>
         </motion.div>
 
