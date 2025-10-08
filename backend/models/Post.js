@@ -106,6 +106,12 @@ const postSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    linkPreview: {
+      url: { type: String },
+      title: { type: String },
+      description: { type: String },
+      image: { type: String },
+    },
     approved: {
       type: Boolean,
       default: true,

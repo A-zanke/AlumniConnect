@@ -12,7 +12,7 @@ const detectMedia = (file) => {
 
 exports.createPost = async (req, res) => {
   try {
-    const { content = "", visibility = "public", tags = "" } = req.body;
+    const { content = "", visibility = "public", tags = "", link = "" } = req.body;
 
     if (!content.trim() && (!req.files || req.files.length === 0)) {
       return res.status(400).json({ message: "Content or media required" });
@@ -48,6 +48,12 @@ exports.createPost = async (req, res) => {
           .filter(Boolean)
       : [];
 
+    const linkPreview = link && /^https?:\/\//i.test(link)
+      ? {
+          url: link,
+        }
+      : undefined;
+
     const post = new Post({
       userId: req.user._id,
       content,
@@ -58,6 +64,7 @@ exports.createPost = async (req, res) => {
         : "public",
       tags: [...parsedTags, ...hashtags],
       mentions: mentionUsers.map((u) => u._id),
+      linkPreview,
       approved: true,
     });
 
@@ -94,6 +101,7 @@ exports.createPost = async (req, res) => {
       mentions: populated.mentions || [],
       likes: populated.likes || [],
       comments: populated.comments || [],
+      linkPreview: populated.linkPreview || null,
       createdAt: populated.createdAt,
       updatedAt: populated.updatedAt,
     });
@@ -184,6 +192,7 @@ exports.getUserPosts = async (req, res) => {
             })) || [],
           createdAt: c.createdAt,
         })) || [],
+      linkPreview: p.linkPreview || null,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     }));
@@ -292,6 +301,7 @@ exports.getAllPosts = async (req, res) => {
             })) || [],
           createdAt: c.createdAt,
         })) || [],
+      linkPreview: p.linkPreview || null,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     }));
@@ -350,10 +360,9 @@ exports.commentOnPost = async (req, res) => {
     await post.save();
 
     // Get the newly added comment with populated user data
-    const updatedPost = await Post.findById(req.params.id).populate(
-      "comments.userId",
-      "name avatarUrl username"
-    );
+    const updatedPost = await Post.findById(req.params.id)
+      .populate("comments.userId", "name avatarUrl username")
+      .populate("mentions", "username");
 
     const newComment = updatedPost.comments[updatedPost.comments.length - 1];
 
@@ -380,18 +389,42 @@ exports.commentOnPost = async (req, res) => {
 
 exports.sharePost = async (req, res) => {
   try {
-    const { connectionIds = [] } = req.body;
+    const { connectionIds = [], message = "" } = req.body;
     const post = await Post.findById(req.params.id);
 
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // Here you would implement the sharing logic
-    // This could involve creating notifications, sending messages, etc.
+    // Increment share counter
+    post.shares = (post.shares || 0) + 1;
+    await post.save();
 
-    res.json({
-      message: "Post shared successfully",
-      sharedWith: connectionIds.length,
-    });
+    // Optionally create message entries to each connection
+    // and emit socket notifications if available
+    try {
+      const Message = require("../models/Message");
+      const shareLink = `${process.env.FRONTEND_PUBLIC_URL || "http://localhost:3000"}/posts/${post._id}`;
+      const content = message && message.trim().length > 0 ? `${message}\n${shareLink}` : shareLink;
+      await Promise.all(
+        (connectionIds || []).map((to) =>
+          Message.create({ from: req.user._id, to, content })
+        )
+      );
+      // Emit socket event to receivers
+      if (req.io) {
+        (connectionIds || []).forEach((to) => {
+          req.io.to(String(to)).emit("share:receive", {
+            from: String(req.user._id),
+            to: String(to),
+            postId: String(post._id),
+            content,
+          });
+        });
+      }
+    } catch (err) {
+      // Non-fatal
+    }
+
+    res.json({ message: "Post shared successfully", sharedWith: connectionIds.length, shares: post.shares });
   } catch (e) {
     console.error("sharePost error:", e);
     res.status(500).json({ message: "Error sharing post" });
@@ -503,6 +536,189 @@ exports.reactToPost = async (req, res) => {
   }
 };
 
+// Update post (content and optional link)
+exports.updatePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content = "", link = "" } = req.body;
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    // Only owner or admin can edit
+    if (
+      post.userId.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ message: "Not authorized to edit this post" });
+    }
+
+    if (typeof content === "string" && content.trim()) {
+      post.content = content.trim();
+    }
+    if (typeof link === "string") {
+      if (link && /^https?:\/\//i.test(link)) {
+        post.linkPreview = { ...(post.linkPreview || {}), url: link };
+      } else if (!link) {
+        post.linkPreview = undefined;
+      }
+    }
+
+    await post.save();
+    const populated = await Post.findById(post._id)
+      .populate("userId", "name avatarUrl username role");
+
+    res.json({
+      _id: populated._id,
+      user: {
+        _id: populated.userId._id,
+        name: populated.userId.name,
+        username: populated.userId.username,
+        role: populated.userId.role,
+        avatarUrl: populated.userId.avatarUrl
+          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
+              populated.userId.avatarUrl
+            }`
+          : null,
+      },
+      content: populated.content,
+      media:
+        populated.media?.map((m) => ({
+          ...m,
+          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
+            m.url
+          }`,
+        })) || [],
+      linkPreview: populated.linkPreview || null,
+      createdAt: populated.createdAt,
+      updatedAt: populated.updatedAt,
+    });
+  } catch (e) {
+    console.error("updatePost error:", e);
+    res.status(500).json({ message: "Error updating post" });
+  }
+};
+
+// Toggle bookmark
+exports.toggleBookmark = async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const idx = (user.bookmarkedPosts || []).findIndex((id) => id.equals(postId));
+    let bookmarked = false;
+    if (idx >= 0) {
+      user.bookmarkedPosts.splice(idx, 1);
+      bookmarked = false;
+    } else {
+      user.bookmarkedPosts.push(postId);
+      bookmarked = true;
+    }
+    await user.save();
+    res.json({ bookmarked, postId });
+  } catch (e) {
+    console.error("toggleBookmark error:", e);
+    res.status(500).json({ message: "Error updating bookmark" });
+  }
+};
+
+// Get saved/bookmarked posts for current user
+exports.getSavedPosts = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("bookmarkedPosts");
+    const ids = user?.bookmarkedPosts || [];
+    if (!ids.length) return res.json([]);
+
+    const posts = await Post.find({ _id: { $in: ids } })
+      .sort({ createdAt: -1 })
+      .populate("userId", "name avatarUrl username role")
+      .populate("mentions", "name avatarUrl username")
+      .populate("comments.userId", "name avatarUrl username")
+      .populate("comments.replies.userId", "name avatarUrl username")
+      .populate("reactions.userId", "name avatarUrl username");
+
+    const shaped = posts.map((p) => ({
+      _id: p._id,
+      user: {
+        _id: p.userId._id,
+        name: p.userId?.name,
+        username: p.userId?.username,
+        role: p.userId?.role,
+        avatarUrl: p.userId?.avatarUrl
+          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
+              p.userId.avatarUrl
+            }`
+          : null,
+      },
+      content: p.content,
+      media:
+        p.media?.map((m) => ({
+          ...m,
+          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
+            m.url
+          }`,
+        })) || [],
+      visibility: p.visibility,
+      tags: p.tags || [],
+      mentions: p.mentions || [],
+      likes: p.likes || [],
+      reactions:
+        p.reactions?.map((r) => ({
+          userId: r.userId._id,
+          type: r.type,
+          user: {
+            name: r.userId?.name,
+            username: r.userId?.username,
+            avatarUrl: r.userId?.avatarUrl
+              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
+                  r.userId.avatarUrl
+                }`
+              : null,
+          },
+        })) || [],
+      comments:
+        p.comments?.map((c) => ({
+          _id: c._id,
+          content: c.content,
+          user: {
+            _id: c.userId._id,
+            name: c.userId?.name,
+            username: c.userId?.username,
+            avatarUrl: c.userId?.avatarUrl
+              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
+                  c.userId.avatarUrl
+                }`
+              : null,
+          },
+          replies:
+            c.replies?.map((r) => ({
+              _id: r._id,
+              content: r.content,
+              user: {
+                _id: r.userId._id,
+                name: r.userId?.name,
+                username: r.userId?.username,
+                avatarUrl: r.userId?.avatarUrl
+                  ? `${
+                      process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"
+                    }${r.userId.avatarUrl}`
+                  : null,
+              },
+              createdAt: r.createdAt,
+            })) || [],
+          createdAt: c.createdAt,
+        })) || [],
+      linkPreview: p.linkPreview || null,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    }));
+
+    res.json(shaped);
+  } catch (e) {
+    console.error("getSavedPosts error:", e);
+    res.status(500).json({ message: "Error fetching saved posts" });
+  }
+};
 // Reply to a comment
 exports.replyToComment = async (req, res) => {
   try {
