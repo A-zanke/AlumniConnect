@@ -26,8 +26,9 @@ const NetworkPage = () => {
   const [error, setError] = useState(null);
   const [following, setFollowing] = useState([]);
   const [mutualConnections, setMutualConnections] = useState([]);
-  const [suggestedConnections, setSuggestedConnections] = useState([]);
+  // Suggested tab removed per request
   const [pendingRequests, setPendingRequests] = useState([]);
+  // Request history is now shown inside Requests tab for 24h only
   const [requestHistory, setRequestHistory] = useState([]);
   const [stats, setStats] = useState({
     totalConnections: 0,
@@ -44,17 +45,13 @@ const NetworkPage = () => {
       
       console.log('Fetching network data for user:', user._id);
       
-      const [followingRes, mutualRes, suggestedRes, requestsRes, historyRes] = await Promise.all([
+      const [followingRes, mutualRes, requestsRes, historyRes] = await Promise.all([
         followAPI.getFollowing(user._id).catch(err => {
           console.error('Error fetching following:', err);
           return { data: [] };
         }),
         followAPI.getMyMutualConnections().catch(err => {
           console.error('Error fetching mutual connections:', err);
-          return { data: [] };
-        }),
-        followAPI.getSuggestedConnections().catch(err => {
-          console.error('Error fetching suggested connections:', err);
           return { data: [] };
         }),
         connectionAPI.getPendingRequests().catch(err => {
@@ -70,31 +67,31 @@ const NetworkPage = () => {
       console.log('API Responses:', {
         following: followingRes.data,
         mutual: mutualRes.data,
-        suggested: suggestedRes.data,
         requests: requestsRes.data,
         history: historyRes.data
       });
 
       const followingData = followingRes.data?.data || followingRes.data || [];
       const mutualData = mutualRes.data?.data || mutualRes.data || [];
-      const suggestedData = suggestedRes.data?.data || suggestedRes.data || [];
       const requestsData = requestsRes.data?.data || requestsRes.data || [];
-      const historyData = historyRes.data?.data || historyRes.data || [];
+      // Filter history to only last 24 hours since resolution
+      const rawHistory = historyRes.data?.data || historyRes.data || [];
+      const now = Date.now();
+      const historyData = rawHistory.filter(item => {
+        const t = new Date(item.createdAt).getTime();
+        return Number.isFinite(t) && (now - t) <= 24 * 60 * 60 * 1000; // 24h
+      });
 
       setFollowing(followingData);
       setMutualConnections(mutualData);
-      setSuggestedConnections(suggestedData);
       setPendingRequests(requestsData);
       setRequestHistory(historyData);
       
-      // Calculate stats - Total connections = following + mutuals (unique)
-      const allConnections = new Set();
-      followingData.forEach(user => allConnections.add(user._id));
-      mutualData.forEach(user => allConnections.add(user._id));
-      
+      // Calculate stats
       setStats({
-        totalConnections: allConnections.size,
-        mutualConnections: mutualData.length || 0
+        totalConnections: followingData.length || 0, // for Following tab display only
+        mutualConnections: mutualData.length || 0,
+        followingCount: followingData.length || 0
       });
 
       setError(null);
@@ -121,6 +118,11 @@ const NetworkPage = () => {
     try {
       await connectionAPI.acceptRequest(connectionId);
       toast.success('Connection request accepted!');
+      // Keep a 24h history entry locally
+      setRequestHistory(prev => [{ _id: connectionId, status: 'accepted', createdAt: new Date().toISOString(), requesterId: (pendingRequests.find(r => r._id===connectionId)?.requester) }, ...prev]);
+      // Remove from pending immediately
+      setPendingRequests(prev => prev.filter(r => r._id !== connectionId));
+      // Also refresh following/mutual counts
       fetchNetworkData();
     } catch (error) {
       console.error('Error accepting request:', error);
@@ -132,6 +134,8 @@ const NetworkPage = () => {
     try {
       await connectionAPI.rejectRequest(connectionId);
       toast.success('Connection request rejected');
+      setRequestHistory(prev => [{ _id: connectionId, status: 'rejected', createdAt: new Date().toISOString(), requesterId: (pendingRequests.find(r => r._id===connectionId)?.requester) }, ...prev]);
+      setPendingRequests(prev => prev.filter(r => r._id !== connectionId));
       fetchNetworkData();
     } catch (error) {
       console.error('Error rejecting request:', error);
@@ -154,7 +158,13 @@ const NetworkPage = () => {
     try {
       await followAPI.unfollowUser(userId);
       toast.success('Successfully unfollowed');
-      fetchNetworkData(); // Refresh all data
+      // Optimistically update UI counts and list
+      setFollowing(prev => prev.filter(u => u._id !== userId));
+      setStats(prev => ({
+        ...prev,
+        followingCount: Math.max((prev.followingCount || 0) - 1, 0),
+        totalConnections: Math.max((prev.totalConnections || 0) - 1, 0)
+      }));
     } catch (error) {
       console.error('Error unfollowing user:', error);
       toast.error('Failed to unfollow user');
@@ -243,8 +253,8 @@ const NetworkPage = () => {
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Connections</p>
-              <h3 className="text-2xl font-bold text-gray-900">{stats.totalConnections}</h3>
+              <p className="text-sm text-gray-600">Following</p>
+              <h3 className="text-2xl font-bold text-gray-900">{stats.followingCount || stats.totalConnections}</h3>
             </div>
             <FaUserFriends className="text-3xl text-primary-600" />
           </div>
@@ -277,7 +287,7 @@ const NetworkPage = () => {
             } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
           >
             <FaUserFriends className="mr-2" />
-            Following ({stats.totalConnections})
+            Following ({stats.followingCount || stats.totalConnections})
           </button>
           <button
             onClick={() => setActiveTab('mutual')}
@@ -290,17 +300,7 @@ const NetworkPage = () => {
             <FaNetworkWired className="mr-2" />
             Mutual Connections ({stats.mutualConnections})
           </button>
-          <button
-            onClick={() => setActiveTab('suggested')}
-            className={`${
-              activeTab === 'suggested'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
-          >
-            <FaHeart className="mr-2" />
-            Suggested
-          </button>
+          {/* Suggested tab removed */}
           <button
             onClick={() => setActiveTab('requests')}
             className={`${
@@ -317,17 +317,7 @@ const NetworkPage = () => {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`${
-              activeTab === 'history'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap pb-4 px-1 border-b-2 font-medium flex items-center`}
-          >
-            <FaUserTimes className="mr-2" />
-            Request History
-          </button>
+          {/* Request History tab removed */}
         </nav>
       </div>
 
@@ -335,8 +325,8 @@ const NetworkPage = () => {
       {activeTab === 'following' ? (
         <div>
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Total Connections: {stats.totalConnections}</h2>
-            <p className="text-gray-600">All users you follow and mutual connections</p>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Total Connections: {stats.followingCount || stats.totalConnections}</h2>
+            <p className="text-gray-600">All users you follow</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {following.length === 0 ? (
@@ -475,76 +465,16 @@ const NetworkPage = () => {
           </div>
         </div>
       ) : activeTab === 'requests' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {pendingRequests.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500">
-              <FaUserCheck className="text-6xl mx-auto mb-4 text-gray-300" />
-              <p className="text-xl font-medium">No pending requests</p>
-              <p className="text-sm mt-2">You're all caught up!</p>
-            </div>
-          ) : (
-            pendingRequests.map((request) => (
-              <motion.div
-                key={request._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
-              >
-                <div className="flex items-center mb-4">
-                  {request.requester?.avatarUrl ? (
-                    <img
-                      src={getAvatarUrl(request.requester.avatarUrl)}
-                      alt={request.requester?.name || 'User'}
-                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                    />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                      {(request.requester?.name || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="ml-4 flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">
-                      {request.requester?.name || 'Unknown User'}
-                    </h3>
-                    <p className="text-sm text-gray-500 truncate">@{request.requester?.username || 'unknown'}</p>
-                    <p className="text-xs text-gray-400 capitalize">{request.requester?.role || 'user'}</p>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleAcceptRequest(request._id)}
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    <FaUserCheck className="mr-2" />
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => handleRejectRequest(request._id)}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    <FaUserMinus className="mr-2" />
-                    Decline
-                  </button>
-                </div>
-              </motion.div>
-            ))
-          )}
-        </div>
-      ) : activeTab === 'history' ? (
-        <div>
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Request History</h2>
-            <p className="text-gray-600">All your connection requests and their status</p>
-          </div>
+        <div className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {requestHistory.length === 0 ? (
+            {pendingRequests.length === 0 ? (
               <div className="col-span-full text-center py-12 text-gray-500">
-                <FaUserTimes className="text-6xl mx-auto mb-4 text-gray-300" />
-                <p className="text-xl font-medium">No request history</p>
-                <p className="text-sm mt-2">Your connection request history will appear here</p>
+                <FaUserCheck className="text-6xl mx-auto mb-4 text-gray-300" />
+                <p className="text-xl font-medium">No pending requests</p>
+                <p className="text-sm mt-2">You're all caught up!</p>
               </div>
             ) : (
-              requestHistory.map((request) => (
+              pendingRequests.map((request) => (
                 <motion.div
                   key={request._id}
                   initial={{ opacity: 0, y: 20 }}
@@ -552,98 +482,91 @@ const NetworkPage = () => {
                   className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
                 >
                   <div className="flex items-center mb-4">
-                    {request.requesterId?.avatarUrl ? (
+                    {request.requester?.avatarUrl ? (
                       <img
-                        src={getAvatarUrl(request.requesterId.avatarUrl)}
-                        alt={request.requesterId?.name || 'User'}
+                        src={getAvatarUrl(request.requester.avatarUrl)}
+                        alt={request.requester?.name || 'User'}
                         className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
                       />
                     ) : (
                       <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                        {(request.requesterId?.name || 'U').charAt(0).toUpperCase()}
+                        {(request.requester?.name || 'U').charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div className="ml-4 flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
-                        {request.requesterId?.name || 'Unknown User'}
+                        {request.requester?.name || 'Unknown User'}
                       </h3>
-                      <p className="text-sm text-gray-500 truncate">@{request.requesterId?.username || 'unknown'}</p>
-                      <p className="text-xs text-gray-400 capitalize">{request.requesterId?.role || 'user'}</p>
-                      <span className={`inline-block px-2 py-0.5 rounded text-[11px] mt-1 ${
-                        request.status === 'accepted' ? 'bg-green-100 text-green-700' :
-                        request.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {request.status === 'accepted' ? 'Accepted' :
-                         request.status === 'rejected' ? 'Rejected' : 'Pending'}
-                      </span>
+                      <p className="text-sm text-gray-500 truncate">@{request.requester?.username || 'unknown'}</p>
+                      <p className="text-xs text-gray-400 capitalize">{request.requester?.role || 'user'}</p>
                     </div>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {formatDate(request.createdAt)}
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleAcceptRequest(request._id)}
+                      className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                    >
+                      <FaUserCheck className="mr-2" />
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => handleRejectRequest(request._id)}
+                      className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                    >
+                      <FaUserMinus className="mr-2" />
+                      Decline
+                    </button>
                   </div>
                 </motion.div>
               ))
             )}
           </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {suggestedConnections.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500">
-              <FaHeart className="text-6xl mx-auto mb-4 text-gray-300" />
-              <p className="text-xl font-medium">No suggestions available</p>
-              <p className="text-sm mt-2">Follow more people to get personalized suggestions</p>
+
+          {/* Resolved in last 24 hours */}
+          {requestHistory.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent activity (last 24 hours)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {requestHistory.map((item) => {
+                  const actor = item.requester || item.requesterId || {};
+                  const name = actor.name || 'User';
+                  const username = actor.username || 'unknown';
+                  const avatar = actor.avatarUrl;
+                  const isAccepted = item.status === 'accepted';
+                  return (
+                    <motion.div
+                      key={item._id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white rounded-xl shadow-md p-4 border"
+                    >
+                      <div className="flex items-center gap-3">
+                        {avatar ? (
+                          <img src={getAvatarUrl(avatar)} alt={name} className="h-10 w-10 rounded-full object-cover" />
+                        ) : (
+                          <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{name}</div>
+                          <div className="text-xs text-gray-500 truncate">@{username}</div>
+                        </div>
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${isAccepted ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {isAccepted ? 'Accepted' : 'Rejected'}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
             </div>
-          ) : (
-            suggestedConnections.map((connection) => (
-              <motion.div
-                key={connection._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
-              >
-                <div className="flex items-center mb-4">
-                  {connection.avatarUrl ? (
-                    <img
-                      src={getAvatarUrl(connection.avatarUrl)}
-                      alt={connection.name || 'User'}
-                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                    />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                      {(connection.name || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="ml-4 flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">
-                      {connection.name || 'Unknown User'}
-                    </h3>
-                    <p className="text-sm text-gray-500 truncate">@{connection.username || 'unknown'}</p>
-                    <p className="text-xs text-gray-400 capitalize">{connection.role || 'user'}</p>
-                    <p className="text-xs text-blue-500 mt-1">💡 Suggested for you</p>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                <button
-                    onClick={() => handleFollow(connection._id)}
-                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                      <FaUserPlus className="mr-2" />
-                    Follow
-                </button>
-                  <Link
-                    to={`/profile/${connection.username || connection._id}`}
-                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                  >
-                    View Profile
-                  </Link>
-                </div>
-              </motion.div>
-            ))
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

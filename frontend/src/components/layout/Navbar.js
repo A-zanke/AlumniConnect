@@ -54,7 +54,9 @@ const Navbar = () => {
     // For students, Events will be a dropdown (handled separately)
     // For others, show Events as regular link
     ...(!isStudent
-      ? [{ to: "/events", label: "Events", icon: FiCalendar }]
+      ? [
+          { to: "/events", label: "Events", icon: FiCalendar }
+        ]
       : []),
     { to: "/about", label: "About", icon: FiUsers },
     // Show Posts for teacher and alumni only

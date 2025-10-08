@@ -22,6 +22,10 @@ import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import SearchPage from "./pages/SearchPage";
 import PostsPage from "./pages/PostsPage";
+import AdminForumManager from "./admin/AdminForumManager.jsx";
+import AdminUserList from "./admin/AdminUserList.jsx";
+import AdminEventList from "./admin/AdminEventList.jsx";
+import AdminEventDetail from "./admin/AdminEventDetail.jsx";
 
 function App() {
   return (
@@ -61,7 +65,7 @@ function App() {
                 <Route
                   path="/forum"
                   element={
-                    <PrivateRoute roles={["student"]}>
+                    <PrivateRoute roles={["student", "admin"]}>
                       <ForumPage />
                     </PrivateRoute>
                   }
@@ -69,7 +73,7 @@ function App() {
                 <Route
                   path="/forum/:id"
                   element={
-                    <PrivateRoute roles={["student"]}>
+                    <PrivateRoute roles={["student", "admin"]}>
                       <ForumPostPage />
                     </PrivateRoute>
                   }
@@ -112,6 +116,38 @@ function App() {
                   element={
                     <PrivateRoute roles={["admin"]}>
                       <AdminDashboardPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/forum"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminForumManager />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/users"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminUserList />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/events"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminEventList />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/events/:id"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminEventDetail />
                     </PrivateRoute>
                   }
                 />
