@@ -6,6 +6,7 @@ import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { connectionAPI, userAPI } from '../components/utils/api';
 import { getAvatarUrl } from '../components/utils/helpers';
+import ConnectionButton from '../components/network/ConnectionButton';
 
 // Feather icons (Fi = Feather Icons)
 import {
@@ -87,7 +88,6 @@ const ProfilePage = () => {
   const [user, setUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [skillInput, setSkillInput] = useState('');
   const [activeSection, setActiveSection] = useState('overview');
@@ -162,11 +162,6 @@ const ProfilePage = () => {
   }, [userId, username, currentUser]);
 
 
-  useEffect(() => {
-    if (!isOwnProfile && user) {
-      fetchConnectionStatus();
-    }
-  }, [user, currentUser, isOwnProfile]);
 
   // This useEffect now primarily updates formData when a *fetched* user profile changes
   // For own profile, formData initialization is handled in the first useEffect to avoid race conditions
@@ -219,18 +214,6 @@ const ProfilePage = () => {
     }
   };
 
-  const fetchConnectionStatus = async () => {
-    if (!currentUser || isOwnProfile) return;
-    try {
-      const targetUserId = userId || user?._id;
-      if (!targetUserId) return;
-      const response = await connectionAPI.getConnectionStatus(targetUserId);
-      setConnectionStatus(response.data?.status || 'none');
-    } catch (error) {
-      console.error('Error fetching connection status:', error);
-    }
-  };
-
   // Fetch both connections (I connected) and those who connected to me (mutual/one-way)
   const fetchUserConnections = async () => {
     if (!currentUser) return;
@@ -274,29 +257,9 @@ const ProfilePage = () => {
       }
 
       switch (action) {
-        case 'send':
-          await connectionAPI.sendRequest(userId);
-          setConnectionStatus('pending');
-          toast.success('Connection request sent');
-          break;
-        case 'accept':
-          await connectionAPI.acceptRequest(userId);
-          setConnectionStatus('connected');
-          toast.success('Connection accepted');
-          break;
-        case 'reject':
-          await connectionAPI.rejectRequest(userId);
-          setConnectionStatus(null);
-          toast.success('Connection request rejected');
-          break;
         case 'remove':
           await connectionAPI.removeConnection(userId);
-          if (isOwnProfile) {
-            toast.success('Connection removed');
-          } else {
-            setConnectionStatus(null);
-            toast.success('Connection removed');
-          }
+          toast.success('Connection removed');
           break;
         default:
           break;
@@ -486,72 +449,6 @@ const ProfilePage = () => {
     { id: 'connections', label: 'Connections', icon: FiUsers },
     { id: 'settings', label: 'Settings', icon: FiSettings },
   ];
-
-  const renderConnectionButton = () => {
-    if (isOwnProfile || !currentUser) return null;
-    switch (connectionStatus) {
-      case 'connected':
-        return (
-          <div className="flex space-x-2">
-            {/* <motion.button
-              onClick={() => handleMessageUser(userId || user?._id)}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <FiMessageCircle className="mr-2" /> Message
-            </motion.button> */}
-            <motion.button
-              onClick={() => handleConnectionAction('remove')}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <FiUserX className="mr-2" /> Remove
-            </motion.button>
-          </div>
-        );
-      case 'pending':
-        return (
-          <button disabled className="px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl opacity-75">
-            <FiUserCheck className="mr-2 inline" /> Pending
-          </button>
-        );
-      case 'received':
-      case 'incoming':
-        return (
-          <div className="flex space-x-2">
-            <motion.button
-              onClick={() => handleConnectionAction('accept')}
-              className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <FiUserCheck className="mr-2 inline" /> Accept
-            </motion.button>
-            <motion.button
-              onClick={() => handleConnectionAction('reject')}
-              className="px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <FiUserX className="mr-2 inline" /> Reject
-            </motion.button>
-          </div>
-        );
-      default:
-        return (
-          <motion.button
-            onClick={() => handleConnectionAction('send')}
-            className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <FiUserPlus className="mr-2 inline" /> Connect
-          </motion.button>
-        );
-    }
-  };
 
   if (loading) {
     return (
@@ -754,7 +651,7 @@ const ProfilePage = () => {
                     <FiMessageCircle className="mr-2" /> Message
                   </motion.button>
                 )}
-                {renderConnectionButton()}
+                <ConnectionButton userId={userId || user?._id} />
               </motion.div>
             </div>
           </div>

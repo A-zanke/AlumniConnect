@@ -121,10 +121,47 @@ exports.listPosts = async (req, res) => {
 
     const pipeline = [
       { $match: query },
-      { 
-        $addFields: { 
+      {
+        $addFields: {
           upvotesCount: { $size: { $ifNull: ['$upvotes', []] } },
           reactionsCount: { $size: { $ifNull: ['$reactions', []] } },
+          reactionCounts: {
+            $arrayToObject: {
+              $map: {
+                input: { $setUnion: ['$reactions.type'] },
+                as: 'type',
+                in: {
+                  k: '$$type',
+                  v: {
+                    $size: {
+                      $filter: {
+                        input: '$reactions',
+                        cond: { $eq: ['$$this.type', '$$type'] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          userReaction: {
+            $let: {
+              vars: {
+                userReactionObj: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$reactions',
+                        cond: { $eq: ['$$this.user', currentUserId] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$userReactionObj.type', null] }
+            }
+          },
           hasUserReacted: {
             $in: [currentUserId, { $ifNull: ['$reactions.user', []] }]
           },
@@ -134,7 +171,7 @@ exports.listPosts = async (req, res) => {
           hasUserBookmarked: {
             $in: [currentUserId, { $ifNull: ['$bookmarks', []] }]
           }
-        } 
+        }
       }
     ];
 
@@ -159,6 +196,8 @@ exports.listPosts = async (req, res) => {
         ...doc.toObject(),
         upvotesCount: p.upvotesCount,
         reactionsCount: p.reactionsCount,
+        reactionCounts: p.reactionCounts || {},
+        userReaction: p.userReaction,
         hasUserReacted: p.hasUserReacted,
         hasUserUpvoted: p.hasUserUpvoted,
         hasUserBookmarked: p.hasUserBookmarked
@@ -186,8 +225,15 @@ exports.getPost = async (req, res) => {
       .populate('author', selectUserPublic);
 
     const currentUserId = req.user._id;
+    const reactionCounts = (post.reactions || []).reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+    const userReaction = post.reactions.find(r => r.user._id.toString() === currentUserId.toString())?.type || null;
     const postData = {
       ...post.toObject(),
+      reactionCounts,
+      userReaction,
       hasUserReacted: post.reactions.some(r => r.user._id.toString() === currentUserId.toString()),
       hasUserUpvoted: post.upvotes.some(id => id.toString() === currentUserId.toString()),
       hasUserBookmarked: post.bookmarks.some(id => id.toString() === currentUserId.toString()),
@@ -209,7 +255,9 @@ exports.addReaction = async (req, res) => {
     if (!post) return res.status(404).json({ message: 'Post not found' });
 
     const uid = req.user._id;
-    const existingReactionIndex = post.reactions.findIndex(r => r.user.toString() === uid.toString());
+    // Ensure reactions array exists
+    if (!Array.isArray(post.reactions)) post.reactions = [];
+    const existingReactionIndex = post.reactions.findIndex(r => r && r.user && r.user.toString() === uid.toString());
 
     if (existingReactionIndex > -1) {
       const currentType = post.reactions[existingReactionIndex].type;
@@ -235,11 +283,20 @@ exports.addReaction = async (req, res) => {
       }
     }
 
+    // Sanitize any legacy reaction types to avoid validation errors
+    const allowedReactions = new Set(['like', 'love', 'laugh', 'wow', 'sad', 'angry']);
+    post.reactions = (post.reactions || []).map(r => ({
+      user: r.user,
+      type: allowedReactions.has(r.type) ? r.type : 'like'
+    }));
+
+    // Persist safely
     await post.save();
 
-    // Compute per-type counts
+    // Compute per-type counts and ensure all keys exist for frontend mapping
     const counts = (post.reactions || []).reduce((acc, r) => {
-      acc[r.type] = (acc[r.type] || 0) + 1;
+      const t = (r && r.type) ? r.type : 'like';
+      acc[t] = (acc[t] || 0) + 1;
       return acc;
     }, {});
 
@@ -249,14 +306,15 @@ exports.addReaction = async (req, res) => {
         global.io.to(`forum_post_${post._id}`).emit('forum:reaction_updated', {
           postId: post._id.toString(),
           total: post.reactions.length,
-          counts
+          counts,
+          userReaction: hasReacted ? reactionType : null
         });
       }
     } catch (e) {
       console.error('addReaction emit error:', e);
     }
 
-    const hasReacted = post.reactions.some(r => r.user.toString() === uid.toString());
+    const hasReacted = (post.reactions || []).some(r => r && r.user && r.user.toString() === uid.toString());
     res.json({ 
       data: { 
         total: post.reactions.length,
@@ -268,6 +326,27 @@ exports.addReaction = async (req, res) => {
   } catch (err) {
     console.error('addReaction error:', err);
     res.status(500).json({ message: 'Failed to add reaction' });
+  }
+};
+
+// Get reaction summary for a post (total, per-type counts, and current user's reaction)
+exports.getReactionSummary = async (req, res) => {
+  try {
+    const post = await ForumPost.findOne({ _id: req.params.id, isDeleted: { $ne: true } });
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    const counts = (post.reactions || []).reduce((acc, r) => {
+      const t = r.type || 'like';
+      acc[t] = (acc[t] || 0) + 1;
+      return acc;
+    }, {});
+
+    const userReaction = (post.reactions || []).find(r => String(r.user) === String(req.user._id))?.type || null;
+
+    res.json({ data: { total: post.reactions?.length || 0, counts, userReaction } });
+  } catch (err) {
+    console.error('getReactionSummary error:', err);
+    res.status(500).json({ message: 'Failed to get reactions' });
   }
 };
 
@@ -463,6 +542,7 @@ exports.toggleUpvoteComment = async (req, res) => {
     const comment = await ForumComment.findById(req.params.commentId);
     if (!comment) return res.status(404).json({ message: 'Comment not found' });
     const uid = req.user._id;
+    if (!Array.isArray(comment.upvotes)) comment.upvotes = [];
     const has = comment.upvotes.some(id => id.toString() === uid.toString());
     if (has) {
       comment.upvotes = comment.upvotes.filter(id => id.toString() !== uid.toString());
@@ -482,19 +562,20 @@ exports.toggleUpvoteComment = async (req, res) => {
     res.json({ data: { upvotes: comment.upvotes.length, upvoted: !has } });
   } catch (err) {
     console.error('toggleUpvoteComment error:', err);
-    res.status(500).json({ message: 'Failed to toggle upvote' });
+    res.status(500).json({ message: 'Failed to toggle upvote', error: String(err && err.message ? err.message : err) });
   }
 };
 
 // Toggle/Switch emoji reaction on a comment
 exports.reactToComment = async (req, res) => {
   try {
-    const { type = 'like' } = req.body; // one of ['like','love','laugh','wow','sad','fire']
+    const { type = 'like' } = req.body; // one of ['like','love','laugh','wow','sad','angry']
     const comment = await ForumComment.findById(req.params.commentId);
     if (!comment) return res.status(404).json({ message: 'Comment not found' });
 
     const uid = req.user._id;
-    const idx = (comment.reactions || []).findIndex(r => r.user.toString() === uid.toString());
+    if (!Array.isArray(comment.reactions)) comment.reactions = [];
+    const idx = comment.reactions.findIndex(r => r.user.toString() === uid.toString());
     if (idx > -1) {
       if (comment.reactions[idx].type === type) {
         // Toggle off
@@ -510,13 +591,14 @@ exports.reactToComment = async (req, res) => {
     await comment.save();
 
     const counts = (comment.reactions || []).reduce((acc, r) => {
-      acc[r.type] = (acc[r.type] || 0) + 1; return acc;
+      const t = r.type || 'like';
+      acc[t] = (acc[t] || 0) + 1; return acc;
     }, {});
 
     res.json({ data: { total: comment.reactions.length, counts } });
   } catch (err) {
     console.error('reactToComment error:', err);
-    res.status(500).json({ message: 'Failed to react to comment' });
+    res.status(500).json({ message: 'Failed to react to comment', error: String(err && err.message ? err.message : err) });
   }
 };
 

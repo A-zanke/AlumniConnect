@@ -123,6 +123,11 @@ async function followUser(req, res) {
       targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
       await currentUser.save();
       await targetUser.save();
+      // Also remove from connections if present to ensure permanent removal across UIs
+      currentUser.connections = (currentUser.connections || []).filter(id => id.toString() !== targetUserId.toString());
+      targetUser.connections = (targetUser.connections || []).filter(id => id.toString() !== currentUserId.toString());
+      await currentUser.save();
+      await targetUser.save();
       res.json({ message: 'Unfollowed successfully', isFollowing: false });
     } else {
       currentUser.following = [...(currentUser.following || []), targetUserId];
@@ -134,6 +139,27 @@ async function followUser(req, res) {
   } catch (error) {
     console.error('Error following/unfollowing user:', error);
     res.status(500).json({ message: 'Error following/unfollowing user' });
+  }
+}
+
+// Explicit unfollow endpoint for clarity (idempotent)
+async function unfollowUser(req, res) {
+  try {
+    const currentUserId = req.user._id;
+    const targetUserId = req.params.userId;
+
+    const currentUser = await User.findById(currentUserId);
+    const targetUser = await User.findById(targetUserId);
+    if (!currentUser || !targetUser) return res.status(404).json({ message: 'User not found' });
+
+    currentUser.following = (currentUser.following || []).filter(id => id.toString() !== targetUserId.toString());
+    targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
+    await currentUser.save();
+    await targetUser.save();
+    res.json({ message: 'Unfollowed successfully', isFollowing: false });
+  } catch (error) {
+    console.error('Error unfollowing user:', error);
+    res.status(500).json({ message: 'Error unfollowing user' });
   }
 }
 
@@ -299,6 +325,7 @@ module.exports = {
   getMutualConnections,
   getMyMutualConnections,
   followUser,
+  unfollowUser,
   getSuggestedConnections,
   updatePresence,
   getPresence,
