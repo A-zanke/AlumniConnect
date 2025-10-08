@@ -381,7 +381,7 @@ const MessagesPage = () => {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.1 }}
                         onClick={() => setSelectedUser(connection)}
-                        className={`cursor-pointer p-4 rounded-2xl m-2 transition-all duration-200 ${
+                        className={`cursor-pointer p-4 rounded-2xl m-2 transition-all.duration-200 ${
                           selectedUser?._id === connection._id 
                             ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105' 
                             : 'hover:bg-white hover:shadow-md hover:scale-105'
@@ -513,12 +513,24 @@ const MessagesPage = () => {
                                   {message.attachments && message.attachments.length > 0 && (
                                     <div className="mt-2 space-y-2">
                                       {message.attachments.map((attachment, idx) => (
-                                        <img
-                                          key={idx}
-                                          src={attachment}
-                                          alt="Message attachment"
-                                          className="max-w-full h-auto rounded-2xl shadow-md"
-                                        />
+                                        attachment.startsWith('/forum/') ? (
+                                          <a
+                                            key={idx}
+                                            href={attachment}
+                                            onClick={(e) => { e.preventDefault(); window.location.href = attachment; }}
+                                            className="block p-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                          >
+                                            <div className="text-sm font-semibold text-blue-800">Forum Post</div>
+                                            <div className="text-xs text-blue-700 opacity-80">Tap to open the original post</div>
+                                          </a>
+                                        ) : (
+                                          <img
+                                            key={idx}
+                                            src={attachment}
+                                            alt="Message attachment"
+                                            className="max-w-full h-auto rounded-2xl shadow-md"
+                                          />
+                                        )
                                       ))}
                                     </div>
                                   )}
@@ -586,7 +598,7 @@ const MessagesPage = () => {
                           </button>
                           <button
                             type="button"
-                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors duration-200"
+                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors.duration-200"
                           >
                             <FiSmile className="text-lg" />
                           </button>

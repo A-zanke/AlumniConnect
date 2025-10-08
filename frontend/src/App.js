@@ -1,31 +1,31 @@
- import React from 'react';
-import Chatbot from './components/ui/Chatbot';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import { NotificationProvider } from './context/NotificationContext';
-import PrivateRoute from './components/PrivateRoute';
-import Navbar from './components/layout/Navbar';
-import Footer from './components/layout/Footer';
-import HomePage from './pages/HomePage';
-import AdminDashboardPage from './pages/AdminDashboardPage';
-import AdminForumManager from './admin/AdminForumManager.jsx';
-import AdminUserList from './admin/AdminUserList.jsx';
-import AdminEventDetail from './admin/AdminEventDetail.jsx';
-import AdminEventList from './admin/AdminEventList.jsx';
-import AboutPage from './pages/AboutPage.jsx';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import EventsPage from './pages/EventsPage';
-import EventDetailsPage from './pages/EventDetailsPage';
-import NetworkPage from './pages/NetworkPage';
-import MessagesPage from './pages/MessagesPage';
-import ForumPage from './pages/ForumPage';
-import ForumPostPage from './pages/ForumPostPage';
-import ProfilePage from './pages/ProfilePage';
-import NotFoundPage from './pages/NotFoundPage';
-import SearchPage from './pages/SearchPage';
-
+import React from "react";
+import Chatbot from "./components/ui/Chatbot";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import { NotificationProvider } from "./context/NotificationContext";
+import PrivateRoute from "./components/PrivateRoute";
+import Navbar from "./components/layout/Navbar";
+import Footer from "./components/layout/Footer";
+import HomePage from "./pages/HomePage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AboutPage from "./pages/AboutPage.jsx";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import EventsPage from "./pages/EventsPage";
+import EventDetailsPage from "./pages/EventDetailsPage";
+import NetworkPage from "./pages/NetworkPage";
+import MessagesPage from "./pages/MessagesPage";
+import ForumPage from "./pages/ForumPage";
+import ForumPostPage from "./pages/ForumPostPage";
+import ProfilePage from "./pages/ProfilePage";
+import NotFoundPage from "./pages/NotFoundPage";
+import SearchPage from "./pages/SearchPage";
+import PostsPage from "./pages/PostsPage";
+import AdminForumManager from "./admin/AdminForumManager.jsx";
+import AdminUserList from "./admin/AdminUserList.jsx";
+import AdminEventList from "./admin/AdminEventList.jsx";
+import AdminEventDetail from "./admin/AdminEventDetail.jsx";
 
 function App() {
   return (
@@ -39,7 +39,10 @@ function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route
+                  path="/forgot-password"
+                  element={<ForgotPasswordPage />}
+                />
                 <Route path="/events" element={<EventsPage />} />
                 <Route path="/events/:id" element={<EventDetailsPage />} />
                 <Route path="/about" element={<AboutPage />} />
@@ -62,7 +65,7 @@ function App() {
                 <Route
                   path="/forum"
                   element={
-                    <PrivateRoute roles={['student']}>
+                    <PrivateRoute roles={["student", "admin"]}>
                       <ForumPage />
                     </PrivateRoute>
                   }
@@ -70,8 +73,16 @@ function App() {
                 <Route
                   path="/forum/:id"
                   element={
-                    <PrivateRoute roles={['student']}>
+                    <PrivateRoute roles={["student", "admin"]}>
                       <ForumPostPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/posts"
+                  element={
+                    <PrivateRoute>
+                      <PostsPage />
                     </PrivateRoute>
                   }
                 />
@@ -144,7 +155,7 @@ function App() {
               </Routes>
             </main>
             <Footer />
-              <Chatbot />
+            <Chatbot />
           </div>
         </Router>
       </NotificationProvider>

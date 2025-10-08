@@ -13,8 +13,17 @@ const ForumPollSchema = new mongoose.Schema({
 
 const ForumReactionSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  // Align allowed reaction types with frontend (👍 ❤️ 😂 😮 😢 😡)
-  type: { type: String, enum: ['like', 'love', 'laugh', 'wow', 'sad', 'angry'], default: 'like' }
+  // Allow both UI reactions and any legacy values already in DB
+  type: {
+    type: String,
+    enum: [
+      // UI set
+      'like', 'love', 'laugh', 'wow', 'sad', 'angry',
+      // Legacy set (kept for compatibility to avoid validation errors)
+      'celebrate', 'support', 'insightful', 'curious'
+    ],
+    default: 'like'
+  }
 }, { _id: false });
 
 const ForumPostSchema = new mongoose.Schema({
@@ -34,11 +43,18 @@ const ForumPostSchema = new mongoose.Schema({
     type: { type: String, enum: ['image', 'pdf', 'link'], required: true },
     filename: String
   }],
-  poll: ForumPollSchema,
+  poll: {
+    question: { type: String },
+    options: [{
+      text: { type: String },
+      votes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+    }],
+    voters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  },
   upvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   reactions: [ForumReactionSchema],
   bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  shares: [{ 
+  shares: [{
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     sharedAt: { type: Date, default: Date.now }

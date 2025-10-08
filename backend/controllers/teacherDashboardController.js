@@ -1,6 +1,5 @@
 const Teacher = require('../models/Teacher');
 const Student = require('../models/Student');
-const ClassAssignment = require('../models/ClassAssignment');
 const Department = require('../models/Department');
 
 // Get teacher's dashboard overview

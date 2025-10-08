@@ -1,14 +1,14 @@
-const crypto = require('node:crypto');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const Otp = require('../models/Otp');
-const bcrypt = require('bcryptjs');
-const { sendOtpEmail } = require('../services/emailService');
+const crypto = require("node:crypto");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const Otp = require("../models/Otp");
+const bcrypt = require("bcryptjs");
+const { sendOtpEmail } = require("../services/emailService");
 
 // Generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '30d',
+    expiresIn: "30d",
   });
 };
 
@@ -17,33 +17,49 @@ const generateToken = (id) => {
 // @access Public
 const registerUser = async (req, res) => {
   try {
-    const { username, password, confirmPassword, name, email, role, department, year, graduationYear } = req.body;
+    const {
+      username,
+      password,
+      confirmPassword,
+      name,
+      email,
+      role,
+      department,
+      year,
+      graduationYear,
+    } = req.body;
 
     // Validate required fields
     if (!username || !password || !confirmPassword || !name || !email) {
-      return res.status(400).json({ message: 'Please fill in all required fields' });
+      return res
+        .status(400)
+        .json({ message: "Please fill in all required fields" });
     }
 
     // Check if passwords match
     if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Passwords do not match' });
+      return res.status(400).json({ message: "Passwords do not match" });
     }
 
     // Check if username exists (email can repeat)
     const userExists = await User.findOne({ username });
 
     if (userExists) {
-      return res.status(400).json({ message: 'Username already taken' });
+      return res.status(400).json({ message: "Username already taken" });
     }
 
     // Relaxed password validation: accept common passwords but require minimum length
     const acceptablePassword = /^.{6,}$/;
     if (!acceptablePassword.test(password)) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 6 characters" });
     }
 
     // Check email verification via OTP if available; proceed even if not verified
-    const verifiedOtp = await Otp.findOne({ email, consumed: true }).sort({ createdAt: -1 });
+    const verifiedOtp = await Otp.findOne({ email, consumed: true }).sort({
+      createdAt: -1,
+    });
     const isEmailVerified = Boolean(verifiedOtp);
 
     // Create user in User collection
@@ -52,25 +68,30 @@ const registerUser = async (req, res) => {
       password,
       name,
       email,
-      role: (role || 'student').toLowerCase(),
+      role: (role || "student").toLowerCase(),
       department,
       year,
       graduationYear,
-      emailVerified: isEmailVerified
+      emailVerified: isEmailVerified,
     });
 
     // Also create in respective role collection (best-effort; do not fail registration on error)
-    const roleLower = (role || 'student').toLowerCase();
+    const roleLower = (role || "student").toLowerCase();
     try {
-      if (roleLower === 'student') {
-        const Student = require('../models/Student');
-        const Department = require('../models/Department');
+      if (roleLower === "student") {
+        const Student = require("../models/Student");
+        const Department = require("../models/Department");
         let departmentId;
         if (department) {
-          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          let dep =
+            (await Department.findOne({ code: department })) ||
+            (await Department.findOne({ name: department }));
           if (!dep) {
             // Create department if missing; store provided string as both code and name for simplicity
-            dep = await Department.create({ code: String(department), name: String(department) });
+            dep = await Department.create({
+              code: String(department),
+              name: String(department),
+            });
           }
           departmentId = dep._id;
         }
@@ -83,10 +104,10 @@ const registerUser = async (req, res) => {
           department: departmentId,
           year,
           graduationYear,
-          emailVerified: isEmailVerified
+          emailVerified: isEmailVerified,
         });
-      } else if (roleLower === 'alumni') {
-        const Alumni = require('../models/Alumni');
+      } else if (roleLower === "alumni") {
+        const Alumni = require("../models/Alumni");
         await Alumni.create({
           _id: user._id,
           name,
@@ -94,16 +115,21 @@ const registerUser = async (req, res) => {
           email,
           password: user.password,
           graduationYear,
-          emailVerified: isEmailVerified
+          emailVerified: isEmailVerified,
         });
-      } else if (roleLower === 'teacher') {
-        const Teacher = require('../models/Teacher');
-        const Department = require('../models/Department');
+      } else if (roleLower === "teacher") {
+        const Teacher = require("../models/Teacher");
+        const Department = require("../models/Department");
         let departmentId;
         if (department) {
-          let dep = await Department.findOne({ code: department }) || await Department.findOne({ name: department });
+          let dep =
+            (await Department.findOne({ code: department })) ||
+            (await Department.findOne({ name: department }));
           if (!dep) {
-            dep = await Department.create({ code: String(department), name: String(department) });
+            dep = await Department.create({
+              code: String(department),
+              name: String(department),
+            });
           }
           departmentId = dep._id;
         }
@@ -114,30 +140,30 @@ const registerUser = async (req, res) => {
           email,
           password: user.password,
           department: departmentId,
-          emailVerified: isEmailVerified
+          emailVerified: isEmailVerified,
         });
-      } else if (roleLower === 'admin') {
-        const Admin = require('../models/Admin');
+      } else if (roleLower === "admin") {
+        const Admin = require("../models/Admin");
         await Admin.create({
           _id: user._id,
           name,
           username,
           email,
           password: user.password,
-          emailVerified: isEmailVerified
+          emailVerified: isEmailVerified,
         });
       }
     } catch (e) {
-      console.error('Role profile creation failed:', e?.message || e);
+      console.error("Role profile creation failed:", e?.message || e);
     }
 
     if (user) {
       // Set JWT as cookie
       const token = generateToken(user._id);
-      res.cookie('jwt', token, {
+      res.cookie("jwt", token, {
         httpOnly: true,
         secure: false, // Always false for localhost
-        sameSite: 'lax',
+        sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
@@ -154,13 +180,13 @@ const registerUser = async (req, res) => {
         token,
       });
     } else {
-      res.status(400).json({ message: 'Invalid user data' });
+      res.status(400).json({ message: "Invalid user data" });
     }
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ 
-      message: 'Registration failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    console.error("Registration error:", error);
+    res.status(500).json({
+      message: "Registration failed",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -173,14 +199,16 @@ const loginUser = async (req, res) => {
     let { username, password } = req.body;
 
     // If email prefix provided without domain, append @mit.asia
-    if (username && !username.includes('@')) {
+    if (username && !username.includes("@")) {
       // Try username as-is first, then fallback to domain email
     }
 
     // Find user by username or email
     let user = await User.findOne({ username });
     if (!user) {
-      const maybeEmail = username.includes('@') ? username : `${username}@mit.asia`;
+      const maybeEmail = username.includes("@")
+        ? username
+        : `${username}@mit.asia`;
       user = await User.findOne({ email: maybeEmail });
     }
 
@@ -188,10 +216,10 @@ const loginUser = async (req, res) => {
     if (user && (await user.matchPassword(password))) {
       // Set JWT as cookie
       const token = generateToken(user._id);
-      res.cookie('jwt', token, {
+      res.cookie("jwt", token, {
         httpOnly: true,
         secure: false, // Always false for localhost
-        sameSite: 'lax',
+        sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
@@ -202,14 +230,17 @@ const loginUser = async (req, res) => {
         username: user.username,
         role: user.role,
         avatarUrl: user.avatarUrl,
+        department: user.department,
+        year: user.year,
+        graduationYear: user.graduationYear,
         token,
       });
     } else {
-      res.status(401).json({ message: 'Invalid credentials' });
+      res.status(401).json({ message: "Invalid credentials" });
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -218,31 +249,32 @@ const sendOtp = async (req, res) => {
   try {
     const { emailPrefix } = req.body;
     if (!emailPrefix || /@/.test(emailPrefix)) {
-      return res.status(400).json({ message: 'Provide email prefix only' });
+      return res.status(400).json({ message: "Provide email prefix only" });
     }
     const email = `${emailPrefix}@mit.asia`;
 
     const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Email already registered' });
+    if (existing)
+      return res.status(400).json({ message: "Email already registered" });
 
     const code = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await Otp.create({ email, code, purpose: 'registration', expiresAt });
+    await Otp.create({ email, code, purpose: "registration", expiresAt });
     try {
       await sendOtpEmail({ to: email, code });
     } catch (mailError) {
-      console.error('Mail send failed:', mailError?.message || mailError);
+      console.error("Mail send failed:", mailError?.message || mailError);
     }
     const payload = { success: true };
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== "production") {
       payload.devOtp = code;
       console.log(`DEV ONLY: OTP for ${email} is ${code}`);
     }
     return res.json(payload);
   } catch (error) {
-    console.error('sendOtp error:', error);
-    res.status(500).json({ message: 'Failed to send OTP' });
+    console.error("sendOtp error:", error);
+    res.status(500).json({ message: "Failed to send OTP" });
   }
 };
 
@@ -251,24 +283,29 @@ const verifyOtp = async (req, res) => {
   try {
     const { emailPrefix, code } = req.body;
     if (!emailPrefix || /@/.test(emailPrefix) || !code) {
-      return res.status(400).json({ message: 'Invalid input' });
+      return res.status(400).json({ message: "Invalid input" });
     }
     const email = `${emailPrefix}@mit.asia`;
-    const otp = await Otp.findOne({ email, purpose: 'registration', consumed: false }).sort({ createdAt: -1 });
+    const otp = await Otp.findOne({
+      email,
+      purpose: "registration",
+      consumed: false,
+    }).sort({ createdAt: -1 });
 
-    if (!otp) return res.status(400).json({ message: 'OTP not found' });
-    if (otp.expiresAt < new Date()) return res.status(400).json({ message: 'OTP expired' });
+    if (!otp) return res.status(400).json({ message: "OTP not found" });
+    if (otp.expiresAt < new Date())
+      return res.status(400).json({ message: "OTP expired" });
     if (otp.code !== code) {
       otp.attempts += 1;
       await otp.save();
-      return res.status(400).json({ message: 'Invalid OTP' });
+      return res.status(400).json({ message: "Invalid OTP" });
     }
     otp.consumed = true;
     await otp.save();
     res.json({ success: true, email });
   } catch (error) {
-    console.error('verifyOtp error:', error);
-    res.status(500).json({ message: 'Failed to verify OTP' });
+    console.error("verifyOtp error:", error);
+    res.status(500).json({ message: "Failed to verify OTP" });
   }
 };
 
@@ -277,31 +314,32 @@ const sendResetOtp = async (req, res) => {
   try {
     const { emailPrefix } = req.body;
     if (!emailPrefix || /@/.test(emailPrefix)) {
-      return res.status(400).json({ message: 'Provide email prefix only' });
+      return res.status(400).json({ message: "Provide email prefix only" });
     }
     const email = `${emailPrefix}@mit.asia`;
 
     const existing = await User.findOne({ email });
-    if (!existing) return res.status(404).json({ message: 'No account with this email' });
+    if (!existing)
+      return res.status(404).json({ message: "No account with this email" });
 
     const code = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await Otp.create({ email, code, purpose: 'reset', expiresAt });
+    await Otp.create({ email, code, purpose: "reset", expiresAt });
     try {
       await sendOtpEmail({ to: email, code });
     } catch (mailError) {
-      console.error('Mail send failed:', mailError?.message || mailError);
+      console.error("Mail send failed:", mailError?.message || mailError);
     }
     const payload = { success: true };
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== "production") {
       payload.devOtp = code;
       console.log(`DEV ONLY: RESET OTP for ${email} is ${code}`);
     }
     return res.json(payload);
   } catch (error) {
-    console.error('sendResetOtp error:', error);
-    res.status(500).json({ message: 'Failed to send reset OTP' });
+    console.error("sendResetOtp error:", error);
+    res.status(500).json({ message: "Failed to send reset OTP" });
   }
 };
 
@@ -310,24 +348,29 @@ const verifyResetOtp = async (req, res) => {
   try {
     const { emailPrefix, code } = req.body;
     if (!emailPrefix || /@/.test(emailPrefix) || !code) {
-      return res.status(400).json({ message: 'Invalid input' });
+      return res.status(400).json({ message: "Invalid input" });
     }
     const email = `${emailPrefix}@mit.asia`;
-    const otp = await Otp.findOne({ email, purpose: 'reset', consumed: false }).sort({ createdAt: -1 });
+    const otp = await Otp.findOne({
+      email,
+      purpose: "reset",
+      consumed: false,
+    }).sort({ createdAt: -1 });
 
-    if (!otp) return res.status(400).json({ message: 'OTP not found' });
-    if (otp.expiresAt < new Date()) return res.status(400).json({ message: 'OTP expired' });
+    if (!otp) return res.status(400).json({ message: "OTP not found" });
+    if (otp.expiresAt < new Date())
+      return res.status(400).json({ message: "OTP expired" });
     if (otp.code !== code) {
       otp.attempts += 1;
       await otp.save();
-      return res.status(400).json({ message: 'Invalid OTP' });
+      return res.status(400).json({ message: "Invalid OTP" });
     }
     otp.consumed = true;
     await otp.save();
     res.json({ success: true, email });
   } catch (error) {
-    console.error('verifyResetOtp error:', error);
-    res.status(500).json({ message: 'Failed to verify reset OTP' });
+    console.error("verifyResetOtp error:", error);
+    res.status(500).json({ message: "Failed to verify reset OTP" });
   }
 };
 
@@ -336,31 +379,35 @@ const resetPassword = async (req, res) => {
   try {
     const { emailPrefix, newPassword } = req.body;
     if (!emailPrefix || /@/.test(emailPrefix) || !newPassword) {
-      return res.status(400).json({ message: 'Invalid input' });
+      return res.status(400).json({ message: "Invalid input" });
     }
     const email = `${emailPrefix}@mit.asia`;
 
     // Ensure the last reset OTP is consumed
-    const lastOtp = await Otp.findOne({ email, purpose: 'reset' }).sort({ createdAt: -1 });
+    const lastOtp = await Otp.findOne({ email, purpose: "reset" }).sort({
+      createdAt: -1,
+    });
     if (!lastOtp || !lastOtp.consumed) {
-      return res.status(400).json({ message: 'OTP verification required' });
+      return res.status(400).json({ message: "OTP verification required" });
     }
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     // Relaxed password validation for reset as well
     const acceptablePassword = /^.{6,}$/;
     if (!acceptablePassword.test(newPassword)) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 6 characters" });
     }
 
     user.password = newPassword;
     await user.save();
-    res.json({ success: true, message: 'Password updated successfully' });
+    res.json({ success: true, message: "Password updated successfully" });
   } catch (error) {
-    console.error('resetPassword error:', error);
-    res.status(500).json({ message: 'Failed to reset password' });
+    console.error("resetPassword error:", error);
+    res.status(500).json({ message: "Failed to reset password" });
   }
 };
 
@@ -368,18 +415,19 @@ const resetPassword = async (req, res) => {
 const checkUsername = async (req, res) => {
   try {
     const { username } = req.query;
-    if (!username) return res.status(400).json({ message: 'Username required' });
+    if (!username)
+      return res.status(400).json({ message: "Username required" });
     const exists = await User.findOne({ username });
     if (!exists) return res.json({ available: true, suggestions: [] });
     const suggestions = [
       `${username}${Math.floor(Math.random() * 90 + 10)}`,
       `${username}_${Math.floor(Math.random() * 900 + 100)}`,
-      `${username}${new Date().getFullYear()}`
+      `${username}${new Date().getFullYear()}`,
     ];
     res.json({ available: false, suggestions });
   } catch (error) {
-    console.error('checkUsername error:', error);
-    res.status(500).json({ message: 'Failed to check username' });
+    console.error("checkUsername error:", error);
+    res.status(500).json({ message: "Failed to check username" });
   }
 };
 
@@ -387,11 +435,11 @@ const checkUsername = async (req, res) => {
 // @route  POST /api/auth/logout
 // @access Private
 const logoutUser = (req, res) => {
-  res.cookie('jwt', '', {
+  res.cookie("jwt", "", {
     httpOnly: true,
     expires: new Date(0),
   });
-  res.status(200).json({ message: 'Logged out successfully' });
+  res.status(200).json({ message: "Logged out successfully" });
 };
 
 // @desc   Get user profile
@@ -399,16 +447,16 @@ const logoutUser = (req, res) => {
 // @access Private
 const getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id).select("-password");
 
     if (user) {
       res.json(user);
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(404).json({ message: "User not found" });
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -417,10 +465,10 @@ const getUserProfile = async (req, res) => {
 // @access Private
 const updateUserProfile = async (req, res) => {
   try {
-    const User = require('../models/User');
-    const Student = require('../models/Student');
-    const Alumni = require('../models/Alumni');
-    
+    const User = require("../models/User");
+    const Student = require("../models/Student");
+    const Alumni = require("../models/Alumni");
+
     const user = await User.findById(req.user._id);
 
     if (user) {
@@ -428,8 +476,13 @@ const updateUserProfile = async (req, res) => {
       user.name = req.body.name || user.name;
       user.email = req.body.email || user.email;
       user.bio = req.body.bio ?? user.bio;
-      user.graduationYear = req.body.graduationYear ?? user.graduationYear;
-      user.department = req.body.department ?? user.department;
+
+      // For alumni, department and graduationYear are set during registration and cannot be edited
+      if (user.role !== "alumni") {
+        user.graduationYear = req.body.graduationYear ?? user.graduationYear;
+        user.department = req.body.department ?? user.department;
+      }
+
       user.year = req.body.year ?? user.year;
       user.skills = req.body.skills ?? user.skills;
       user.degree = req.body.degree ?? user.degree; // alumni degree
@@ -441,12 +494,15 @@ const updateUserProfile = async (req, res) => {
       user.careerInterests = req.body.careerInterests ?? user.careerInterests;
       user.activities = req.body.activities ?? user.activities;
       user.mentorshipOpen = req.body.mentorshipOpen ?? user.mentorshipOpen;
-      user.mentorshipAvailable = req.body.mentorshipAvailable ?? user.mentorshipAvailable; // alumni boolean
+      user.mentorshipAvailable =
+        req.body.mentorshipAvailable ?? user.mentorshipAvailable; // alumni boolean
       user.guidanceAreas = req.body.guidanceAreas ?? user.guidanceAreas; // alumni guidance topics
       user.phoneNumber = req.body.phoneNumber ?? user.phoneNumber;
       // Keep phoneVerified if someone tries to send false; only backend should set true upon OTP verify
-      if (req.body.profileVisibility) user.profileVisibility = req.body.profileVisibility;
-      if (req.body.personalVisibility) user.personalVisibility = req.body.personalVisibility;
+      if (req.body.profileVisibility)
+        user.profileVisibility = req.body.profileVisibility;
+      if (req.body.personalVisibility)
+        user.personalVisibility = req.body.personalVisibility;
 
       if (req.body.socials) {
         user.socials = {
@@ -466,28 +522,40 @@ const updateUserProfile = async (req, res) => {
       const updatedUser = await user.save();
 
       // Update role-specific fields
-      if (user.role === 'student') {
+      if (user.role === "student") {
         const studentData = await Student.findOne({ email: user.email });
         if (studentData) {
           if (req.body.department) {
-            const Department = require('../models/Department');
-            let dep = await Department.findOne({ code: req.body.department }) || await Department.findOne({ name: req.body.department });
+            const Department = require("../models/Department");
+            let dep =
+              (await Department.findOne({ code: req.body.department })) ||
+              (await Department.findOne({ name: req.body.department }));
             if (!dep) {
-              dep = await Department.create({ code: String(req.body.department), name: String(req.body.department) });
+              dep = await Department.create({
+                code: String(req.body.department),
+                name: String(req.body.department),
+              });
             }
             studentData.department = dep._id;
           }
           if (req.body.year) studentData.year = req.body.year;
-          if (req.body.graduationYear) studentData.graduationYear = req.body.graduationYear;
+          if (req.body.graduationYear)
+            studentData.graduationYear = req.body.graduationYear;
           if (req.body.skills) studentData.skills = req.body.skills;
           if (req.body.bio) studentData.bio = req.body.bio;
-          if (req.body.careerInterests) studentData.careerInterests = req.body.careerInterests;
+          if (req.body.careerInterests)
+            studentData.careerInterests = req.body.careerInterests;
           if (req.body.activities) studentData.activities = req.body.activities;
-          if (req.body.socials) studentData.socials = { ...studentData.socials, ...req.body.socials };
-          if (req.body.mentorshipOpen !== undefined) studentData.mentorshipOpen = req.body.mentorshipOpen;
+          if (req.body.socials)
+            studentData.socials = {
+              ...studentData.socials,
+              ...req.body.socials,
+            };
+          if (req.body.mentorshipOpen !== undefined)
+            studentData.mentorshipOpen = req.body.mentorshipOpen;
           await studentData.save();
         }
-      } else if (user.role === 'alumni') {
+      } else if (user.role === "alumni") {
         const alumniData = await Alumni.findOne({ email: user.email });
         if (alumniData) {
           // Keep Alumni collection in sync for legacy consumers; core fields already on User
@@ -495,7 +563,8 @@ const updateUserProfile = async (req, res) => {
           if (req.body.company) alumniData.company = req.body.company;
           if (req.body.position) alumniData.position = req.body.position;
           if (req.body.industry) alumniData.industry = req.body.industry;
-          if (req.body.graduationYear) alumniData.graduationYear = req.body.graduationYear;
+          if (req.body.graduationYear)
+            alumniData.graduationYear = req.body.graduationYear;
           if (req.body.degree) alumniData.degree = req.body.degree;
           if (req.body.skills) alumniData.skills = req.body.skills;
           if (req.body.linkedin) alumniData.linkedin = req.body.linkedin;
@@ -533,11 +602,11 @@ const updateUserProfile = async (req, res) => {
         personalVisibility: updatedUser.personalVisibility,
       });
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(404).json({ message: "User not found" });
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: "Server error" });
   }
 };
 
