@@ -51,6 +51,7 @@ const upload = multer({
 });
 
 // Post routes
+// Make posts feed visible to all authenticated users including admin
 router.get("/", protect, getAllPosts);
 router.get("/user/:userId", protect, getUserPosts);
 router.post(

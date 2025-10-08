@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const { protect } = require('../middleware/authMiddleware');
+const { getAlumniRecommendations } = require('../controllers/recommendationsController');
 
 // GET /api/search/users?query=...&excludeId=...
 router.get('/users', async (req, res) => {
@@ -81,3 +83,5 @@ router.get('/departments', async (req, res) => {
 });
 
 module.exports = router;
+// Alumni recommendations (student only visibility handled in controller)
+router.get('/recommendations/alumni', protect, getAlumniRecommendations);

@@ -212,14 +212,8 @@ exports.getAllPosts = async (req, res) => {
 
     const posts = await Post.find({
       approved: true,
-      $or: [
-        { visibility: "public" },
-        {
-          visibility: "connections",
-          userId: { $in: req.user.connections || [] },
-        },
-        { userId: req.user._id },
-      ],
+      // Show all non-private posts to everyone
+      visibility: { $ne: "private" },
     })
       .sort({ createdAt: -1 })
       .skip(skip)

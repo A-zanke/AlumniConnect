@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { connectionAPI, followAPI, userAPI } from '../components/utils/api';
+import { connectionAPI, followAPI, userAPI, recommendationsAPI } from '../components/utils/api';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import { toast } from 'react-toastify';
@@ -30,6 +30,9 @@ const NetworkPage = () => {
   const [pendingRequests, setPendingRequests] = useState([]);
   // Request history is now shown inside Requests tab for 24h only
   const [requestHistory, setRequestHistory] = useState([]);
+  // AI Alumni Recommendations (student-only)
+  const [recLoading, setRecLoading] = useState(false);
+  const [recommendations, setRecommendations] = useState([]);
   const [stats, setStats] = useState({
     totalConnections: 0,
     mutualConnections: 0
@@ -113,6 +116,25 @@ const NetworkPage = () => {
       setLoading(false);
     }
   }, [fetchNetworkData, user]);
+
+  // Fetch AI alumni recommendations for students only
+  useEffect(() => {
+    const isStudent = String(user?.role || '').toLowerCase() === 'student';
+    if (!user?._id || !isStudent) return;
+    let mounted = true;
+    (async () => {
+      try {
+        setRecLoading(true);
+        const res = await recommendationsAPI.getAlumni();
+        if (mounted) setRecommendations(res.data || []);
+      } catch (e) {
+        console.error('Recommendations fetch error', e);
+      } finally {
+        if (mounted) setRecLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [user?._id, user?.role]);
 
   const handleAcceptRequest = async (connectionId) => {
     try {
@@ -567,6 +589,64 @@ const NetworkPage = () => {
           )}
         </div>
       ) : null}
+
+      {/* AI Alumni Recommendations - student only */}
+      {String(user?.role || '').toLowerCase() === 'student' && (
+        <div className="mt-12">
+          <h2 className="text-2xl font-bold text-gray-900 mb-1">🧠 AI Alumni Recommendations</h2>
+          <p className="text-gray-600 mb-6">Discover alumni profiles most relevant to your skills, department, and career interests.</p>
+          {recLoading ? (
+            <div className="flex justify-center py-8"><Spinner size="lg" /></div>
+          ) : recommendations.length === 0 ? (
+            <div className="text-center py-12 text-gray-600 bg-white rounded-2xl shadow-md">
+              No recommended alumni found yet. Update your skills and interests to get better matches!
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {recommendations.map((alum, idx) => (
+                <motion.div
+                  key={alum._id || idx}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-all p-6 cursor-pointer"
+                  onClick={() => (window.location.href = `/profile/${alum.username || alum._id}`)}
+                >
+                  <div className="flex items-center gap-4 mb-4">
+                    {alum.avatarUrl ? (
+                      <img src={alum.avatarUrl} alt={alum.name} className="h-16 w-16 rounded-full object-cover" />
+                    ) : (
+                      <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
+                        {(alum.name || 'A').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-lg text-gray-900 truncate">{alum.name}</div>
+                      <div className="text-sm text-gray-500 truncate">{alum.department || 'Department'} • {alum.graduationYear || '—'}</div>
+                      <div className="text-sm text-gray-500 truncate">{alum.industry || 'Industry'}</div>
+                    </div>
+                  </div>
+                  {Array.isArray(alum.skills) && alum.skills.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {alum.skills.slice(0, 5).map((s, i) => (
+                        <span key={`${s}-${i}`} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">{s}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <button
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      onClick={(e) => { e.stopPropagation(); handleConnect(alum._id); }}
+                    >
+                      Connect
+                    </button>
+                  </div>
+                </motion.div)
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

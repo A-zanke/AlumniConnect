@@ -44,10 +44,9 @@ const Navbar = () => {
   };
 
   const isStudent = user && (user.role || "").toLowerCase() === "student";
-  const isTeacherOrAlumni =
+  const isPosterRole =
     user &&
-    ((user.role || "").toLowerCase() === "teacher" ||
-      (user.role || "").toLowerCase() === "alumni");
+    (["teacher", "alumni", "admin"].includes((user.role || "").toLowerCase()));
 
   const navItems = [
     { to: "/", label: "Home", icon: FiHome },
@@ -59,8 +58,8 @@ const Navbar = () => {
         ]
       : []),
     { to: "/about", label: "About", icon: FiUsers },
-    // Show Posts for teacher and alumni only
-    ...(isTeacherOrAlumni
+    // Show Posts for teacher, alumni, and admin
+    ...(isPosterRole
       ? [{ to: "/posts", label: "Posts", icon: FiFileText }]
       : []),
     // Hide Forum for teacher and alumni roles

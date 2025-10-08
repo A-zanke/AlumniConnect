@@ -1996,6 +1996,7 @@ const PostsSection = ({
   const [postImages, setPostImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [editingPost, setEditingPost] = useState(null);
 
   useEffect(() => {
     loadPosts();
