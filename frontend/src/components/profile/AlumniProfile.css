@@ -1,0 +1,119 @@
+.profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.profile-header {
+  margin-bottom: 2rem;
+}
+
+.profile-image-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.profile-picture {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.remove-photo-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.remove-photo-btn:hover {
+  background-color: #c82333;
+}
+
+.remove-photo-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.info-box {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+}
+
+.info-box h3 {
+  color: #2d3748;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.read-only-field {
+  margin-bottom: 1rem;
+}
+
+.read-only-field label {
+  display: block;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 0.5rem;
+}
+
+.read-only-field .field-value {
+  padding: 0.75rem;
+  background-color: #f7fafc;
+  border-radius: 0.375rem;
+  color: #2d3748;
+  font-size: 1rem;
+}
+
+.field-readonly {
+  margin-bottom: 1rem;
+}
+
+.field-readonly label {
+  display: block;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.value-display {
+  padding: 0.75rem;
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  color: #1f2937;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+}
+
+.education-fields {
+  pointer-events: none;
+}
+
+/* Remove any select styling */
+.education-fields select,
+.education-fields input {
+  display: none;
+}
+
+/* Ensure no hover effects */
+.value-display:hover {
+  background-color: #f3f4f6;
+  border-color: #e5e7eb;
+}

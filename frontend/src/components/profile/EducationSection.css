@@ -1,0 +1,142 @@
+.education-container {
+  padding: 1.5rem;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.education-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 1.5rem;
+}
+
+.education-fields {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field-label {
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.readonly-value {
+  padding: 0.75rem;
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #1f2937;
+  font-size: 0.95rem;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+}
+
+/* Remove focus outline */
+.readonly-value:focus {
+  outline: none;
+}
+
+/* Prevent any interaction */
+.readonly-value::selection {
+  background: transparent;
+}
+
+.education-section {
+  background: #fff;
+  padding: 1.2rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+.education-details {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.info-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.info-field label {
+  font-weight: 500;
+  color: #4b5563;
+}
+
+/* visible read-only value */
+.readonly-display {
+  padding: 0.65rem;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #111827;
+  pointer-events: none;
+  user-select: none;
+  cursor: default;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+}
+
+/* safety: force-hide any selects/inputs accidentally placed inside this block */
+.education-section select,
+.education-section input,
+.education-section textarea,
+.education-section .editable-control {
+  display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.year-input {
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  width: 100%;
+  font-size: 0.95rem;
+  color: #111827;
+  background-color: #ffffff;
+}
+
+.year-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* Only allow year input for student/teacher */
+.education-section[data-role="alumni"] .year-input {
+  display: none !important;
+}
+
+/* Ensure department is always readonly */
+.department-field input,
+.department-field select {
+  display: none !important;
+}
