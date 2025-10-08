@@ -44,6 +44,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 import { DEFAULT_PROFILE_IMAGE } from "../constants/images";
 import { formatPostContent } from "../utils/textFormatter";
+import EnhancedPostCard from "../components/posts/EnhancedPostCard";
+import EnhancedPostComposer from "../components/posts/EnhancedPostComposer";
 
 const COMMON_SKILLS = [
   "JavaScript",
@@ -719,6 +721,7 @@ const ProfilePage = () => {
                   showCreatePost={showCreatePost}
                   setShowCreatePost={setShowCreatePost}
                   fetchUserPosts={fetchUserPosts}
+                  currentUser={currentUser}
                 />
               )}
 
@@ -1964,7 +1967,7 @@ const SettingsSection = ({
   </div>
 );
 
-// Posts Section Component
+// Enhanced Posts Section Component
 const PostsSection = ({
   user,
   posts,
@@ -1972,12 +1975,10 @@ const PostsSection = ({
   showCreatePost,
   setShowCreatePost,
   fetchUserPosts,
+  currentUser,
 }) => {
   const [loading, setLoading] = useState(false);
-  const [postContent, setPostContent] = useState("");
-  const [postImages, setPostImages] = useState([]);
-  const [imagePreviews, setImagePreviews] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
+  const [editingPost, setEditingPost] = useState(null);
 
   useEffect(() => {
     loadPosts();
@@ -1986,7 +1987,7 @@ const PostsSection = ({
   const loadPosts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/posts/user/${user._id}`);
+      const response = await axios.get(`/api/posts/my-posts`);
       setPosts(response.data);
     } catch (error) {
       console.error("Error fetching posts:", error);
@@ -1996,72 +1997,7 @@ const PostsSection = ({
     }
   };
 
-  const handleImageSelect = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length + postImages.length > 5) {
-      toast.error("You can upload maximum 5 images");
-      return;
-    }
-
-    const validFiles = files.filter((file) => {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`${file.name} is too large. Max size is 5MB`);
-        return false;
-      }
-      return true;
-    });
-
-    setPostImages([...postImages, ...validFiles]);
-
-    validFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreviews((prev) => [...prev, reader.result]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const removeImage = (index) => {
-    setPostImages(postImages.filter((_, i) => i !== index));
-    setImagePreviews(imagePreviews.filter((_, i) => i !== index));
-  };
-
-  const handleCreatePost = async () => {
-    if (!postContent.trim() && postImages.length === 0) {
-      toast.error("Please add some content or images");
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      const formData = new FormData();
-      formData.append("content", postContent);
-      postImages.forEach((image) => {
-        formData.append("media", image);
-      });
-
-      await axios.post("/api/posts", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      toast.success("Post created successfully!");
-      setPostContent("");
-      setPostImages([]);
-      setImagePreviews([]);
-      setShowCreatePost(false);
-      loadPosts();
-    } catch (error) {
-      console.error("Error creating post:", error);
-      toast.error(error.response?.data?.message || "Failed to create post");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleDeletePost = async (postId) => {
-    if (!window.confirm("Are you sure you want to delete this post?")) return;
-
     try {
       await axios.delete(`/api/posts/${postId}`);
       toast.success("Post deleted successfully");
@@ -2072,13 +2008,15 @@ const PostsSection = ({
     }
   };
 
-  const formatTime = (date) => {
-    const postDate = new Date(date);
-    return postDate.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+  const handleEditPost = (post) => {
+    setEditingPost(post);
+    setShowCreatePost(true);
+  };
+
+  const handlePostCreated = () => {
+    loadPosts();
+    setShowCreatePost(false);
+    setEditingPost(null);
   };
 
   return (

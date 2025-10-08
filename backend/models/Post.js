@@ -45,15 +45,24 @@ const postSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Rich text content with HTML formatting
+    richContent: {
+      type: String,
+      trim: true,
+    },
     media: [
       {
         url: String,
         type: {
           type: String,
-          enum: ["image", "video", "file"],
+          enum: ["image", "video", "file", "link"],
           default: "image",
         },
         name: String,
+        // For link previews
+        title: String,
+        description: String,
+        thumbnail: String,
       },
     ],
     postType: {
@@ -67,6 +76,7 @@ const postSchema = new mongoose.Schema(
       default: "public",
     },
     tags: [String],
+    hashtags: [String], // Separate hashtags from tags
     mentions: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -106,10 +116,52 @@ const postSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Bookmark functionality
+    bookmarks: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    // Share tracking
+    shareHistory: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        sharedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        sharedWith: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+          },
+        ],
+      },
+    ],
     approved: {
       type: Boolean,
       default: true,
     },
+    // Post engagement metrics
+    viewCount: {
+      type: Number,
+      default: 0,
+    },
+    // For post editing history
+    editHistory: [
+      {
+        content: String,
+        editedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
