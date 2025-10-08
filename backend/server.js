@@ -1,14 +1,14 @@
-const express = require('express');
-const dotenv = require('dotenv');
-const path = require('path');
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
-const morgan = require('morgan');
-const connectDB = require('./config/db');
-const { errorHandler } = require('./middleware/errorHandler');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const Notification = require('./models/Notification'); // Add at top if missing
+const express = require("express");
+const dotenv = require("dotenv");
+const path = require("path");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const morgan = require("morgan");
+const connectDB = require("./config/db");
+const { errorHandler } = require("./middleware/errorHandler");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const Notification = require("./models/Notification"); // Add at top if missing
 
 // Load environment variables
 dotenv.config();
@@ -17,11 +17,11 @@ connectDB();
 
 // Initialize Express
 const app = express();
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-const http = require('http').createServer(app);
-const { Server } = require('socket.io');
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+const http = require("http").createServer(app);
+const { Server } = require("socket.io");
 const io = new Server(http, {
-  cors: { origin: 'http://localhost:3000', credentials: true }
+  cors: { origin: "http://localhost:3000", credentials: true },
 });
 global.io = io;
 
@@ -35,23 +35,25 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors({
-  origin: 'http://localhost:3000',
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 app.use(helmet());
 
 // Whitelist auth/OTP/search + event writes + ALL admin routes
 const AUTH_OTP_PATHS = new Set([
-  '/api/auth/login',
-  '/api/auth/send-otp',
-  '/api/auth/verify-otp',
-  '/api/auth/forgot/send-otp',
-  '/api/auth/forgot/verify-otp',
-  '/api/auth/forgot/reset',
-  '/api/search/users',
-  '/api/search/departments',
-  '/api/events', // POST
+  "/api/auth/login",
+  "/api/auth/send-otp",
+  "/api/auth/verify-otp",
+  "/api/auth/forgot/send-otp",
+  "/api/auth/forgot/verify-otp",
+  "/api/auth/forgot/reset",
+  "/api/search/users",
+  "/api/search/departments",
+  "/api/events", // POST
 ]);
 
 const globalLimiter = rateLimit({
@@ -62,94 +64,106 @@ const globalLimiter = rateLimit({
   keyGenerator: (req) => req.ip,
   skip: (req) => {
     // Disable rate limit entirely in development for easier local testing
-    if (process.env.NODE_ENV !== 'production') return true;
+    if (process.env.NODE_ENV !== "production") return true;
 
-    if (req.method === 'OPTIONS') return true;
-    const p = req.path || '';
+    if (req.method === "OPTIONS") return true;
+    const p = req.path || "";
 
     // Skip all /api/admin/* requests
-    if (p.startsWith('/api/admin')) return true;
+    if (p.startsWith("/api/admin")) return true;
 
     // Skip all auth routes
-    if (p.startsWith('/api/auth')) return true;
+    if (p.startsWith("/api/auth")) return true;
 
     // Skip POSTs for whitelisted paths
-    if (req.method === 'POST' && AUTH_OTP_PATHS.has(p)) return true;
+    if (req.method === "POST" && AUTH_OTP_PATHS.has(p)) return true;
 
     // Skip PUT/DELETE for /api/events/:id
-    if ((req.method === 'PUT' || req.method === 'DELETE') && /^\/api\/events\/[^/]+$/.test(p)) return true;
+    if (
+      (req.method === "PUT" || req.method === "DELETE") &&
+      /^\/api\/events\/[^/]+$/.test(p)
+    )
+      return true;
 
     return false;
-  }
+  },
 });
 
 // Apply limiter before routes
 app.use(globalLimiter);
 
 // Logging in development
-if (process.env.NODE_ENV !== 'production') {
-  app.use(morgan('dev'));
+if (process.env.NODE_ENV !== "production") {
+  app.use(morgan("dev"));
 }
 
 // Import routes
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const connectionRoutes = require('./routes/connectionRoutes');
-const searchRoutes = require('./routes/searchRoutes');
-const postsRoutes = require('./routes/postsRoutes');
-const eventsRoutes = require('./routes/eventsRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const messagesRoutes = require('./routes/messagesRoutes');
-const avatarRoutes = require('./routes/avatarRoutes');
-const forumRoutes = require('./routes/forumRoutes');
-const chatbotRoutes = require('./routes/chatbotRoutes');
+const authRoutes = require("./routes/authRoutes");
+const userRoutes = require("./routes/userRoutes");
+const connectionRoutes = require("./routes/connectionRoutes");
+const searchRoutes = require("./routes/searchRoutes");
+const postsRoutes = require("./routes/postsRoutes");
+const eventsRoutes = require("./routes/eventsRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const messagesRoutes = require("./routes/messagesRoutes");
+const avatarRoutes = require("./routes/avatarRoutes");
+const forumRoutes = require("./routes/forumRoutes");
+const chatbotRoutes = require("./routes/chatbotRoutes");
 
-app.use('/api/forum', forumRoutes);
-app.use('/api/chatbot', chatbotRoutes);
+app.use("/api/forum", forumRoutes);
+app.use("/api/chatbot", chatbotRoutes);
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/connections', connectionRoutes);
-app.use('/api/search', searchRoutes);
-app.use('/api/posts', postsRoutes);
-app.use('/api/events', eventsRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/messages', messagesRoutes);
-app.use('/api', avatarRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/connections", connectionRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/posts", postsRoutes);
+app.use("/api/events", eventsRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/messages", messagesRoutes);
+app.use("/api", avatarRoutes);
 
 // Create uploads directory if it doesn't exist
-const fs = require('fs');
-const uploadsDir = path.join(__dirname, 'uploads');
+const fs = require("fs");
+const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
 // Serve uploaded files with CORS headers
-app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  next();
-}, express.static(uploadsDir));
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
+    res.header("Access-Control-Allow-Credentials", "true");
+    next();
+  },
+  express.static(uploadsDir)
+);
 
 // Serve message images
-app.use('/uploads/messages', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  next();
-}, express.static(path.join(__dirname, 'uploads/messages')));
+app.use(
+  "/uploads/messages",
+  (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
+    res.header("Access-Control-Allow-Credentials", "true");
+    next();
+  },
+  express.static(path.join(__dirname, "uploads/messages"))
+);
 
 // Serve static assets in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/build')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../frontend', 'build', 'index.html'));
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(path.join(__dirname, "../frontend/build")));
+  app.get("*", (req, res) => {
+    res.sendFile(path.resolve(__dirname, "../frontend", "build", "index.html"));
   });
 } else {
-  app.get('/', (req, res) => {
-    res.send('API is running...');
+  app.get("/", (req, res) => {
+    res.send("API is running...");
   });
 }
 
@@ -158,40 +172,40 @@ app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
-http.listen(PORT, '0.0.0.0', () => {
+http.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
 
 // Socket.IO basic chat
-const jwt = require('jsonwebtoken');
-const User = require('./models/User');
-const Message = require('./models/Message');
+const jwt = require("jsonwebtoken");
+const User = require("./models/User");
+const Message = require("./models/Message");
 
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error('No token'));
+    if (!token) return next(new Error("No token"));
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('_id');
-    if (!user) return next(new Error('User not found'));
+    const user = await User.findById(decoded.id).select("_id");
+    if (!user) return next(new Error("User not found"));
     socket.userId = user._id.toString();
     next();
   } catch (e) {
-    next(new Error('Auth failed'));
+    next(new Error("Auth failed"));
   }
 });
 
-io.on('connection', (socket) => {
+io.on("connection", (socket) => {
   // Join personal room for notifications
   socket.join(socket.userId);
 
   // Join room by role
-  socket.on("joinRoom", role => {
+  socket.on("joinRoom", (role) => {
     socket.join(role); // students join "student" room, etc.
   });
 
   // For students, join department-year room for section notifications
-  socket.on('joinSectionRoom', ({ department, year }) => {
+  socket.on("joinSectionRoom", ({ department, year }) => {
     if (department && year) {
       const room = `student-${department}-${year}`;
       socket.join(room);
@@ -199,7 +213,7 @@ io.on('connection', (socket) => {
   });
 
   // For teachers, join department room
-  socket.on('joinTeacherRoom', ({ department }) => {
+  socket.on("joinTeacherRoom", ({ department }) => {
     if (department) {
       const room = `teacher-${department}`;
       socket.join(room);
@@ -207,7 +221,7 @@ io.on('connection', (socket) => {
   });
 
   // For alumni, join department-graduationYear room
-  socket.on('joinAlumniRoom', ({ department, graduationYear }) => {
+  socket.on("joinAlumniRoom", ({ department, graduationYear }) => {
     if (department && graduationYear) {
       const room = `alumni-${department}-${graduationYear}`;
       socket.join(room);
@@ -215,46 +229,46 @@ io.on('connection', (socket) => {
   });
 
   // Chat logic remains unchanged
-  socket.on('chat:send', async (payload) => {
+  socket.on("chat:send", async (payload) => {
     try {
       const from = socket.userId;
       const { to, content, attachments } = payload || {};
       if (!to || (!content && !attachments)) return;
-      const me = await User.findById(from).select('connections');
+      const me = await User.findById(from).select("connections");
       if (!me) return;
-      const isConnected = me.connections.some(id => id.toString() === to);
+      const isConnected = me.connections.some((id) => id.toString() === to);
       if (!isConnected) return;
-      const messageData = { from, to, content: content || '' };
+      const messageData = { from, to, content: content || "" };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
       const msg = await Message.create(messageData);
-      const messagePayload = { 
-        _id: msg._id, 
-        from, 
-        to, 
-        content: msg.content, 
+      const messagePayload = {
+        _id: msg._id,
+        from,
+        to,
+        content: msg.content,
         attachments: msg.attachments || [],
-        createdAt: msg.createdAt 
+        createdAt: msg.createdAt,
       };
-      io.to(to).emit('chat:receive', messagePayload);
-      socket.emit('chat:sent', messagePayload);
+      io.to(to).emit("chat:receive", messagePayload);
+      socket.emit("chat:sent", messagePayload);
     } catch (e) {
-      console.error('Socket chat error:', e);
+      console.error("Socket chat error:", e);
     }
   });
 
   socket.join(socket.userId);
 
   // Forum rooms
-  socket.on('forum:join_post', (payload) => {
+  socket.on("forum:join_post", (payload) => {
     try {
       const postId = payload?.postId;
       if (postId) socket.join(`forum_post_${postId}`);
     } catch (e) {}
   });
 
-  socket.on('forum:leave_post', (payload) => {
+  socket.on("forum:leave_post", (payload) => {
     try {
       const postId = payload?.postId;
       if (postId) socket.leave(`forum_post_${postId}`);
