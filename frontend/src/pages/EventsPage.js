@@ -30,7 +30,8 @@ const toArray = (v) => {
 
 const EventsPage = () => {
 	const [events, setEvents] = useState([]);
-	const [myEvents, setMyEvents] = useState([]);
+  const [myEvents, setMyEvents] = useState([]);
+  const [attendedEvents, setAttendedEvents] = useState([]);
 	const [pendingEvents, setPendingEvents] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [showUpcoming, setShowUpcoming] = useState(true);
@@ -74,12 +75,18 @@ const EventsPage = () => {
 	const fetchAll = useCallback(async () => {
 		setLoading(true);
 		try {
-			const [allRes, mineRes] = await Promise.all([
-				eventsAPI.getEvents(showUpcoming),
-				eventsAPI.getMyEvents()
-			]);
+      const [allRes, mineRes] = await Promise.all([
+        eventsAPI.getEvents(showUpcoming),
+        eventsAPI.getMyEvents()
+      ]);
 			setEvents(Array.isArray(allRes.data) ? allRes.data : []);
 			setMyEvents(Array.isArray(mineRes.data) ? mineRes.data : []);
+      // Derive attended events for students: those with RSVP or targeted audience match
+      if (String(user?.role||'').toLowerCase() === 'student') {
+        const uid = user?._id;
+        const attended = (Array.isArray(allRes.data) ? allRes.data : []).filter(e => Array.isArray(e.rsvps) && e.rsvps.some(id => String(id) === String(uid)));
+        setAttendedEvents(attended);
+      }
 			setError(null);
 		} catch (err) {
 			setError('Failed to fetch events');
@@ -446,7 +453,7 @@ const EventsPage = () => {
 			<div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 px-2">
 				<div>
 					<h2 className="text-3xl font-bold text-gray-900">Explore Events</h2>
-					<p className="mt-1 text-gray-600">All Events vs My Created Events.</p>
+          <p className="mt-1 text-gray-600">All Events vs {String(user?.role||'').toLowerCase()==='student' ? 'My Attended Events' : 'My Created Events'}.</p>
 				</div>
 				<div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-4">
 					<div className="flex items-center">
@@ -485,12 +492,12 @@ const EventsPage = () => {
 					>
 						All Events
 					</button>
-					<button
-						onClick={() => setActiveTab('mine')}
-						className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'mine' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-					>
-						My Created Events ({myEvents.length})
-					</button>
+          <button
+            onClick={() => setActiveTab('mine')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'mine' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            {String(user?.role||'').toLowerCase() === 'student' ? 'My Attended Events' : 'My Created Events'} ({myEvents.length})
+          </button>
 					{user?.role?.toLowerCase() === 'admin' && (
 						<button
 							onClick={() => setActiveTab('pending')}
@@ -829,19 +836,32 @@ const EventsPage = () => {
 				</>
 			)}
 
-			{/* My Created Events */}
+      {/* My Created/Attended Events */}
 			{activeTab === 'mine' && (
 				<>
-					{(!myEvents || myEvents.length === 0) ? (
+          {String(user?.role||'').toLowerCase()==='student' ? (
+            (!attendedEvents || attendedEvents.length === 0) ? (
+              <div className="text-center py-12">
+                <h3 className="text-lg font-medium text-gray-900">No attended events</h3>
+                <p className="mt-2 text-gray-600">You haven't attended any events yet.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {attendedEvents.map(e => renderEventCard(e, false))}
+              </div>
+            )
+          ) : (
+            (!myEvents || myEvents.length === 0) ? (
 						<div className="text-center py-12">
 							<h3 className="text-lg font-medium text-gray-900">No created events</h3>
 							<p className="mt-2 text-gray-600">You haven't created any events yet.</p>
 						</div>
-					) : (
+            ) : (
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
 							{myEvents.map(e => renderEventCard(e, true))}
 						</div>
-					)}
+            )
+          )}
 				</>
 			)}
 

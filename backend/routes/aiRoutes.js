@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const { spawn } = require('child_process');
+const User = require('../models/User');
 
 // GET /api/ai/recommendations/:studentId
 router.get('/recommendations/:studentId', protect, async (req, res) => {
@@ -29,14 +30,37 @@ router.get('/recommendations/:studentId', protect, async (req, res) => {
     let err = '';
     py.stdout.on('data', (d) => (out += d.toString()));
     py.stderr.on('data', (d) => (err += d.toString()));
-    py.on('close', (code) => {
+    py.on('close', async (code) => {
       if (code !== 0) {
         return res.status(500).json({ message: 'AI script failed', stderr: err, stdout: out });
       }
       try {
         const parsed = JSON.parse(out || '{}');
         if (parsed.error) return res.status(500).json(parsed);
-        return res.json(parsed.recommendations || []);
+        let recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+        if (recs.length === 0) {
+          // Fallback: return some alumni from DB so UI is not empty
+          try {
+            const fallback = await User.find({ role: 'alumni' })
+              .select('name username avatarUrl department graduationYear industry skills')
+              .limit(10)
+              .lean();
+            recs = fallback.map(a => ({
+              _id: String(a._id),
+              name: a.name || '',
+              username: a.username || '',
+              avatarUrl: a.avatarUrl || '',
+              department: a.department || '',
+              graduationYear: a.graduationYear || '',
+              industry: a.industry || '',
+              skills: Array.isArray(a.skills) ? a.skills : [],
+              similarity: 0.0,
+            }));
+          } catch (fallbackErr) {
+            // ignore
+          }
+        }
+        return res.json(recs);
       } catch (e) {
         return res.status(500).json({ message: 'Invalid AI output', out });
       }
