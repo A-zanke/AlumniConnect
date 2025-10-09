@@ -116,33 +116,13 @@ const postSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    // Bookmark functionality
-    bookmarks: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
-    // Share tracking
-    shareHistory: [
-      {
-        userId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-          required: true,
-        },
-        sharedAt: {
-          type: Date,
-          default: Date.now,
-        },
-        sharedWith: [
-          {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-          },
-        ],
-      },
-    ],
+    // Optional link preview metadata
+    linkPreview: {
+      url: { type: String },
+      title: { type: String },
+      description: { type: String },
+      image: { type: String },
+    },
     approved: {
       type: Boolean,
       default: true,

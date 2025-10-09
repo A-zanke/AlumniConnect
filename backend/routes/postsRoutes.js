@@ -12,6 +12,9 @@ const {
   sharePost,
   reactToPost,
   replyToComment,
+  updatePost,
+  toggleBookmark,
+  getSavedPosts,
 } = require("../controllers/postsController");
 const { protect } = require("../middleware/authMiddleware");
 const { roleMiddleware } = require("../middleware/roleMiddleware");
@@ -48,6 +51,7 @@ const upload = multer({
 });
 
 // Post routes
+// Make posts feed visible to all authenticated users including admin
 router.get("/", protect, getAllPosts);
 router.get("/user/:userId", protect, getUserPosts);
 router.post(
@@ -57,6 +61,7 @@ router.post(
   upload.array("media", 5),
   createPost
 );
+router.put("/:id", protect, updatePost);
 router.delete("/:id", protect, deletePost);
 
 // Reaction routes (LinkedIn-style)
@@ -71,5 +76,9 @@ router.post("/:id/comment/:commentId/reply", protect, replyToComment);
 
 // Share routes
 router.post("/:id/share", protect, sharePost);
+
+// Bookmark routes
+router.post("/:id/bookmark", protect, toggleBookmark);
+router.get("/saved/mine", protect, getSavedPosts);
 
 module.exports = router;
