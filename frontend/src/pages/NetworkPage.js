@@ -125,7 +125,7 @@ const NetworkPage = () => {
     (async () => {
       try {
         setRecLoading(true);
-        const res = await recommendationsAPI.getAlumni();
+        const res = await recommendationsAPI.getAlumni(user._id);
         if (mounted) setRecommendations(res.data || []);
       } catch (e) {
         console.error('Recommendations fetch error', e);
