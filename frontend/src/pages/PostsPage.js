@@ -63,6 +63,9 @@ const PostsPage = () => {
   const [showCreatePost, setShowCreatePost] = useState(false);
 
   const canCreatePost = user?.role === "teacher" || user?.role === "alumni";
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionResults, setMentionResults] = useState([]);
+  const [showMentions, setShowMentions] = useState(false);
 
   useEffect(() => {
     fetchPosts();

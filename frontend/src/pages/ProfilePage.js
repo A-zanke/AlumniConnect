@@ -737,7 +737,10 @@ const ProfilePage = () => {
               )}
 
               {activeSection === "saved" && canViewPosts && (
-                <SavedPostsSection savedPosts={savedPosts} onRefresh={fetchSavedPosts} />
+                <SavedPostsSection
+                  savedPosts={savedPosts}
+                  onRefresh={fetchSavedPosts}
+                />
               )}
 
               {activeSection === "settings" && (
@@ -2330,8 +2333,6 @@ const PostsSection = ({
   );
 };
 
-export default ProfilePage;
-
 // Saved Posts Section Component
 const SavedPostsSection = ({ savedPosts, onRefresh }) => {
   useEffect(() => {
@@ -2343,11 +2344,14 @@ const SavedPostsSection = ({ savedPosts, onRefresh }) => {
       {savedPosts.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-200">
           <FiBookmark className="mx-auto text-gray-300 mb-4" size={48} />
-          <p className="text-gray-500">No saved posts yet</n> 
+          <p className="text-gray-500">No saved posts yet</p>
         </div>
       ) : (
         savedPosts.map((post) => (
-          <div key={post._id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+          <div
+            key={post._id}
+            className="bg-white rounded-xl shadow-sm p-6 border border-gray-200"
+          >
             <div className="flex items-center gap-3 mb-4">
               <img
                 src={post.user?.avatarUrl || "/default-avatar.png"}
@@ -2355,8 +2359,12 @@ const SavedPostsSection = ({ savedPosts, onRefresh }) => {
                 className="w-10 h-10 rounded-full object-cover"
               />
               <div>
-                <div className="font-semibold text-gray-800">{post.user?.name}</div>
-                <div className="text-sm text-gray-500">{new Date(post.createdAt).toLocaleString()}</div>
+                <div className="font-semibold text-gray-800">
+                  {post.user?.name}
+                </div>
+                <div className="text-sm text-gray-500">
+                  {new Date(post.createdAt).toLocaleString()}
+                </div>
               </div>
             </div>
             <div className="text-gray-700 mb-2 whitespace-pre-wrap">
@@ -2365,7 +2373,12 @@ const SavedPostsSection = ({ savedPosts, onRefresh }) => {
             {post.media && post.media.length > 0 && (
               <div className="grid grid-cols-2 gap-2 mt-2">
                 {post.media.map((m, i) => (
-                  <img key={i} src={m.url} className="rounded-xl object-cover w-full h-40" />
+                  <img
+                    key={i}
+                    src={m.url}
+                    className="rounded-xl object-cover w-full h-40"
+                    alt=""
+                  />
                 ))}
               </div>
             )}
@@ -2375,3 +2388,5 @@ const SavedPostsSection = ({ savedPosts, onRefresh }) => {
     </div>
   );
 };
+
+export default ProfilePage;
