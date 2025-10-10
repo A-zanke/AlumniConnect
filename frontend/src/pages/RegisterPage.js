@@ -1,32 +1,32 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { useAuth } from '../context/AuthContext';
-import './RegisterPage.css';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import { useAuth } from "../context/AuthContext";
+import "./RegisterPage.css";
 
 const RegisterPage = () => {
   const [formData, setFormData] = useState({
-    name: '',
-    username: '',
-    emailPrefix: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    role: 'student',
-    department: '',
-    otherDepartment: '',
-    year: '',
-    graduationYear: ''
+    name: "",
+    username: "",
+    emailPrefix: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    role: "student",
+    department: "",
+    otherDepartment: "",
+    year: "",
+    graduationYear: "",
   });
 
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);         // overall submit loading
-  const [otpLoading, setOtpLoading] = useState(false);   // send OTP button loading
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false); // overall submit loading
+  const [otpLoading, setOtpLoading] = useState(false); // send OTP button loading
   const [verifyLoading, setVerifyLoading] = useState(false); // verify OTP button loading
 
   const { register, sendOtp, verifyOtp, checkUsername } = useAuth();
   const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
+  const [otpCode, setOtpCode] = useState("");
   const [emailVerified, setEmailVerified] = useState(false);
 
   // username availability: null (idle), true (available), false (taken)
@@ -37,14 +37,14 @@ const RegisterPage = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    setError('');
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setError("");
   };
 
   // Send OTP
   const handleSendOtp = async () => {
     if (!formData.emailPrefix || /@/.test(formData.emailPrefix)) {
-      toast.error('Enter email prefix only (no @)');
+      toast.error("Enter email prefix only (no @)");
       return;
     }
     setOtpLoading(true);
@@ -52,12 +52,12 @@ const RegisterPage = () => {
       const resp = await sendOtp(formData.emailPrefix.trim());
       if (resp.success) {
         setOtpSent(true);
-        toast.success('OTP sent. Check your email.');
+        toast.success("OTP sent. Check your email.");
       } else {
-        toast.error(resp.error || 'Failed to send OTP');
+        toast.error(resp.error || "Failed to send OTP");
       }
     } catch (e) {
-      toast.error('Failed to send OTP');
+      toast.error("Failed to send OTP");
     } finally {
       setOtpLoading(false);
     }
@@ -66,7 +66,7 @@ const RegisterPage = () => {
   // Verify OTP
   const handleVerifyOtp = async () => {
     if (!otpCode || otpCode.length !== 6) {
-      toast.error('Enter the 6-digit OTP');
+      toast.error("Enter the 6-digit OTP");
       return;
     }
     setVerifyLoading(true);
@@ -74,13 +74,16 @@ const RegisterPage = () => {
       const resp = await verifyOtp(formData.emailPrefix.trim(), otpCode.trim());
       if (resp.success) {
         setEmailVerified(true);
-        setFormData(prev => ({ ...prev, email: resp.data?.email || `${formData.emailPrefix}@mit.asia` }));
-        toast.success('Email verified');
+        setFormData((prev) => ({
+          ...prev,
+          email: resp.data?.email || `${formData.emailPrefix}@mit.asia`,
+        }));
+        toast.success("Email verified");
       } else {
-        toast.error(resp.error || 'OTP verification failed');
+        toast.error(resp.error || "OTP verification failed");
       }
     } catch (e) {
-      toast.error('OTP verification failed');
+      toast.error("OTP verification failed");
     } finally {
       setVerifyLoading(false);
     }
@@ -122,35 +125,38 @@ const RegisterPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      setError('Full Name is required');
+      setError("Full Name is required");
       return;
     }
     if (!formData.emailPrefix.trim()) {
-      setError('Email prefix is required');
+      setError("Email prefix is required");
       return;
     }
     if (!emailVerified) {
-      setError('Please verify your email via OTP before registering');
+      setError("Please verify your email via OTP before registering");
       return;
     }
     if (!formData.username.trim()) {
-      setError('Username is required');
+      setError("Username is required");
       return;
     }
     if (usernameAvailable === false) {
-      setError('Username already taken. Try another.');
+      setError("Username already taken. Try another.");
       return;
     }
-    if (!formData.department || (formData.department === 'Other' && !formData.otherDepartment.trim())) {
-      setError('Select department');
+    if (
+      !formData.department ||
+      (formData.department === "Other" && !formData.otherDepartment.trim())
+    ) {
+      setError("Select department");
       return;
     }
-    if (formData.role === 'student' && !formData.year) {
-      setError('Select year');
+    if (formData.role === "student" && !formData.year) {
+      setError("Select year");
       return;
     }
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError("Passwords do not match");
       return;
     }
 
@@ -164,18 +170,24 @@ const RegisterPage = () => {
         password: formData.password,
         confirmPassword: formData.confirmPassword,
         role: formData.role,
-        department: formData.department === 'Other' ? formData.otherDepartment : formData.department,
-        year: formData.role === 'student' ? Number(formData.year) : undefined,
-        graduationYear: formData.role === 'alumni' ? Number(formData.graduationYear) : undefined
+        department:
+          formData.department === "Other"
+            ? formData.otherDepartment
+            : formData.department,
+        year: formData.role === "student" ? Number(formData.year) : undefined,
+        graduationYear:
+          formData.role === "alumni"
+            ? Number(formData.graduationYear)
+            : undefined,
       });
       if (result.success) {
-        toast.success('Account created');
-        navigate('/profile');
+        toast.success("Account created");
+        navigate("/profile");
       } else {
-        toast.error(result.error || 'Registration failed');
+        toast.error(result.error || "Registration failed");
       }
     } catch (err) {
-      toast.error(err.message || 'Registration failed');
+      toast.error(err.message || "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -207,13 +219,15 @@ const RegisterPage = () => {
             {/* Institution Email + OTP */}
             <div className="register-field">
               <label>Institution Email</label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div
+                style={{ display: "flex", gap: "5px", alignItems: "center" }}
+              >
                 <input
                   type="text"
                   name="emailPrefix"
                   value={formData.emailPrefix}
                   onChange={(e) => {
-                    if (e.target.value.includes('@')) return; // prevent typing @
+                    if (e.target.value.includes("@")) return; // prevent typing @
                     handleChange(e);
                   }}
                   required
@@ -226,36 +240,47 @@ const RegisterPage = () => {
                     onClick={handleSendOtp}
                     disabled={otpLoading}
                     className="register-button"
-                    style={{ padding: '8px 12px' }}
+                    style={{ padding: "8px 12px" }}
                   >
-                    {otpLoading ? 'Sending...' : 'Send OTP'}
+                    {otpLoading ? "Sending..." : "Send OTP"}
                   </button>
                 )}
               </div>
 
               {otpSent && !emailVerified && (
-                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div
+                  style={{
+                    marginTop: "8px",
+                    display: "flex",
+                    gap: "8px",
+                    alignItems: "center",
+                  }}
+                >
                   <input
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
                     placeholder="Enter 6-digit OTP"
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) =>
+                      setOtpCode(e.target.value.replace(/\D/g, ""))
+                    }
                   />
                   <button
                     type="button"
                     onClick={handleVerifyOtp}
                     disabled={verifyLoading}
                     className="register-button"
-                    style={{ padding: '8px 12px' }}
+                    style={{ padding: "8px 12px" }}
                   >
-                    {verifyLoading ? 'Verifying...' : 'Verify OTP'}
+                    {verifyLoading ? "Verifying..." : "Verify OTP"}
                   </button>
                 </div>
               )}
 
-              {emailVerified && <div className="register-success">Email verified</div>}
+              {emailVerified && (
+                <div className="register-success">Email verified</div>
+              )}
             </div>
 
             {/* Username */}
@@ -271,7 +296,9 @@ const RegisterPage = () => {
               />
               {formData.username.trim() && usernameAvailable === false && (
                 <div className="register-error">
-                  Username already taken. {usernameSuggestions.length > 0 && `Try: ${usernameSuggestions.join(', ')}`}
+                  Username already taken.{" "}
+                  {usernameSuggestions.length > 0 &&
+                    `Try: ${usernameSuggestions.join(", ")}`}
                 </div>
               )}
               {formData.username.trim() && usernameAvailable === true && (
@@ -305,28 +332,29 @@ const RegisterPage = () => {
                 required
               >
                 <option value="">Select department</option>
-                <option value="CSE">CSE</option>
-                <option value="AI-DS">AI-DS</option>
-                <option value="Civil">Civil</option>
-                <option value="Mechanical">Mechanical</option>
-                <option value="Electrical">Electrical</option>
-                <option value="ETC">ETC</option>
+                <option value="AI-DS">
+                  Artificial Intelligence & Data Science
+                </option>
+                <option value="CSE">Computer Science and Enginnerring</option>
+                <option value="Civil">Civil Engineering</option>
+                <option value="Mechanical">Mechanical Engineering</option>
+                <option value="ETC">Computer Science & Desgining</option>
                 <option value="Other">Other</option>
               </select>
-              {formData.department === 'Other' && (
+              {formData.department === "Other" && (
                 <input
                   type="text"
                   name="otherDepartment"
                   placeholder="Enter your department"
                   value={formData.otherDepartment}
                   onChange={handleChange}
-                  style={{ marginTop: '8px' }}
+                  style={{ marginTop: "8px" }}
                 />
               )}
             </div>
 
             {/* Conditional fields */}
-            {formData.role === 'student' && (
+            {formData.role === "student" && (
               <div className="register-field">
                 <label>Year</label>
                 <select
@@ -341,11 +369,12 @@ const RegisterPage = () => {
                   <option value="2">2</option>
                   <option value="3">3</option>
                   <option value="4">4</option>
+                  <option value="4">5</option>
                 </select>
               </div>
             )}
 
-            {formData.role === 'alumni' && (
+            {formData.role === "alumni" && (
               <div className="register-field">
                 <label>Graduation Year</label>
                 <input
@@ -392,16 +421,16 @@ const RegisterPage = () => {
               className="register-button"
               disabled={loading}
             >
-              {loading ? 'Creating Account...' : 'Create Account'}
+              {loading ? "Creating Account..." : "Create Account"}
             </button>
           </form>
 
           <p className="register-login-link">
-            Already have an account?{' '}
+            Already have an account?{" "}
             <button
               type="button"
               className="register-link"
-              onClick={() => navigate('/login')}
+              onClick={() => navigate("/login")}
             >
               Sign in
             </button>

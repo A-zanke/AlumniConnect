@@ -291,7 +291,7 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
           className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         >
           {/* Modal Header */}
-          <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between p-6 border-b sticky top-80 bg-white z-10">
             <h2 className="text-2xl font-bold text-slate-800">Create Post</h2>
             <button
               onClick={onClose}
