@@ -43,6 +43,8 @@ const userSchema = new mongoose.Schema({
   connectionRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  // Saved/Bookmarked posts
+  bookmarkedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Post' }],
   
   // Presence tracking
   isOnline: { type: Boolean, default: false },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -22,6 +22,9 @@ import { getAvatarUrl } from "../components/utils/helpers";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import { formatPostContent, formatTimeAgo } from "../utils/textFormatter";
+import { postsAPI } from "../components/utils/api";
+import DOMPurify from "dompurify";
+import { FiBookmark } from "react-icons/fi";
 
 // LinkedIn-style reaction types
 const REACTIONS = [
@@ -60,10 +63,33 @@ const PostsPage = () => {
   const [showCreatePost, setShowCreatePost] = useState(false);
 
   const canCreatePost = user?.role === "teacher" || user?.role === "alumni";
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionResults, setMentionResults] = useState([]);
+  const [showMentions, setShowMentions] = useState(false);
 
   useEffect(() => {
     fetchPosts();
   }, []);
+
+  // Basic mention search (debounced)
+  useEffect(() => {
+    let timer;
+    if (showMentions && mentionQuery.length >= 2) {
+      timer = setTimeout(async () => {
+        try {
+          const res = await axios.get(`/api/search/users`, {
+            params: { q: mentionQuery },
+          });
+          setMentionResults(res.data || []);
+        } catch (e) {
+          setMentionResults([]);
+        }
+      }, 250);
+    } else {
+      setMentionResults([]);
+    }
+    return () => clearTimeout(timer);
+  }, [mentionQuery, showMentions]);
 
   const fetchPosts = async () => {
     try {
@@ -116,7 +142,7 @@ const PostsPage = () => {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowCreatePost(true)}
-            className="fixed bottom-8 right-8 z-40 w-16 h-16 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:shadow-indigo-500/50 transition-all duration-300"
+            className="fixed bottom-20 sm:bottom-16 md:bottom-12 right-6 sm:right-8 z-50 w-14 sm:w-16 h-14 sm:h-16 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:shadow-indigo-500/50 transition-all duration-300"
           >
             <FiPlus size={28} />
           </motion.button>
@@ -175,6 +201,11 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
   const [postImages, setPostImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [link, setLink] = useState("");
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionResults, setMentionResults] = useState([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const textareaRef = useRef(null);
 
   const handleImageSelect = (e) => {
     const files = Array.from(e.target.files);
@@ -217,6 +248,7 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
       setSubmitting(true);
       const formData = new FormData();
       formData.append("content", postContent);
+      if (link) formData.append("link", link);
       postImages.forEach((image) => {
         formData.append("media", image);
       });
@@ -229,6 +261,7 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
       setPostContent("");
       setPostImages([]);
       setImagePreviews([]);
+      setLink("");
       onClose();
       onPostCreated();
     } catch (error) {
@@ -258,7 +291,7 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
           className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         >
           {/* Modal Header */}
-          <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between p-6 border-b sticky top-80 bg-white z-10">
             <h2 className="text-2xl font-bold text-slate-800">Create Post</h2>
             <button
               onClick={onClose}
@@ -287,14 +320,50 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
               </div>
             </div>
 
-            {/* Content Input */}
+            {/* Content Input with mentions */}
             <textarea
               value={postContent}
-              onChange={(e) => setPostContent(e.target.value)}
+              ref={textareaRef}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPostContent(val);
+                const mentionMatch = /@([a-zA-Z0-9_.-]{2,})$/.exec(val.slice(0, e.target.selectionStart));
+                if (mentionMatch) {
+                  setMentionQuery(mentionMatch[1]);
+                  setShowMentions(true);
+                } else {
+                  setShowMentions(false);
+                  setMentionQuery("");
+                }
+              }}
               placeholder="What do you want to share? 
 Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
               className="w-full min-h-[150px] p-4 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none resize-none text-slate-800 placeholder-slate-400"
             />
+
+            {/* Mentions dropdown */}
+            {showMentions && mentionResults.length > 0 && (
+              <div className="mt-1 max-h-48 overflow-y-auto border rounded-xl bg-white shadow-lg">
+                {mentionResults.map((u) => (
+                  <button
+                    key={u._id}
+                    onClick={() => {
+                      // replace the @query at the caret with @username
+                      const el = textareaRef.current;
+                      const cursor = el.selectionStart;
+                      const before = postContent.slice(0, cursor).replace(/@([a-zA-Z0-9_.-]{2,})$/, `@${u.username}`);
+                      const after = postContent.slice(cursor);
+                      const next = `${before} ${after}`;
+                      setPostContent(next);
+                      setShowMentions(false);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-indigo-50"
+                  >
+                    @{u.username} — {u.name}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Formatting Help */}
             <div className="mt-2 flex items-start gap-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
@@ -326,6 +395,17 @@ Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
                 ))}
               </div>
             )}
+
+            {/* Link input */}
+            <div className="mt-3">
+              <input
+                type="url"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                placeholder="Paste link for preview (optional)"
+                className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
 
             {/* Media Options */}
             <div className="flex items-center gap-4 mt-6 pt-4 border-t">
@@ -373,6 +453,7 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
   const [userReaction, setUserReaction] = useState(
     post.reactions?.find((r) => r.userId === currentUser?._id)?.type || null
   );
+  const [bookmarked, setBookmarked] = useState(false);
 
   // Update comments and reactions when post changes
   useEffect(() => {
@@ -381,6 +462,7 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
     setUserReaction(
       post.reactions?.find((r) => r.userId === currentUser?._id)?.type || null
     );
+    setBookmarked(Boolean(post.bookmarked));
   }, [post, currentUser]);
 
   const isOwner =
@@ -430,10 +512,27 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
     }
   };
 
-  const handleShare = () => {
-    const url = `${window.location.origin}/posts/${post._id}`;
-    navigator.clipboard.writeText(url);
-    toast.success("Link copied to clipboard!");
+  const toggleBookmark = async () => {
+    try {
+      const res = await axios.post(`/api/posts/${post._id}/bookmark`);
+      setBookmarked(res.data.bookmarked);
+      toast.success(res.data.bookmarked ? "Saved" : "Removed from saved");
+    } catch (e) {
+      toast.error("Failed to update bookmark");
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      await axios.post(`/api/posts/${post._id}/share`, { connectionIds: [] });
+      const url = `${window.location.origin}/posts/${post._id}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Post link copied. You can also share via messages.");
+    } catch (e) {
+      const url = `${window.location.origin}/posts/${post._id}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Link copied to clipboard!");
+    }
   };
 
   const formatTime = (date) => {
@@ -525,6 +624,26 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
           {formatPostContent(post.content)}
         </div>
 
+        {/* Link Preview */}
+        {post.linkPreview?.url && (
+          <a
+            href={post.linkPreview.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block mb-4 border rounded-xl overflow-hidden hover:shadow-md transition-shadow"
+          >
+            {post.linkPreview.image && (
+              <img src={post.linkPreview.image} alt="Link preview" className="w-full h-48 object-cover" />
+            )}
+            <div className="p-4">
+              <div className="font-semibold text-slate-800 line-clamp-1">{post.linkPreview.title || post.linkPreview.url}</div>
+              {post.linkPreview.description && (
+                <div className="text-sm text-slate-600 line-clamp-2">{post.linkPreview.description}</div>
+              )}
+            </div>
+          </a>
+        )}
+
         {/* Post Media */}
         {post.media && post.media.length > 0 && (
           <div
@@ -597,6 +716,9 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
           </div>
           <div className="flex items-center gap-4">
             {comments.length > 0 && <span>{comments.length} comments</span>}
+            {typeof post.shares === 'number' && post.shares > 0 && (
+              <span>{post.shares} shares</span>
+            )}
           </div>
         </div>
 
@@ -673,6 +795,13 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
           >
             <FiShare2 size={20} />
             <span>Share</span>
+          </button>
+          <button
+            onClick={toggleBookmark}
+            className={`px-3 py-3 rounded-xl font-semibold transition-all duration-300 ${bookmarked ? "text-amber-600" : "text-slate-600 hover:bg-slate-50"}`}
+            title={bookmarked ? "Saved" : "Save"}
+          >
+            <FiBookmark size={20} />
           </button>
         </div>
 

@@ -130,6 +130,10 @@ export const connectionAPI = {
   getRequestHistory: () => apiClient.get('/api/connections/requests/history'),
 };
 
+export const recommendationsAPI = {
+  getAlumni: (studentId) => apiClient.get(`/api/ai/recommendations/${studentId}`),
+};
+
 export const userAPI = {
   register: (userData) => axios.post('/api/auth/register', userData),
   login: (credentials) => axios.post('/api/auth/login', credentials),

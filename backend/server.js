@@ -110,6 +110,7 @@ const messagesRoutes = require("./routes/messagesRoutes");
 const avatarRoutes = require("./routes/avatarRoutes");
 const forumRoutes = require("./routes/forumRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 
 app.use("/api/forum", forumRoutes);
 app.use("/api/chatbot", chatbotRoutes);
@@ -125,6 +126,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/messages", messagesRoutes);
 app.use("/api", avatarRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Create uploads directory if it doesn't exist
 const fs = require("fs");

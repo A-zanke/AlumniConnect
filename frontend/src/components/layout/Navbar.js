@@ -44,35 +44,28 @@ const Navbar = () => {
   };
 
   const isStudent = user && (user.role || "").toLowerCase() === "student";
-  const isTeacherOrAlumni =
+  const isPosterRole =
     user &&
-    ((user.role || "").toLowerCase() === "teacher" ||
-      (user.role || "").toLowerCase() === "alumni");
+    (["teacher", "alumni", "admin"].includes((user.role || "").toLowerCase()));
+
+  // Build nav ensuring Home is always first for students
+  const baseItems = [
+    { to: "/", label: "Home", icon: FiHome },
+    { to: "/about", label: "About", icon: FiUsers },
+  ];
+  const postsItem = isPosterRole ? [{ to: "/posts", label: "Posts", icon: FiFileText }] : [];
+  const forumItem = (user && (user.role || "").toLowerCase() !== "teacher" && (user.role || "").toLowerCase() !== "alumni") ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }] : [];
+  const netItem = user ? [{ to: "/network", label: "Network", icon: FiUsers }] : [];
+  const adminItem = (user && (user.role || "").toLowerCase() === "admin") ? [{ to: "/admin", label: "Admin", icon: FiUser }] : [];
 
   const navItems = [
-    { to: "/", label: "Home", icon: FiHome },
-    // For students, Events will be a dropdown (handled separately)
-    // For others, show Events as regular link
-    ...(!isStudent
-      ? [
-          { to: "/events", label: "Events", icon: FiCalendar }
-        ]
-      : []),
-    { to: "/about", label: "About", icon: FiUsers },
-    // Show Posts for teacher and alumni only
-    ...(isTeacherOrAlumni
-      ? [{ to: "/posts", label: "Posts", icon: FiFileText }]
-      : []),
-    // Hide Forum for teacher and alumni roles
-    ...(user &&
-    (user.role || "").toLowerCase() !== "teacher" &&
-    (user.role || "").toLowerCase() !== "alumni"
-      ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }]
-      : []),
-    ...(user ? [{ to: "/network", label: "Network", icon: FiUsers }] : []),
-    ...(user && (user.role || "").toLowerCase() === "admin"
-      ? [{ to: "/admin", label: "Admin", icon: FiUser }]
-      : []),
+    ...baseItems,
+    // Non-students get direct Events link
+    ...(!isStudent ? [{ to: "/events", label: "Events", icon: FiCalendar }] : []),
+    ...postsItem,
+    ...forumItem,
+    ...netItem,
+    ...adminItem,
   ];
 
   return (
