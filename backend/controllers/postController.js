@@ -19,6 +19,9 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
 
+// Upload middleware for multiple media
+exports.uploadPostMedia = upload.array("media", 5);
+
 // @desc    Get all posts (from teachers and alumni)
 // @route   GET /api/posts
 // @access  Private
@@ -58,6 +61,24 @@ exports.getMyPosts = async (req, res) => {
   }
 };
 
+// @desc    Get user's posts
+// @route   GET /api/posts/user/:id
+// @access  Private
+exports.getUserPosts = async (req, res) => {
+  try {
+    const posts = await Post.find({ userId: req.params.id })
+      .populate("userId", "name email role avatarUrl department graduationYear")
+      .populate("reactions.userId", "name")
+      .populate("comments.userId", "name avatarUrl role")
+      .sort({ createdAt: -1 });
+
+    res.json(posts);
+  } catch (error) {
+    console.error("Error fetching user posts:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // @desc    Create a new post
 // @route   POST /api/posts
 // @access  Private (Teacher/Alumni only)
@@ -70,27 +91,37 @@ exports.createPost = async (req, res) => {
         .json({ message: "Only teachers and alumni can create posts" });
     }
 
-    const { content } = req.body;
+    const { content, link } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ message: "Content is required" });
     }
 
     const postData = {
-      author: req.user._id,
+      userId: req.user._id,
       content: content.trim(),
     };
 
-    // Add image if uploaded
-    if (req.file) {
-      postData.image = req.file.path;
+    // Add media if uploaded
+    if (req.files && req.files.length > 0) {
+      postData.media = req.files.map(file => ({
+        url: file.path,
+        type: file.mimetype.startsWith('image/') ? 'image' : 'file',
+        name: file.originalname
+      }));
+    }
+
+    // Add link preview if link provided
+    if (link && link.trim()) {
+      postData.linkPreview = { url: link.trim() };
+      // Optionally generate title/description/image from link, but for now just store url
     }
 
     const post = await Post.create(postData);
 
-    // Populate author details
+    // Populate user details
     await post.populate(
-      "author",
+      "userId",
       "name email role avatarUrl department graduationYear"
     );
 
@@ -200,8 +231,72 @@ exports.toggleLike = async (req, res) => {
   }
 };
 
+// @desc    Toggle reaction on a post
+// @route   POST /api/posts/:id/react
+// @access  Private
+exports.toggleReaction = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    const { reactionType } = req.body;
+    const userId = req.user._id;
+
+    // Remove existing reaction by this user
+    post.reactions = post.reactions.filter(r => r.userId.toString() !== userId.toString());
+
+    // Add new reaction if provided
+    if (reactionType) {
+      post.reactions.push({ userId, type: reactionType });
+    }
+
+    await post.save();
+    await post.populate("reactions.userId", "name");
+
+    const userReaction = post.reactions.find(r => r.userId.toString() === userId.toString())?.type || null;
+
+    res.json({ reactions: post.reactions, userReaction });
+  } catch (error) {
+    console.error("Error toggling reaction:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// @desc    Toggle bookmark on a post
+// @route   POST /api/posts/:id/bookmark
+// @access  Private
+exports.toggleBookmark = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    const userId = req.user._id;
+    const isBookmarked = post.bookmarkedBy?.includes(userId);
+
+    if (isBookmarked) {
+      post.bookmarkedBy = post.bookmarkedBy.filter(id => id.toString() !== userId.toString());
+    } else {
+      if (!post.bookmarkedBy) post.bookmarkedBy = [];
+      post.bookmarkedBy.push(userId);
+    }
+
+    await post.save();
+
+    res.json({ bookmarked: !isBookmarked });
+  } catch (error) {
+    console.error("Error toggling bookmark:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // @desc    Add a comment to a post
-// @route   POST /api/posts/:id/comments
+// @route   POST /api/posts/:id/comment
 // @access  Private
 exports.addComment = async (req, res) => {
   try {
@@ -218,16 +313,16 @@ exports.addComment = async (req, res) => {
     }
 
     const comment = {
-      author: req.user._id,
+      userId: req.user._id,
       content: content.trim(),
     };
 
     post.comments.push(comment);
     await post.save();
 
-    // Get the newly added comment with populated author
+    // Get the newly added comment with populated user
     const updatedPost = await Post.findById(post._id).populate(
-      "comments.author",
+      "comments.userId",
       "name avatarUrl role"
     );
 

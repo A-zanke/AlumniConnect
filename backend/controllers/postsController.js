@@ -2,6 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const Post = require("../models/Post");
 const User = require("../models/User");
+const cloudinary = require("../config/cloudinary");
+const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const detectMedia = (file) => {
   const type = (file.mimetype || "").toLowerCase();
@@ -19,10 +22,16 @@ exports.createPost = async (req, res) => {
     }
 
     const media = (req.files || []).map((f) => ({
-      url: `/uploads/${path.basename(f.path)}`,
+      url: f.path, // Cloudinary URL
       type: detectMedia(f),
       name: f.originalname,
+      public_id: f.filename, // Cloudinary public_id for deletion
     }));
+
+    // Handle empty content for media-only posts
+    if (!content.trim() && media.length > 0) {
+      content = "[Media post]";
+    }
 
     // Extract mentions from content using @username
     const mentionUsernames = Array.from(
@@ -68,7 +77,14 @@ exports.createPost = async (req, res) => {
       approved: true,
     });
 
-    await post.save();
+    try {
+      await post.save();
+    } catch (saveError) {
+      if (saveError.name === 'ValidationError') {
+        return res.status(400).json({ message: saveError.message });
+      }
+      throw saveError;
+    }
 
     const populated = await Post.findById(post._id)
       .populate("userId", "name avatarUrl username role")
@@ -89,13 +105,7 @@ exports.createPost = async (req, res) => {
           : null,
       },
       content: populated.content,
-      media:
-        populated.media?.map((m) => ({
-          ...m,
-          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-            m.url
-          }`,
-        })) || [],
+      media: populated.media || [],
       visibility: populated.visibility,
       tags: populated.tags || [],
       mentions: populated.mentions || [],
@@ -440,18 +450,19 @@ exports.deletePost = async (req, res) => {
         .json({ message: "Not authorized to delete this post" });
     }
 
-    // Delete associated media files
+    // Delete associated media files from Cloudinary
     if (post.media && post.media.length > 0) {
-      post.media.forEach((m) => {
-        try {
-          const filePath = path.join(__dirname, "..", m.url);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+      await Promise.all(
+        post.media.map(async (m) => {
+          if (m.public_id) {
+            try {
+              await cloudinary.uploader.destroy(m.public_id);
+            } catch (err) {
+              console.error("Error deleting media from Cloudinary:", err);
+            }
           }
-        } catch (err) {
-          console.error("Error deleting media file:", err);
-        }
-      });
+        })
+      );
     }
 
     await Post.findByIdAndDelete(req.params.id);
@@ -592,29 +603,7 @@ exports.updatePost = async (req, res) => {
   }
 };
 
-// Toggle bookmark
-exports.toggleBookmark = async (req, res) => {
-  try {
-    const postId = req.params.id;
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const idx = (user.bookmarkedPosts || []).findIndex((id) => id.equals(postId));
-    let bookmarked = false;
-    if (idx >= 0) {
-      user.bookmarkedPosts.splice(idx, 1);
-      bookmarked = false;
-    } else {
-      user.bookmarkedPosts.push(postId);
-      bookmarked = true;
-    }
-    await user.save();
-    res.json({ bookmarked, postId });
-  } catch (e) {
-    console.error("toggleBookmark error:", e);
-    res.status(500).json({ message: "Error updating bookmark" });
-  }
-};
 
 // Get saved/bookmarked posts for current user
 exports.getSavedPosts = async (req, res) => {
@@ -713,6 +702,66 @@ exports.getSavedPosts = async (req, res) => {
     res.status(500).json({ message: "Error fetching saved posts" });
   }
 };
+// Toggle reaction on a post
+exports.toggleReaction = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    const { reactionType } = req.body;
+    const userId = req.user._id;
+
+    // Remove existing reaction by this user
+    post.reactions = post.reactions.filter(r => r.userId.toString() !== userId.toString());
+
+    // Add new reaction if provided
+    if (reactionType) {
+      post.reactions.push({ userId, type: reactionType });
+    }
+
+    await post.save();
+    await post.populate("reactions.userId", "name");
+
+    const userReaction = post.reactions.find(r => r.userId.toString() === userId.toString())?.type || null;
+
+    res.json({ reactions: post.reactions, userReaction });
+  } catch (error) {
+    console.error("Error toggling reaction:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Toggle bookmark on a post
+exports.toggleBookmark = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    const userId = req.user._id;
+    const isBookmarked = post.bookmarkedBy?.includes(userId);
+
+    if (isBookmarked) {
+      post.bookmarkedBy = post.bookmarkedBy.filter(id => id.toString() !== userId.toString());
+    } else {
+      if (!post.bookmarkedBy) post.bookmarkedBy = [];
+      post.bookmarkedBy.push(userId);
+    }
+
+    await post.save();
+
+    res.json({ bookmarked: !isBookmarked });
+  } catch (error) {
+    console.error("Error toggling bookmark:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // Reply to a comment
 exports.replyToComment = async (req, res) => {
   try {

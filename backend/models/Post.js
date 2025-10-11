@@ -9,7 +9,7 @@ const replySchema = new mongoose.Schema(
     },
     content: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
     },
   },
@@ -112,6 +112,12 @@ const postSchema = new mongoose.Schema(
       description: { type: String },
       image: { type: String },
     },
+    bookmarkedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     approved: {
       type: Boolean,
       default: true,

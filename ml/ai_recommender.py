@@ -14,7 +14,6 @@ try:
     from sklearn.metrics.pairwise import cosine_similarity
     from pymongo import MongoClient
 except Exception as e:
-    # Defer import errors to runtime output for easier debugging from Node
     pass
 
 
@@ -25,23 +24,19 @@ def _safe_str(x: Any) -> str:
 
 
 def build_feature_text(user: Dict[str, Any]) -> str:
-    # Create a feature string from user profile fields
     parts: List[str] = []
     parts.append(_safe_str(user.get("department", "")))
     parts.append(_safe_str(user.get("industry", "")))
     parts.append(_safe_str(user.get("graduationYear", "")))
 
-    # skills can be list of strings
     skills = user.get("skills") or []
     if isinstance(skills, list):
         parts.extend([_safe_str(s) for s in skills])
 
-    # careerInterests list
     interests = user.get("careerInterests") or []
     if isinstance(interests, list):
         parts.extend([_safe_str(i) for i in interests])
 
-    # Combine into space-delimited bag
     return " ".join([p.strip().lower().replace(" ", "_") for p in parts if _safe_str(p).strip()])
 
 
@@ -62,7 +57,7 @@ def fetch_users(mongo_uri: str, student_id: str) -> (Dict[str, Any], List[Dict[s
     student = None
     alumni: List[Dict[str, Any]] = []
     for u in users:
-        u["_id"] = str(u["_id"])  # string id for JSON
+        u["_id"] = str(u["_id"])
         role = (u.get("role") or "").lower()
         if u["_id"] == student_id:
             student = u
@@ -74,10 +69,17 @@ def fetch_users(mongo_uri: str, student_id: str) -> (Dict[str, Any], List[Dict[s
 def compute_recommendations(student: Dict[str, Any], alumni: List[Dict[str, Any]], top_k: int = 10) -> List[Dict[str, Any]]:
     if not student or not alumni:
         return []
+    
     corpus = [build_feature_text(student)] + [build_feature_text(a) for a in alumni]
+    
+    # Filter out empty feature texts
+    if all(len(c.strip()) == 0 for c in corpus):
+        return []
+    
     vectorizer = TfidfVectorizer(min_df=1)
     X = vectorizer.fit_transform(corpus)
-    sims = cosine_similarity(X[0:1], X[1:]).flatten()  # similarity with each alum
+    sims = cosine_similarity(X[0:1], X[1:]).flatten()
+    
     # Pair each alum with score
     paired = [
         {
@@ -92,7 +94,9 @@ def compute_recommendations(student: Dict[str, Any], alumni: List[Dict[str, Any]
             "similarity": float(sims[i])
         }
         for i in range(len(alumni))
+        if float(sims[i]) >= 0.3  # **THRESHOLD: Only include if similarity >= 0.3**
     ]
+    
     paired.sort(key=lambda x: x["similarity"], reverse=True)
     return paired[:top_k]
 
@@ -106,12 +110,11 @@ def main():
         student_id = sys.argv[2]
         top_k = int(sys.argv[3]) if len(sys.argv) > 3 else 10
 
-        # Import deps here to surface import errors in JSON
-        import numpy as np  # noqa: F401
-        import pandas as pd  # noqa: F401
-        from sklearn.feature_extraction.text import TfidfVectorizer  # noqa: F401
-        from sklearn.metrics.pairwise import cosine_similarity  # noqa: F401
-        from pymongo import MongoClient  # noqa: F401
+        import numpy as np
+        import pandas as pd
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+        from pymongo import MongoClient
 
         student, alumni = fetch_users(mongo_uri, student_id)
         recs = compute_recommendations(student, alumni, top_k=top_k)

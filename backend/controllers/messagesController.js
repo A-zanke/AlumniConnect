@@ -122,6 +122,47 @@ exports.deleteMessage = async (req, res) => {
   }
 };
 
+// Delete entire chat with a user
+exports.deleteChat = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user._id;
+
+    // Delete all messages between current user and the specified user
+    await Message.deleteMany({
+      $or: [
+        { from: currentUserId, to: userId },
+        { from: userId, to: currentUserId }
+      ]
+    });
+
+    res.json({ message: 'Chat deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    res.status(500).json({ message: 'Error deleting chat' });
+  }
+};
+
+// Delete all messages for the current user
+exports.deleteAllMessages = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+
+    // Delete all messages where current user is sender or recipient
+    await Message.deleteMany({
+      $or: [
+        { from: currentUserId },
+        { to: currentUserId }
+      ]
+    });
+
+    res.json({ message: 'All messages deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting all messages:', error);
+    res.status(500).json({ message: 'Error deleting all messages' });
+  }
+};
+
 // Get conversation list for current user
 exports.getConversations = async (req, res) => {
   try {

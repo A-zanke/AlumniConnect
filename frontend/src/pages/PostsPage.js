@@ -17,43 +17,23 @@ import {
   FiZap,
   FiHelpCircle,
   FiInfo,
+  FiBookmark,
+  FiEdit,
 } from "react-icons/fi";
 import { getAvatarUrl } from "../components/utils/helpers";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import { formatPostContent, formatTimeAgo } from "../utils/textFormatter";
-import { postsAPI } from "../components/utils/api";
 import DOMPurify from "dompurify";
-import { FiBookmark } from "react-icons/fi";
 
 // LinkedIn-style reaction types
 const REACTIONS = [
   { type: "like", icon: FiThumbsUp, label: "Like", color: "text-blue-600" },
   { type: "love", icon: FiHeart, label: "Love", color: "text-red-600" },
-  {
-    type: "celebrate",
-    icon: FiAward,
-    label: "Celebrate",
-    color: "text-green-600",
-  },
-  {
-    type: "support",
-    icon: FiTrendingUp,
-    label: "Support",
-    color: "text-purple-600",
-  },
-  {
-    type: "insightful",
-    icon: FiZap,
-    label: "Insightful",
-    color: "text-yellow-600",
-  },
-  {
-    type: "curious",
-    icon: FiHelpCircle,
-    label: "Curious",
-    color: "text-cyan-600",
-  },
+  { type: "celebrate", icon: FiAward, label: "Celebrate", color: "text-green-600" },
+  { type: "support", icon: FiTrendingUp, label: "Support", color: "text-purple-600" },
+  { type: "insightful", icon: FiZap, label: "Insightful", color: "text-yellow-600" },
+  { type: "curious", icon: FiHelpCircle, label: "Curious", color: "text-cyan-600" },
 ];
 
 const PostsPage = () => {
@@ -61,41 +41,30 @@ const PostsPage = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreatePost, setShowCreatePost] = useState(false);
+  const [sortBy, setSortBy] = useState("recent"); // recent or popular
 
   const canCreatePost = user?.role === "teacher" || user?.role === "alumni";
-  const [mentionQuery, setMentionQuery] = useState("");
-  const [mentionResults, setMentionResults] = useState([]);
-  const [showMentions, setShowMentions] = useState(false);
 
   useEffect(() => {
     fetchPosts();
   }, []);
 
-  // Basic mention search (debounced)
-  useEffect(() => {
-    let timer;
-    if (showMentions && mentionQuery.length >= 2) {
-      timer = setTimeout(async () => {
-        try {
-          const res = await axios.get(`/api/search/users`, {
-            params: { q: mentionQuery },
-          });
-          setMentionResults(res.data || []);
-        } catch (e) {
-          setMentionResults([]);
-        }
-      }, 250);
-    } else {
-      setMentionResults([]);
-    }
-    return () => clearTimeout(timer);
-  }, [mentionQuery, showMentions]);
-
   const fetchPosts = async () => {
     try {
       setLoading(true);
       const response = await axios.get("/api/posts");
-      setPosts(response.data);
+      let fetchedPosts = response.data;
+      
+      // Apply sorting
+      if (sortBy === "popular") {
+        fetchedPosts = fetchedPosts.sort((a, b) => {
+          const aReactions = (a.reactions?.length || 0) + (a.comments?.length || 0);
+          const bReactions = (b.reactions?.length || 0) + (b.comments?.length || 0);
+          return bReactions - aReactions;
+        });
+      }
+      
+      setPosts(fetchedPosts);
     } catch (error) {
       console.error("Error fetching posts:", error);
       toast.error("Failed to load posts");
@@ -117,35 +86,80 @@ const PostsPage = () => {
     }
   };
 
+  useEffect(() => {
+    fetchPosts();
+  }, [sortBy]);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 py-8">
-      <div className="max-w-3xl mx-auto px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 py-4 sm:py-8">
+      <div className="max-w-4xl mx-auto px-3 sm:px-4">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
+          className="mb-4 sm:mb-6"
         >
-          <h1 className="text-4xl font-black bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent mb-2">
-            Posts
-          </h1>
-          <p className="text-slate-600">
-            Discover insights and experiences from our community
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-black bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                Posts
+              </h1>
+              <p className="text-slate-600 text-sm sm:text-base mt-1">
+                Discover insights from teachers and alumni
+              </p>
+            </div>
+
+            {/* Sort Filter */}
+            <div className="flex items-center gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 sm:px-4 py-2 border-2 border-slate-200 rounded-xl bg-white focus:border-indigo-500 focus:outline-none text-sm sm:text-base"
+              >
+                <option value="recent">Recent</option>
+                <option value="popular">Most Reactions</option>
+              </select>
+            </div>
+          </div>
         </motion.div>
 
-        {/* Create Post Button (Floating Action Button for Alumni/Teachers) */}
+        {/* Create Post Button (FAB for Mobile, Inline for Desktop) */}
         {canCreatePost && (
-          <motion.button
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setShowCreatePost(true)}
-            className="fixed bottom-20 sm:bottom-16 md:bottom-12 right-6 sm:right-8 z-50 w-14 sm:w-16 h-14 sm:h-16 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:shadow-indigo-500/50 transition-all duration-300"
-          >
-            <FiPlus size={28} />
-          </motion.button>
+          <>
+            {/* Mobile FAB */}
+            <motion.button
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setShowCreatePost(true)}
+              className="md:hidden fixed bottom-20 right-4 z-50 w-14 h-14 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center"
+            >
+              <FiPlus size={24} />
+            </motion.button>
+
+            {/* Desktop Create Post Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="hidden md:block bg-white rounded-2xl shadow-sm p-4 mb-6 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => setShowCreatePost(true)}
+            >
+              <div className="flex items-center gap-3">
+                <img
+                  src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : "/default-avatar.png"}
+                  alt={user.name}
+                  className="w-12 h-12 rounded-full object-cover"
+                />
+                <div className="flex-1 px-4 py-3 bg-slate-50 rounded-full text-slate-500 hover:bg-slate-100 transition-colors">
+                  Start a post...
+                </div>
+                <button className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors">
+                  <FiImage size={24} />
+                </button>
+              </div>
+            </motion.div>
+          </>
         )}
 
         {/* Create Post Modal */}
@@ -157,7 +171,7 @@ const PostsPage = () => {
         />
 
         {/* Posts Feed */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {loading ? (
             <div className="flex justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
@@ -168,13 +182,10 @@ const PostsPage = () => {
               animate={{ opacity: 1 }}
               className="text-center py-16 bg-white rounded-2xl shadow-sm"
             >
-              <FiMessageCircle
-                className="mx-auto text-slate-300 mb-4"
-                size={64}
-              />
+              <FiMessageCircle className="mx-auto text-slate-300 mb-4" size={64} />
               <p className="text-slate-500 text-lg">No posts available yet</p>
               <p className="text-slate-400 text-sm mt-2">
-                Be the first to share something!
+                {canCreatePost ? "Be the first to share something!" : "Check back soon for updates!"}
               </p>
             </motion.div>
           ) : (
@@ -202,9 +213,6 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
   const [imagePreviews, setImagePreviews] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [link, setLink] = useState("");
-  const [mentionQuery, setMentionQuery] = useState("");
-  const [mentionResults, setMentionResults] = useState([]);
-  const [showMentions, setShowMentions] = useState(false);
   const textareaRef = useRef(null);
 
   const handleImageSelect = (e) => {
@@ -280,19 +288,20 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
         onClick={onClose}
       >
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
+          initial={{ y: "100%", opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: "100%", opacity: 0 }}
+          transition={{ type: "spring", damping: 25 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+          className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto"
         >
           {/* Modal Header */}
-          <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
-            <h2 className="text-2xl font-bold text-slate-800">Create Post</h2>
+          <div className="flex items-center justify-between p-4 sm:p-6 border-b sticky top-0 bg-white z-10 rounded-t-3xl sm:rounded-t-2xl">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Create Post</h2>
             <button
               onClick={onClose}
               className="p-2 hover:bg-slate-100 rounded-full transition-colors"
@@ -302,15 +311,11 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
           </div>
 
           {/* Modal Body */}
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {/* User Info */}
             <div className="flex items-center gap-3 mb-4">
               <img
-                src={
-                  user.avatarUrl
-                    ? getAvatarUrl(user.avatarUrl)
-                    : "/default-avatar.png"
-                }
+                src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : "/default-avatar.png"}
                 alt={user.name}
                 className="w-12 h-12 rounded-full object-cover ring-2 ring-indigo-100"
               />
@@ -320,74 +325,28 @@ const CreatePostModal = ({ show, onClose, onPostCreated, user }) => {
               </div>
             </div>
 
-            {/* Content Input with mentions */}
+            {/* Content Input */}
             <textarea
               value={postContent}
               ref={textareaRef}
-              onChange={(e) => {
-                const val = e.target.value;
-                setPostContent(val);
-                const mentionMatch = /@([a-zA-Z0-9_.-]{2,})$/.exec(val.slice(0, e.target.selectionStart));
-                if (mentionMatch) {
-                  setMentionQuery(mentionMatch[1]);
-                  setShowMentions(true);
-                } else {
-                  setShowMentions(false);
-                  setMentionQuery("");
-                }
-              }}
-              placeholder="What do you want to share? 
-Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
+              onChange={(e) => setPostContent(e.target.value)}
+              placeholder="What do you want to share?"
               className="w-full min-h-[150px] p-4 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none resize-none text-slate-800 placeholder-slate-400"
             />
 
-            {/* Mentions dropdown */}
-            {showMentions && mentionResults.length > 0 && (
-              <div className="mt-1 max-h-48 overflow-y-auto border rounded-xl bg-white shadow-lg">
-                {mentionResults.map((u) => (
-                  <button
-                    key={u._id}
-                    onClick={() => {
-                      // replace the @query at the caret with @username
-                      const el = textareaRef.current;
-                      const cursor = el.selectionStart;
-                      const before = postContent.slice(0, cursor).replace(/@([a-zA-Z0-9_.-]{2,})$/, `@${u.username}`);
-                      const after = postContent.slice(cursor);
-                      const next = `${before} ${after}`;
-                      setPostContent(next);
-                      setShowMentions(false);
-                    }}
-                    className="w-full text-left px-3 py-2 hover:bg-indigo-50"
-                  >
-                    @{u.username} — {u.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Formatting Help */}
-            <div className="mt-2 flex items-start gap-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
-              <FiInfo size={14} className="mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="font-semibold">Formatting tips:</span>{" "}
-                **bold**, *italic*, @username for mentions, #hashtag for tags,
-                paste URLs for links
-              </div>
-            </div>
-
             {/* Image Previews */}
             {imagePreviews.length > 0 && (
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {imagePreviews.map((preview, index) => (
                   <div key={index} className="relative group">
                     <img
                       src={preview}
                       alt={`Preview ${index + 1}`}
-                      className="w-full h-48 object-cover rounded-xl"
+                      className="w-full h-32 sm:h-48 object-cover rounded-xl"
                     />
                     <button
                       onClick={() => removeImage(index)}
-                      className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                      className="absolute top-2 right-2 p-1.5 sm:p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
                     >
                       <FiX size={16} />
                     </button>
@@ -403,15 +362,15 @@ Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
                 placeholder="Paste link for preview (optional)"
-                className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+                className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none text-sm sm:text-base"
               />
             </div>
 
             {/* Media Options */}
-            <div className="flex items-center gap-4 mt-6 pt-4 border-t">
-              <label className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 cursor-pointer transition-colors">
+            <div className="flex items-center justify-between mt-6 pt-4 border-t">
+              <label className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 cursor-pointer transition-colors">
                 <FiImage size={20} />
-                <span className="font-semibold">Add Photos</span>
+                <span className="font-semibold text-sm sm:text-base">Add Photos</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -420,7 +379,7 @@ Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
                   className="hidden"
                 />
               </label>
-              <span className="text-sm text-slate-500">
+              <span className="text-xs sm:text-sm text-slate-500">
                 {postImages.length}/5 images
               </span>
             </div>
@@ -428,9 +387,7 @@ Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
             {/* Submit Button */}
             <button
               onClick={handleCreatePost}
-              disabled={
-                submitting || (!postContent.trim() && postImages.length === 0)
-              }
+              disabled={submitting || (!postContent.trim() && postImages.length === 0)}
               className="w-full mt-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl font-semibold hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
             >
               {submitting ? "Posting..." : "Post"}
@@ -442,7 +399,7 @@ Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
   );
 };
 
-// Post Card Component (LinkedIn-style)
+// Post Card Component (LinkedIn-style with responsive design)
 const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -455,7 +412,6 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
   );
   const [bookmarked, setBookmarked] = useState(false);
 
-  // Update comments and reactions when post changes
   useEffect(() => {
     setComments(post.comments || []);
     setReactions(post.reactions || []);
@@ -465,16 +421,12 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
     setBookmarked(Boolean(post.bookmarked));
   }, [post, currentUser]);
 
-  const isOwner =
-    currentUser?._id === post.user?._id ||
-    currentUser?._id === post.userId?._id;
+  const isOwner = currentUser?._id === post.user?._id || currentUser?._id === post.userId?._id;
 
   // Calculate reaction counts
   const reactionCounts = {};
   REACTIONS.forEach((r) => {
-    reactionCounts[r.type] = reactions.filter(
-      (reaction) => reaction.type === r.type
-    ).length;
+    reactionCounts[r.type] = reactions.filter((reaction) => reaction.type === r.type).length;
   });
   const totalReactions = reactions.length;
 
@@ -523,13 +475,23 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
   };
 
   const handleShare = async () => {
-    try {
-      await axios.post(`/api/posts/${post._id}/share`, { connectionIds: [] });
-      const url = `${window.location.origin}/posts/${post._id}`;
-      navigator.clipboard.writeText(url);
-      toast.success("Post link copied. You can also share via messages.");
-    } catch (e) {
-      const url = `${window.location.origin}/posts/${post._id}`;
+    const url = `${window.location.origin}/posts/${post._id}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Post by ${post.user?.name || post.userId?.name}`,
+          text: post.content,
+          url: url,
+        });
+        toast.success("Post shared!");
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          navigator.clipboard.writeText(url);
+          toast.success("Link copied to clipboard!");
+        }
+      }
+    } else {
       navigator.clipboard.writeText(url);
       toast.success("Link copied to clipboard!");
     }
@@ -541,11 +503,9 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
     const diffInSeconds = Math.floor((now - postDate) / 1000);
 
     if (diffInSeconds < 60) return "Just now";
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400)
-      return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    if (diffInSeconds < 604800)
-      return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d`;
     return postDate.toLocaleDateString();
   };
 
@@ -564,7 +524,7 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
       transition={{ delay: index * 0.1 }}
       className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
     >
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Post Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -575,15 +535,14 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
                   : "/default-avatar.png"
               }
               alt={post.user?.name || post.userId?.name}
-              className="w-12 h-12 rounded-full object-cover ring-2 ring-slate-100"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover ring-2 ring-slate-100"
             />
             <div>
-              <h3 className="font-semibold text-slate-800">
+              <h3 className="font-semibold text-slate-800 text-sm sm:text-base">
                 {post.user?.name || post.userId?.name}
               </h3>
-              <p className="text-sm text-slate-500 capitalize">
-                {post.user?.role || post.userId?.role} •{" "}
-                {formatTime(post.createdAt)}
+              <p className="text-xs sm:text-sm text-slate-500 capitalize">
+                {post.user?.role || post.userId?.role} • {formatTime(post.createdAt)}
               </p>
             </div>
           </div>
@@ -620,7 +579,7 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
         </div>
 
         {/* Post Content */}
-        <div className="text-slate-700 mb-4 whitespace-pre-wrap leading-relaxed">
+        <div className="text-slate-700 mb-4 whitespace-pre-wrap leading-relaxed text-sm sm:text-base">
           {formatPostContent(post.content)}
         </div>
 
@@ -633,12 +592,20 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
             className="block mb-4 border rounded-xl overflow-hidden hover:shadow-md transition-shadow"
           >
             {post.linkPreview.image && (
-              <img src={post.linkPreview.image} alt="Link preview" className="w-full h-48 object-cover" />
+              <img
+                src={post.linkPreview.image}
+                alt="Link preview"
+                className="w-full h-40 sm:h-48 object-cover"
+              />
             )}
-            <div className="p-4">
-              <div className="font-semibold text-slate-800 line-clamp-1">{post.linkPreview.title || post.linkPreview.url}</div>
+            <div className="p-3 sm:p-4">
+              <div className="font-semibold text-slate-800 line-clamp-1 text-sm sm:text-base">
+                {post.linkPreview.title || post.linkPreview.url}
+              </div>
               {post.linkPreview.description && (
-                <div className="text-sm text-slate-600 line-clamp-2">{post.linkPreview.description}</div>
+                <div className="text-xs sm:text-sm text-slate-600 line-clamp-2 mt-1">
+                  {post.linkPreview.description}
+                </div>
               )}
             </div>
           </a>
@@ -646,134 +613,84 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
 
         {/* Post Media */}
         {post.media && post.media.length > 0 && (
-          <div
-            className={`mb-4 ${
-              post.media.length === 1
-                ? ""
-                : post.media.length === 2
-                ? "grid grid-cols-2 gap-2"
-                : post.media.length === 3
-                ? "grid grid-cols-3 gap-2"
-                : "grid grid-cols-2 gap-2"
-            }`}
-          >
-            {post.media.map((item, idx) => (
-              <div
+          <div className={`mb-4 grid gap-2 ${post.media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {post.media.slice(0, 4).map((media, idx) => (
+              <img
                 key={idx}
-                className={`rounded-xl overflow-hidden ${
-                  post.media.length === 1
-                    ? "max-h-[500px]"
-                    : post.media.length === 3 && idx === 0
-                    ? "col-span-3"
-                    : ""
-                }`}
-              >
-                {item.type === "image" && (
-                  <img
-                    src={item.url}
-                    alt="Post media"
-                    className="w-full h-full object-cover cursor-pointer hover:opacity-95 transition-opacity"
-                    onClick={() => window.open(item.url, "_blank")}
-                  />
-                )}
-                {item.type === "video" && (
-                  <video
-                    src={item.url}
-                    controls
-                    className="w-full h-full object-cover"
-                  />
-                )}
-              </div>
+                src={media.url}
+                alt={`Post media ${idx + 1}`}
+                className="w-full h-48 sm:h-64 object-cover rounded-xl"
+              />
             ))}
           </div>
         )}
 
-        {/* Post Stats */}
-        <div className="flex items-center justify-between text-sm text-slate-500 mb-4 pb-4 border-b">
-          <div className="flex items-center gap-2">
-            {totalReactions > 0 && (
-              <>
-                <div className="flex -space-x-1">
-                  {Object.entries(reactionCounts)
-                    .filter(([_, count]) => count > 0)
-                    .slice(0, 3)
-                    .map(([type, _]) => {
-                      const reaction = REACTIONS.find((r) => r.type === type);
-                      const Icon = reaction.icon;
-                      return (
-                        <div
-                          key={type}
-                          className={`w-5 h-5 rounded-full bg-white flex items-center justify-center ${reaction.color}`}
-                        >
-                          <Icon size={12} />
-                        </div>
-                      );
-                    })}
-                </div>
-                <span>{totalReactions}</span>
-              </>
-            )}
+        {/* Reaction Summary */}
+        {totalReactions > 0 && (
+          <div className="flex items-center gap-2 mb-3 pb-3 border-b">
+            <div className="flex -space-x-1">
+              {REACTIONS.filter((r) => reactionCounts[r.type] > 0)
+                .slice(0, 3)
+                .map((r) => {
+                  const Icon = r.icon;
+                  return (
+                    <div
+                      key={r.type}
+                      className={`w-6 h-6 rounded-full bg-white flex items-center justify-center ring-2 ring-white ${r.color}`}
+                    >
+                      <Icon size={14} />
+                    </div>
+                  );
+                })}
+            </div>
+            <span className="text-sm text-slate-600">{totalReactions}</span>
+            <span className="text-sm text-slate-400">•</span>
+            <span className="text-sm text-slate-600">{comments.length} comments</span>
           </div>
-          <div className="flex items-center gap-4">
-            {comments.length > 0 && <span>{comments.length} comments</span>}
-            {typeof post.shares === 'number' && post.shares > 0 && (
-              <span>{post.shares} shares</span>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center justify-between gap-2 pt-2 border-t">
           <div className="relative flex-1">
             <button
               onClick={() => setShowReactions(!showReactions)}
-              onMouseEnter={() => setShowReactions(true)}
-              onMouseLeave={() =>
-                setTimeout(() => setShowReactions(false), 200)
-              }
-              className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-all duration-300 ${
-                userReaction
-                  ? `${reactionIcon?.color} bg-opacity-10`
-                  : "text-slate-600 hover:bg-slate-50"
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors ${
+                userReaction ? (reactionIcon?.color || "text-blue-600") : "text-slate-600"
               }`}
             >
               {reactionIcon ? (
                 <>
                   <reactionIcon.icon size={20} />
-                  <span className="capitalize">{userReaction}</span>
+                  <span className="hidden sm:inline text-sm font-medium capitalize">{userReaction}</span>
                 </>
               ) : (
                 <>
                   <FiThumbsUp size={20} />
-                  <span>Like</span>
+                  <span className="hidden sm:inline text-sm font-medium">Like</span>
                 </>
               )}
             </button>
 
-            {/* Reaction Picker */}
+            {/* Reactions Picker */}
             <AnimatePresence>
               {showReactions && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  onMouseEnter={() => setShowReactions(true)}
-                  onMouseLeave={() => setShowReactions(false)}
-                  className="absolute bottom-full left-0 mb-2 bg-white rounded-full shadow-2xl border p-2 flex gap-1 z-20"
+                  className="absolute bottom-full left-0 mb-2 bg-white rounded-full shadow-xl border-2 flex items-center gap-1 p-2 z-20"
                 >
-                  {REACTIONS.map((reaction) => {
-                    const Icon = reaction.icon;
+                  {REACTIONS.map((r) => {
+                    const Icon = r.icon;
                     return (
-                      <motion.button
-                        key={reaction.type}
-                        whileHover={{ scale: 1.3 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => handleReaction(reaction.type)}
-                        className={`p-2 rounded-full hover:bg-slate-50 transition-colors ${reaction.color}`}
-                        title={reaction.label}
+                      <button
+                        key={r.type}
+                        onClick={() => handleReaction(r.type)}
+                        className={`p-2 rounded-full hover:bg-slate-100 transition-all hover:scale-125 ${r.color}`}
+                        title={r.label}
                       >
                         <Icon size={20} />
-                      </motion.button>
+                      </button>
                     );
                   })}
                 </motion.div>
@@ -783,25 +700,27 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
 
           <button
             onClick={() => setShowComments(!showComments)}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-all duration-300"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
           >
             <FiMessageCircle size={20} />
-            <span>Comment</span>
+            <span className="hidden sm:inline text-sm font-medium">Comment</span>
           </button>
 
           <button
             onClick={handleShare}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-all duration-300"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
           >
             <FiShare2 size={20} />
-            <span>Share</span>
+            <span className="hidden sm:inline text-sm font-medium">Share</span>
           </button>
+
           <button
             onClick={toggleBookmark}
-            className={`px-3 py-3 rounded-xl font-semibold transition-all duration-300 ${bookmarked ? "text-amber-600" : "text-slate-600 hover:bg-slate-50"}`}
-            title={bookmarked ? "Saved" : "Save"}
+            className={`p-2 rounded-lg transition-colors ${
+              bookmarked ? "text-indigo-600 bg-indigo-50" : "text-slate-600 hover:bg-slate-100"
+            }`}
           >
-            <FiBookmark size={20} />
+            <FiBookmark size={20} fill={bookmarked ? "currentColor" : "none"} />
           </button>
         </div>
 
@@ -812,18 +731,14 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-4 pt-4 border-t"
+              className="mt-4 pt-4 border-t space-y-3"
             >
               {/* Comment Input */}
-              <div className="flex gap-3 mb-4">
+              <div className="flex gap-2 items-start">
                 <img
-                  src={
-                    currentUser.avatarUrl
-                      ? getAvatarUrl(currentUser.avatarUrl)
-                      : "/default-avatar.png"
-                  }
+                  src={currentUser.avatarUrl ? getAvatarUrl(currentUser.avatarUrl) : "/default-avatar.png"}
                   alt={currentUser.name}
-                  className="w-10 h-10 rounded-full object-cover"
+                  className="w-8 h-8 rounded-full object-cover"
                 />
                 <div className="flex-1 flex gap-2">
                   <input
@@ -832,12 +747,12 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
                     onChange={(e) => setComment(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleComment()}
                     placeholder="Write a comment..."
-                    className="flex-1 px-4 py-2 border-2 border-slate-200 rounded-full focus:border-indigo-500 focus:outline-none"
+                    className="flex-1 px-4 py-2 bg-slate-100 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                   />
                   <button
                     onClick={handleComment}
                     disabled={!comment.trim()}
-                    className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <FiSend size={20} />
                   </button>
@@ -845,168 +760,39 @@ const PostCard = ({ post, index, currentUser, onDelete, onUpdate }) => {
               </div>
 
               {/* Comments List */}
-              <div className="space-y-4">
-                {comments.map((c) => (
-                  <CommentItem
-                    key={c._id}
-                    comment={c}
-                    postId={post._id}
-                    currentUser={currentUser}
-                    onUpdate={onUpdate}
-                  />
-                ))}
-              </div>
+              {comments.length > 0 && (
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {comments.map((c, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <img
+                        src={
+                          c.user?.avatarUrl
+                            ? getAvatarUrl(c.user.avatarUrl)
+                            : "/default-avatar.png"
+                        }
+                        alt={c.user?.name}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <div className="flex-1">
+                        <div className="bg-slate-100 rounded-2xl px-4 py-2">
+                          <p className="font-semibold text-sm text-slate-800">
+                            {c.user?.name}
+                          </p>
+                          <p className="text-sm text-slate-700">{c.content}</p>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1 ml-4">
+                          {formatTime(c.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
     </motion.div>
-  );
-};
-
-// Comment Item Component with Replies
-const CommentItem = ({ comment, postId, currentUser, onUpdate }) => {
-  const [showReplyInput, setShowReplyInput] = useState(false);
-  const [replyText, setReplyText] = useState("");
-  const [replies, setReplies] = useState(comment.replies || []);
-
-  const handleReply = async () => {
-    if (!replyText.trim()) return;
-
-    try {
-      const response = await axios.post(
-        `/api/posts/${postId}/comment/${comment._id}/reply`,
-        { content: replyText }
-      );
-
-      setReplies([...replies, response.data]);
-      setReplyText("");
-      setShowReplyInput(false);
-      toast.success("Reply added!");
-      onUpdate();
-    } catch (error) {
-      console.error("Error replying:", error);
-      toast.error("Failed to add reply");
-    }
-  };
-
-  const formatTime = (date) => {
-    const now = new Date();
-    const commentDate = new Date(date);
-    const diffInSeconds = Math.floor((now - commentDate) / 1000);
-
-    if (diffInSeconds < 60) return "Just now";
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
-    return `${Math.floor(diffInSeconds / 86400)}d`;
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-3">
-        <img
-          src={
-            comment.user?.avatarUrl
-              ? getAvatarUrl(comment.user.avatarUrl)
-              : "/default-avatar.png"
-          }
-          alt={comment.user?.name}
-          className="w-10 h-10 rounded-full object-cover"
-        />
-        <div className="flex-1">
-          <div className="bg-slate-50 rounded-2xl px-4 py-3">
-            <div className="flex items-center gap-2 mb-1">
-              <p className="font-semibold text-slate-800 text-sm">
-                {comment.user?.name}
-              </p>
-              <span className="text-xs text-slate-400">
-                {formatTime(comment.createdAt)}
-              </span>
-            </div>
-            <div className="text-slate-700 text-sm">
-              {formatPostContent(comment.content)}
-            </div>
-          </div>
-          <button
-            onClick={() => setShowReplyInput(!showReplyInput)}
-            className="text-sm text-slate-500 hover:text-indigo-600 font-semibold mt-1 ml-4"
-          >
-            Reply
-          </button>
-
-          {/* Reply Input */}
-          {showReplyInput && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              className="flex gap-2 mt-3 ml-4"
-            >
-              <img
-                src={
-                  currentUser.avatarUrl
-                    ? getAvatarUrl(currentUser.avatarUrl)
-                    : "/default-avatar.png"
-                }
-                alt={currentUser.name}
-                className="w-8 h-8 rounded-full object-cover"
-              />
-              <div className="flex-1 flex gap-2">
-                <input
-                  type="text"
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleReply()}
-                  placeholder="Write a reply..."
-                  className="flex-1 px-3 py-2 text-sm border-2 border-slate-200 rounded-full focus:border-indigo-500 focus:outline-none"
-                  autoFocus
-                />
-                <button
-                  onClick={handleReply}
-                  disabled={!replyText.trim()}
-                  className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <FiSend size={16} />
-                </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Replies List */}
-          {replies.length > 0 && (
-            <div className="mt-3 ml-4 space-y-3">
-              {replies.map((reply) => (
-                <div key={reply._id} className="flex gap-2">
-                  <img
-                    src={
-                      reply.user?.avatarUrl
-                        ? getAvatarUrl(reply.user.avatarUrl)
-                        : "/default-avatar.png"
-                    }
-                    alt={reply.user?.name}
-                    className="w-8 h-8 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <div className="bg-slate-50 rounded-2xl px-3 py-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-semibold text-slate-800 text-xs">
-                          {reply.user?.name}
-                        </p>
-                        <span className="text-xs text-slate-400">
-                          {formatTime(reply.createdAt)}
-                        </span>
-                      </div>
-                      <div className="text-slate-700 text-sm">
-                        {formatPostContent(reply.content)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
   );
 };
 
