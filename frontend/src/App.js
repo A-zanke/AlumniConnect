@@ -64,6 +64,14 @@ function App() {
                   }
                 />
                 <Route
+                  path="/messages/:threadId"
+                  element={
+                    <PrivateRoute>
+                      <MessagesPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
                   path="/forum"
                   element={
                     <PrivateRoute roles={["student", "admin"]}>

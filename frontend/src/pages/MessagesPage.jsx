@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import io from 'socket.io-client';
@@ -11,6 +12,8 @@ import { toast } from 'react-toastify';
 
 const MessagesPage = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { threadId } = useParams();
   const [socket, setSocket] = useState(null);
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
@@ -111,13 +114,19 @@ const MessagesPage = () => {
         const res = await axios.get('/api/messages/threads');
         const list = Array.isArray(res.data) ? res.data : [];
         setThreads(list);
-        if (!selectedThread && list.length > 0) setSelectedThread(list[0]);
+        if (!threadId && list.length > 0) {
+          setSelectedThread(list[0]);
+          navigate(`/messages/${list[0]._id}`, { replace: true });
+        } else if (threadId && list.length > 0) {
+          const t = list.find((x) => String(x._id) === String(threadId));
+          if (t) setSelectedThread(t);
+        }
       } catch (err) {
         console.error('Fetch threads error:', err);
       }
     };
     fetchThreads();
-  }, []);
+  }, [threadId, navigate]);
 
   // Load my connections for starting chats/search
   useEffect(() => {
@@ -461,7 +470,10 @@ const MessagesPage = () => {
             return (
               <div
                 key={thread._id}
-                onClick={() => onSelectThread(thread)}
+                onClick={() => {
+                  onSelectThread(thread);
+                  navigate(`/messages/${thread._id}`);
+                }}
                 className={`p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                   selectedThread?._id === thread._id ? 'bg-gray-100 dark:bg-gray-700' : ''
                 }`}
