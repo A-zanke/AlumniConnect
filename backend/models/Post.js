@@ -95,6 +95,23 @@ const commentSchema = new mongoose.Schema(
           required: true,
         },
         type: {
+          type: String,
+          enum: [
+            "like",
+            "love",
+            "celebrate",
+            "support",
+            "insightful",
+            "curious",
+          ],
+          required: true,
+        },
+      },
+    ],
+    replies: [replySchema],
+  },
+  { timestamps: true }
+);
 
 const postSchema = new mongoose.Schema(
   {
