@@ -68,6 +68,11 @@ const Navbar = () => {
     ...adminItem,
   ];
 
+  // Hide global navbar on admin routes to avoid double nav
+  if (location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <motion.nav
       className="relative z-50 transition-all duration-500 backdrop-blur-md bg-transparent"
