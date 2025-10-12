@@ -23,6 +23,8 @@ import {
 } from "react-icons/fi";
 import { getAvatarUrl } from "../components/utils/helpers";
 import { postsAPI } from "../components/utils/api";
+import PostComposer from "../components/posts/PostComposer";
+import PostCardComp from "../components/posts/PostCard";
 import { toast } from "react-hot-toast";
 // import CreatePost from "../components/CreatePost.jsx";
 
@@ -75,8 +77,10 @@ const PostsPage = () => {
   const [sortBy, setSortBy] = useState("recent");
   const [showSaved, setShowSaved] = useState(false);
 
-  // 🔧 FIX: Allow all authenticated users to create posts
-  const canCreatePost = true;
+  // 🔧 FIX: Only Alumni/Teacher/Admin can create posts
+  const canCreatePost = ["alumni", "teacher", "admin"].includes(
+    String(user?.role || "").toLowerCase()
+  );
 
   useEffect(() => {
     fetchPosts();
@@ -779,7 +783,7 @@ const PostsPage = () => {
                 </div>
               )
             ) : posts.length > 0 ? (
-              posts.map((post) => <PostCard key={post._id} post={post} />)
+              posts.map((post) => <PostCardComp key={post._id} post={post} />)
             ) : (
               <div className="text-center py-16 bg-white rounded-lg shadow-md border border-gray-200">
                 <FiMessageCircle className="mx-auto h-16 w-16 text-gray-300" />
@@ -800,11 +804,25 @@ const PostsPage = () => {
       {/* Create post modal */}
       {showCreatePost && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            {/* <CreatePost
-              onPostCreated={handleCreatePost}
-              onClose={() => setShowCreatePost(false)}
-            /> */}
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">Create Post</h3>
+              <button
+                onClick={() => setShowCreatePost(false)}
+                className="p-2 rounded-full hover:bg-gray-100"
+                aria-label="Close"
+              >
+                <FiX />
+              </button>
+            </div>
+            <div className="p-4">
+              <PostComposer
+                onPosted={(newPost) => {
+                  handleCreatePost(newPost || {});
+                  setShowCreatePost(false);
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
