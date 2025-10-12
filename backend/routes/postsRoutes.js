@@ -10,10 +10,16 @@ const {
   likePost,
   sharePost,
   commentOnPost,
+  updateComment,
+  deleteComment,
   deletePost,
   getUserPosts,
   toggleBookmark,
   getSavedPosts,
+  savePost,
+  unsavePost,
+  getUserSavedPosts,
+  softDeletePost,
   updatePost,
 } = require("../controllers/postsController");
 const { protect } = require("../middleware/authMiddleware");
@@ -66,6 +72,8 @@ router.get("/user/:userId", protect, getUserPosts);
 
 // GET /api/posts/saved/mine - Get all posts bookmarked by the current user
 router.get("/saved/mine", protect, getSavedPosts);
+// GET /api/users/:userId/saved-posts - Get user's saved posts
+router.get("/user/:userId/saved", protect, getUserSavedPosts);
 
 // POST /api/posts/:id/react - Add or update a reaction on a post
 router.post("/:id/react", protect, reactToPost);
@@ -73,6 +81,10 @@ router.post("/:id/react", protect, reactToPost);
 router.put("/:id/like", protect, likePost);
 // POST /api/posts/:id/share - Share a post
 router.post("/:id/share", protect, sharePost);
+// POST /api/posts/:id/save - Save
+router.post("/:id/save", protect, savePost);
+// DELETE /api/posts/:id/save - Unsave
+router.delete("/:id/save", protect, unsavePost);
 
 // POST /api/posts/:id/comment - Add a comment to a post
 router.post(
@@ -81,6 +93,10 @@ router.post(
   [check("content", "Comment cannot be empty").not().isEmpty().trim().escape()],
   commentOnPost
 );
+// PATCH /api/posts/:id/comments/:commentId - Edit comment
+router.patch("/:id/comments/:commentId", protect, updateComment);
+// DELETE /api/posts/:id/comments/:commentId - Delete comment
+router.delete("/:id/comments/:commentId", protect, deleteComment);
 
 // POST /api/posts/:id/bookmark - Toggle bookmark on a post
 router.post("/:id/bookmark", protect, toggleBookmark);
@@ -93,7 +109,7 @@ router.put(
   updatePost
 );
 
-// DELETE /api/posts/:id - Delete a post
-router.delete("/:id", protect, deletePost);
+// DELETE /api/posts/:id - Soft delete a post
+router.delete("/:id", protect, softDeletePost);
 
 module.exports = router;

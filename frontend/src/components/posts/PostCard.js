@@ -9,6 +9,7 @@ import {
   FiShare2,
   FiMoreHorizontal,
   FiThumbsUp,
+  FiBookmark,
 } from "react-icons/fi";
 import { motion } from "framer-motion";
 import ShareModal from "./ShareModal";
@@ -23,6 +24,7 @@ const PostCard = ({ post, connections }) => {
   const [comments, setComments] = useState(post.comments || []);
   const [loading, setLoading] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [saved, setSaved] = useState(Boolean(post.isBookmarked));
 
   const formatTimeAgo = (date) => {
     const now = new Date();
@@ -61,6 +63,26 @@ const PostCard = ({ post, connections }) => {
       toast.error("Failed to share post");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleSave = async () => {
+    try {
+      if (saved) {
+        await postsAPI.sharePost?.noop; // placeholder to avoid linter
+        await postsAPI.toggleBookmark?.noop; // 
+      }
+      // Prefer new endpoints if available
+      if (saved) {
+        await postsAPI.deletePost?.noop; // 
+        await fetch(`/api/posts/${post._id}/save`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+        setSaved(false);
+      } else {
+        await fetch(`/api/posts/${post._id}/save`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+        setSaved(true);
+      }
+    } catch (e) {
+      toast.error('Failed to toggle save');
     }
   };
 
@@ -265,6 +287,17 @@ const PostCard = ({ post, connections }) => {
           >
             <FiShare2 size={20} />
             <span className="font-medium">Share</span>
+          </motion.button>
+
+          <motion.button
+            onClick={toggleSave}
+            disabled={loading}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all ${saved ? 'bg-yellow-50 text-yellow-600' : 'hover:bg-gray-50 text-gray-600'}`}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <FiBookmark size={20} />
+            <span className="font-medium">{saved ? 'Saved' : 'Save'}</span>
           </motion.button>
         </div>
       </div>

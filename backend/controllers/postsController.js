@@ -18,9 +18,13 @@ const detectMediaType = (file) => {
 exports.getAllPosts = async (req, res) => {
   try {
     const currentUserId = req.user?._id;
+    const { sort = 'recent', page = 1, pageSize = 20, tag, hasMedia } = req.query;
+    const skip = (Math.max(parseInt(page) || 1, 1) - 1) * (Math.min(parseInt(pageSize) || 20, 50));
+    const limit = Math.min(parseInt(pageSize) || 20, 50);
+
     const visibleQuery = [
-      { visibility: "public" },
-      { userId: currentUserId }, // author's own posts
+      { visibility: "public", deletedAt: null },
+      { userId: currentUserId, deletedAt: null }, // author's own posts
     ];
 
     // If user has connections list on the User doc, include connections-only
@@ -31,8 +35,17 @@ exports.getAllPosts = async (req, res) => {
       visibleQuery.push({ visibility: "connections", userId: { $in: connectionIds } });
     }
 
-    const posts = await Post.find({ approved: true, $or: visibleQuery })
-    .sort({ createdAt: -1 })
+    const andFilters = [{ approved: true }];
+    if (tag) andFilters.push({ tags: String(tag) });
+    if (String(hasMedia || '').toLowerCase() === 'true') andFilters.push({ media: { $exists: true, $not: { $size: 0 } } });
+
+    const sortSpec = sort === 'popular'
+      ? { 'reactions.length': -1, 'comments.length': -1, shares: -1, createdAt: -1 }
+      : { createdAt: -1 };
+
+    const posts = await Post.find({ $and: andFilters, $or: visibleQuery })
+    .sort(sortSpec)
+    .skip(skip).limit(limit)
     .populate("userId", "name avatarUrl username role")
     .populate("mentions", "name avatarUrl username")
     .populate("comments.userId", "name avatarUrl username")
@@ -222,6 +235,9 @@ exports.commentOnPost = async (req, res) => {
     if (!post) {
       return res.status(404).json({ message: "Post not found." });
     }
+    if (post.disabledComments) {
+      return res.status(403).json({ message: "Comments are disabled for this post." });
+    }
 
     const newComment = {
       userId: req.user._id,
@@ -239,6 +255,104 @@ exports.commentOnPost = async (req, res) => {
   } catch (error) {
     console.error("Error in commentOnPost:", error);
     res.status(500).json({ message: "Server error while adding comment." });
+  }
+};
+
+// --- EDIT/DELETE COMMENT ---
+exports.updateComment = async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const { content } = req.body;
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+    if (String(comment.userId) !== String(req.user._id)) return res.status(403).json({ message: 'Not authorized' });
+    comment.content = String(content || '').trim();
+    comment.isEdited = true; comment.editedAt = new Date();
+    await post.save();
+    await post.populate('comments.userId', 'name avatarUrl username');
+    return res.json(comment);
+  } catch (e) {
+    console.error('updateComment error', e);
+    return res.status(500).json({ message: 'Failed to edit comment' });
+  }
+};
+
+exports.deleteComment = async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+    if (String(comment.userId) !== String(req.user._id) && String(post.userId) !== String(req.user._id)) return res.status(403).json({ message: 'Not authorized' });
+    comment.deleteOne();
+    await post.save();
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('deleteComment error', e);
+    return res.status(500).json({ message: 'Failed to delete comment' });
+  }
+};
+
+// --- SAVE / UNSAVE ---
+exports.savePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const uid = String(req.user._id);
+    const has = (post.bookmarkedBy || []).some((u) => String(u) === uid);
+    if (!has) post.bookmarkedBy.push(req.user._id);
+    await post.save();
+    return res.json({ saved: true });
+  } catch (e) {
+    console.error('savePost error', e);
+    return res.status(500).json({ message: 'Failed to save post' });
+  }
+};
+
+exports.unsavePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const uid = String(req.user._id);
+    post.bookmarkedBy = (post.bookmarkedBy || []).filter((u) => String(u) !== uid);
+    await post.save();
+    return res.json({ saved: false });
+  } catch (e) {
+    console.error('unsavePost error', e);
+    return res.status(500).json({ message: 'Failed to unsave post' });
+  }
+};
+
+exports.getUserSavedPosts = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const posts = await Post.find({ bookmarkedBy: userId, deletedAt: null })
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name avatarUrl username role')
+      .lean();
+    const shaped = posts.map((p) => ({ ...p, user: p.userId }));
+    return res.json(shaped);
+  } catch (e) {
+    console.error('getUserSavedPosts error', e);
+    return res.status(500).json({ message: 'Failed to fetch saved posts' });
+  }
+};
+
+// --- SOFT DELETE POST ---
+exports.softDeletePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (String(post.userId) !== String(req.user._id) && String(req.user.role).toLowerCase() !== 'admin') return res.status(403).json({ message: 'Not authorized' });
+    post.deletedAt = new Date();
+    await post.save();
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('softDeletePost error', e);
+    return res.status(500).json({ message: 'Failed to delete post' });
   }
 };
 
