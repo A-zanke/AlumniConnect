@@ -22,7 +22,13 @@ router.get('/recommendations/:studentId', protect, async (req, res) => {
 
     const scriptPath = path.resolve(__dirname, '..', '..', 'ml', 'ai_recommender.py');
     const execName = process.platform === 'win32' ? 'python' : 'python3';
-    let py = spawn(execName, [scriptPath, mongoUri, studentId, '10']);
+    // Adjustable similarity threshold: query param or env, defaults to 0.6
+    const rawThreshold = parseFloat(req.query.threshold || process.env.REC_SIMILARITY_THRESHOLD || '0.6');
+    const threshold = Number.isFinite(rawThreshold) ? Math.min(Math.max(rawThreshold, 0), 1) : 0.6;
+
+    // Pass top_k = 0 to return dynamic, unbounded (post-threshold) results
+    const args = [scriptPath, mongoUri, studentId, '0'];
+    let py = spawn(execName, args, { env: { ...process.env, REC_SIMILARITY_THRESHOLD: String(threshold) } });
 
     let out = '';
     let err = '';
@@ -33,7 +39,7 @@ router.get('/recommendations/:studentId', protect, async (req, res) => {
       if (execName !== 'python') {
         out = '';
         err = '';
-        py = spawn('python', [scriptPath, mongoUri, studentId, '10']);
+        py = spawn('python', args, { env: { ...process.env, REC_SIMILARITY_THRESHOLD: String(threshold) } });
         py.stdout.on('data', (d) => (out += d.toString()));
         py.stderr.on('data', (d) => (err += d.toString()));
         py.on('close', async (code) => {
@@ -44,25 +50,6 @@ router.get('/recommendations/:studentId', protect, async (req, res) => {
             const parsed = JSON.parse(out || '{}');
             if (parsed.error) return res.status(500).json(parsed);
             let recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
-            if (recs.length === 0) {
-              try {
-                const fallback = await User.find({ role: 'alumni' })
-                  .select('name username avatarUrl department graduationYear industry skills')
-                  .limit(10)
-                  .lean();
-                recs = fallback.map(a => ({
-                  _id: String(a._id),
-                  name: a.name || '',
-                  username: a.username || '',
-                  avatarUrl: a.avatarUrl || '',
-                  department: a.department || '',
-                  graduationYear: a.graduationYear || '',
-                  industry: a.industry || '',
-                  skills: Array.isArray(a.skills) ? a.skills : [],
-                  similarity: 0.0,
-                }));
-              } catch {}
-            }
             return res.json(recs);
           } catch (e) {
             return res.status(500).json({ message: 'Invalid AI output', out });
@@ -80,28 +67,6 @@ router.get('/recommendations/:studentId', protect, async (req, res) => {
         const parsed = JSON.parse(out || '{}');
         if (parsed.error) return res.status(500).json(parsed);
         let recs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
-        if (recs.length === 0) {
-          // Fallback: return some alumni from DB so UI is not empty
-          try {
-            const fallback = await User.find({ role: 'alumni' })
-              .select('name username avatarUrl department graduationYear industry skills')
-              .limit(10)
-              .lean();
-            recs = fallback.map(a => ({
-              _id: String(a._id),
-              name: a.name || '',
-              username: a.username || '',
-              avatarUrl: a.avatarUrl || '',
-              department: a.department || '',
-              graduationYear: a.graduationYear || '',
-              industry: a.industry || '',
-              skills: Array.isArray(a.skills) ? a.skills : [],
-              similarity: 0.0,
-            }));
-          } catch (fallbackErr) {
-            // ignore
-          }
-        }
         return res.json(recs);
       } catch (e) {
         return res.status(500).json({ message: 'Invalid AI output', out });

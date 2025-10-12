@@ -5,6 +5,15 @@ import json
 import math
 import traceback
 from typing import List, Dict, Any
+"""
+Alumni recommender
+
+Changes:
+- Filter alumni by same/related department before computing cosine similarity
+- Use adjustable similarity threshold via REC_SIMILARITY_THRESHOLD env (default 0.6)
+- Return dynamic number of matches: when top_k <= 0, do not cap
+- Include company field in outputs
+"""
 
 # Third-party
 try:
@@ -40,6 +49,64 @@ def build_feature_text(user: Dict[str, Any]) -> str:
     return " ".join([p.strip().lower().replace(" ", "_") for p in parts if _safe_str(p).strip()])
 
 
+# --- Department normalization and relatedness ---
+def _normalize_dept(raw: Any) -> str:
+    if raw is None:
+        return ""
+    s = str(raw).strip().lower()
+    # unify punctuation/variants
+    s = s.replace("&", "and").replace("/", " ").replace("-", " ").replace(".", " ")
+    s = " ".join(s.split())  # collapse whitespace
+    return s
+
+
+_DEPT_GROUPS = {
+    # Computer Science and related
+    "cse": {
+        "cse", "computer science", "cs", "it", "information technology",
+        "ai", "ml", "aiml", "ai ml", "data science", "ai ds", "ai ds",
+        "ai ds", "ai ds", "ai ds", "ai ds", "ai ds"
+    },
+    "ai ds": {"ai ds", "ai", "ml", "aiml", "data science", "cse", "cs", "information technology", "it"},
+    # Electronics/Electrical/Telecom cluster
+    "ece": {
+        "ece", "electronics", "electronics and communication", "electronics and telecommunication",
+        "entc", "e and tc", "eandtc", "e and c", "telecom", "telecommunication",
+        "electrical", "eee", "electrical and electronics", "e and e"
+    },
+    # Mechanical cluster
+    "mechanical": {"mechanical", "mech", "production", "industrial"},
+    # Civil cluster
+    "civil": {"civil"},
+}
+
+
+def _canonical_dept(raw: Any) -> str:
+    s = _normalize_dept(raw)
+    if not s:
+        return ""
+    for canon, synonyms in _DEPT_GROUPS.items():
+        if s in synonyms:
+            return canon
+    # common short-hands
+    if s in {"e tc", "e and tc", "e&tc", "etc"}:
+        return "ece"
+    if s in {"ai ds", "ai ml", "aiml"}:
+        return "ai ds"
+    if s in {"cs", "computer", "computer engineering"}:
+        return "cse"
+    return s
+
+
+def _departments_related(student_dept: Any, alumni_dept: Any) -> bool:
+    cs = _canonical_dept(student_dept)
+    ca = _canonical_dept(alumni_dept)
+    if not cs or not ca:
+        # if either is missing, do not exclude on department alone
+        return True
+    return cs == ca
+
+
 def fetch_users(mongo_uri: str, student_id: str) -> (Dict[str, Any], List[Dict[str, Any]]):
     client = MongoClient(mongo_uri)
     db = client.get_default_database() if "/" in mongo_uri.split("?")[0].rsplit("/", 1)[-1] else client[os.environ.get("MONGO_DB_NAME", "test")] 
@@ -49,6 +116,7 @@ def fetch_users(mongo_uri: str, student_id: str) -> (Dict[str, Any], List[Dict[s
         "avatarUrl": 1,
         "department": 1,
         "graduationYear": 1,
+        "company": 1,
         "industry": 1,
         "skills": 1,
         "careerInterests": 1,
@@ -69,8 +137,13 @@ def fetch_users(mongo_uri: str, student_id: str) -> (Dict[str, Any], List[Dict[s
 def compute_recommendations(student: Dict[str, Any], alumni: List[Dict[str, Any]], top_k: int = 10) -> List[Dict[str, Any]]:
     if not student or not alumni:
         return []
-    
-    corpus = [build_feature_text(student)] + [build_feature_text(a) for a in alumni]
+
+    # Department filter: only consider same/related departments
+    eligible_alumni = [a for a in alumni if _departments_related(student.get("department"), a.get("department"))]
+    if not eligible_alumni:
+        return []
+
+    corpus = [build_feature_text(student)] + [build_feature_text(a) for a in eligible_alumni]
     
     # Filter out empty feature texts
     if all(len(c.strip()) == 0 for c in corpus):
@@ -81,24 +154,31 @@ def compute_recommendations(student: Dict[str, Any], alumni: List[Dict[str, Any]
     sims = cosine_similarity(X[0:1], X[1:]).flatten()
     
     # Pair each alum with score
+    # Adjustable threshold (default 0.6)
+    try:
+        threshold = float(os.environ.get("REC_SIMILARITY_THRESHOLD", "0.6"))
+    except Exception:
+        threshold = 0.6
+
     paired = [
         {
-            "_id": alumni[i]["_id"],
-            "name": alumni[i].get("name", ""),
-            "username": alumni[i].get("username", ""),
-            "avatarUrl": alumni[i].get("avatarUrl", ""),
-            "department": alumni[i].get("department", ""),
-            "graduationYear": alumni[i].get("graduationYear", ""),
-            "industry": alumni[i].get("industry", ""),
-            "skills": alumni[i].get("skills", []),
+            "_id": eligible_alumni[i]["_id"],
+            "name": eligible_alumni[i].get("name", ""),
+            "username": eligible_alumni[i].get("username", ""),
+            "avatarUrl": eligible_alumni[i].get("avatarUrl", ""),
+            "department": eligible_alumni[i].get("department", ""),
+            "graduationYear": eligible_alumni[i].get("graduationYear", ""),
+            "company": eligible_alumni[i].get("company", ""),
+            "industry": eligible_alumni[i].get("industry", ""),
+            "skills": eligible_alumni[i].get("skills", []),
             "similarity": float(sims[i])
         }
-        for i in range(len(alumni))
-        if float(sims[i]) >= 0.3  # **THRESHOLD: Only include if similarity >= 0.3**
+        for i in range(len(eligible_alumni))
+        if float(sims[i]) >= threshold  # include if similarity >= threshold
     ]
     
     paired.sort(key=lambda x: x["similarity"], reverse=True)
-    return paired[:top_k]
+    return paired if (isinstance(top_k, int) and top_k <= 0) else paired[:top_k]
 
 
 def main():
