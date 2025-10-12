@@ -168,6 +168,37 @@ const MessagesPage = () => {
     }
   };
 
+  // Load messages immediately for a given thread id (used when selecting from search)
+  const fetchMessagesByThread = async (threadId, reset = false) => {
+    if (!threadId) return;
+    try {
+      const res = await axios.get(`/api/messages/threads/${threadId}/messages`, {
+        params: { before: reset ? undefined : undefined, limit: 30 },
+      });
+      const list = Array.isArray(res.data) ? res.data : [];
+      setMessages(list);
+      setHasMore(list.length === 30);
+      if (list.length > 0) setBeforeCursor(list[0]._id);
+      if (list.length > 0) {
+        const lastMsg = list[list.length - 1];
+        await axios.post(`/api/messages/threads/${threadId}/read`, {
+          upToMessageId: lastMsg._id,
+        });
+      }
+    } catch (err) {
+      console.error('Fetch messages by thread error:', err);
+    }
+  };
+
+  // Unified select handler: set thread and ensure chat loads
+  const onSelectThread = async (t) => {
+    if (!t) return;
+    setSelectedThread(t);
+    setBeforeCursor(null);
+    setHasMore(true);
+    await fetchMessagesByThread(t._id, true);
+  };
+
   const handleSendMessage = async () => {
     if (!inputText.trim() && !replyTo) return;
 
@@ -405,8 +436,8 @@ const MessagesPage = () => {
                             const exists = prev.some(p => p._id === t._id);
                             return exists ? prev : [t, ...prev];
                           });
-                          setSelectedThread(t);
                           setConnectionsQuery('');
+                          await onSelectThread(t);
                         } catch (e) {}
                       }}
                       className="w-full flex items-center gap-3 px-3 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -430,7 +461,7 @@ const MessagesPage = () => {
             return (
               <div
                 key={thread._id}
-                onClick={() => setSelectedThread(thread)}
+                onClick={() => onSelectThread(thread)}
                 className={`p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                   selectedThread?._id === thread._id ? 'bg-gray-100 dark:bg-gray-700' : ''
                 }`}
