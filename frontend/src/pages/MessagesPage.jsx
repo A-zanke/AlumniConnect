@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import io from 'socket.io-client';
 import { Virtuoso } from 'react-virtuoso';
 import { motion, AnimatePresence } from 'framer-motion';
-import {  FaSearch, FaPaperPlane, FaPaperclip, FaSmile, FaEllipsisV, FaReply, FaTrash, FaTimes, FaDownload, FaInfo, FaStar, FaRegStar, FaBan, FaFlag, FaCheck, FaCheckDouble
+import {  FaSearch, FaPaperPlane, FaPaperclip, FaSmile, FaEllipsisV, FaReply, FaTrash, FaTimes, FaDownload, FaInfo, FaStar, FaRegStar, FaBan, FaFlag, FaCheck, FaCheckDouble, FaForward, FaCheckSquare, FaSquare
 } from 'react-icons/fa';
 import EmojiPicker from 'emoji-picker-react';
 import { toast } from 'react-toastify';
@@ -15,6 +15,10 @@ const MessagesPage = () => {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [selectedMessageIds, setSelectedMessageIds] = useState(new Set());
+  const [connections, setConnections] = useState([]);
+  const [threadQuery, setThreadQuery] = useState('');
+  const [connectionsQuery, setConnectionsQuery] = useState('');
   const [inputText, setInputText] = useState('');
   const [replyTo, setReplyTo] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -28,6 +32,10 @@ const MessagesPage = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [lightboxMedia, setLightboxMedia] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [msgInfo, setMsgInfo] = useState(null);
+  const [beforeCursor, setBeforeCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -64,6 +72,15 @@ const MessagesPage = () => {
       }
     });
 
+    newSocket.on('messages:read', ({ userId, upToMessageId }) => {
+      setMessages(prev => prev.map(m => {
+        if (m.senderId?._id === user._id && m._id <= upToMessageId) {
+          return { ...m, status: { ...(m.status || {}), readBy: [...(m.status?.readBy || []), { userId, at: new Date() }] } };
+        }
+        return m;
+      }));
+    });
+
     newSocket.on('typing:start', ({ userId, threadId }) => {
       if (selectedThread?._id === threadId && userId !== user._id) {
         setTyping(userId);
@@ -92,12 +109,27 @@ const MessagesPage = () => {
     const fetchThreads = async () => {
       try {
         const res = await axios.get('/api/messages/threads');
-        setThreads(res.data);
+        const list = Array.isArray(res.data) ? res.data : [];
+        setThreads(list);
+        if (!selectedThread && list.length > 0) setSelectedThread(list[0]);
       } catch (err) {
         console.error('Fetch threads error:', err);
       }
     };
     fetchThreads();
+  }, []);
+
+  // Load my connections for starting chats/search
+  useEffect(() => {
+    const loadConnections = async () => {
+      try {
+        const res = await axios.get('/api/connections');
+        setConnections(Array.isArray(res.data) ? res.data : []);
+      } catch (e) {
+        console.error('Load connections error:', e);
+      }
+    };
+    loadConnections();
   }, []);
 
   // Fetch messages when thread selected
@@ -114,8 +146,15 @@ const MessagesPage = () => {
 
   const fetchMessages = async () => {
     try {
-      const res = await axios.get(`/api/messages/threads/${selectedThread._id}/messages`);
-      setMessages(res.data);
+      const res = await axios.get(`/api/messages/threads/${selectedThread._id}/messages`, { params: { before: beforeCursor || undefined, limit: 30 } });
+      const list = Array.isArray(res.data) ? res.data : [];
+      if (beforeCursor) {
+        setMessages(prev => [...list, ...prev]);
+      } else {
+        setMessages(list);
+      }
+      setHasMore(list.length === 30);
+      if (list.length > 0) setBeforeCursor(list[0]._id);
       
       // Mark as read
       if (res.data.length > 0) {
@@ -160,6 +199,29 @@ const MessagesPage = () => {
       setMessages(prev => prev.filter(m => m._id !== tempMessage._id));
       toast.error('Failed to send message');
     }
+  };
+
+  const toggleSelectMessage = (id) => {
+    setSelectedMessageIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const forwardSelected = async (targetThreadId) => {
+    const toForward = messages.filter(m => selectedMessageIds.has(m._id)).map(m => m.body).join('\n');
+    if (!toForward) return;
+    await axios.post(`/api/messages/threads/${targetThreadId}/messages`, { text: toForward, clientKey: `${user._id}-${Date.now()}-fwd` });
+    setSelectedMessageIds(new Set());
+    toast.success('Message(s) forwarded');
+  };
+
+  const deleteSelectedForMe = async () => {
+    await Promise.all([...selectedMessageIds].map(id => axios.delete(`/api/messages/messages/${id}?scope=me`)));
+    setMessages(prev => prev.filter(m => !selectedMessageIds.has(m._id)));
+    setSelectedMessageIds(new Set());
+    toast.success('Deleted selected');
   };
 
   const handleTyping = () => {
@@ -312,10 +374,56 @@ const MessagesPage = () => {
       <div className="w-full md:w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Messages</h2>
+          <div className="mt-3">
+            <input
+              value={threadQuery}
+              onChange={(e) => setThreadQuery(e.target.value)}
+              placeholder="Search chats..."
+              className="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 border-0 focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div className="mt-3">
+            <input
+              value={connectionsQuery}
+              onChange={(e) => setConnectionsQuery(e.target.value)}
+              placeholder="Start new chat with a connection..."
+              className="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 border-0 focus:ring-2 focus:ring-indigo-500"
+            />
+            {connectionsQuery && (
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border dark:border-gray-700">
+                {connections
+                  .filter(c => (c.name || '').toLowerCase().includes(connectionsQuery.toLowerCase()))
+                  .slice(0, 8)
+                  .map(c => (
+                    <button
+                      key={c._id}
+                      onClick={async () => {
+                        try {
+                          const res = await axios.get(`/api/messages/threads/${c._id}`);
+                          const t = res.data;
+                          setThreads(prev => {
+                            const exists = prev.some(p => p._id === t._id);
+                            return exists ? prev : [t, ...prev];
+                          });
+                          setSelectedThread(t);
+                          setConnectionsQuery('');
+                        } catch (e) {}
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      <img src={c.avatarUrl || '/default-avatar.png'} alt={c.name} className="w-8 h-8 rounded-full object-cover" />
+                      <span className="text-sm text-gray-700 dark:text-gray-200">{c.name}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="flex-1 overflow-y-auto">
-          {threads.map(thread => {
+          {threads
+            .filter(t => (t.participants || []).some(p => p.name?.toLowerCase().includes(threadQuery.toLowerCase())))
+            .map(thread => {
             const other = getOtherParticipant(thread);
             const isOnline = other?.isOnline || (other?.lastSeen && (new Date() - new Date(other.lastSeen)) < 60000);
             
@@ -397,6 +505,17 @@ const MessagesPage = () => {
               >
                 <FaSearch className="text-gray-600 dark:text-gray-300" />
               </button>
+              {selectedMessageIds.size > 0 && (
+                <div className="flex items-center gap-2 mr-2 text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">{selectedMessageIds.size} selected</span>
+                  <button
+                    onClick={deleteSelectedForMe}
+                    className="px-3 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
               <button
                 onClick={() => setShowInfoDrawer(true)}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -443,20 +562,41 @@ const MessagesPage = () => {
               data={messages}
               followOutput="smooth"
               itemContent={(index, message) => (
-                <MessageBubble
-                  key={message._id}
-                  message={message}
-                  isOwn={message.senderId._id === user._id}
-                  onReply={() => setReplyTo(message)}
-                  onReact={(emoji) => handleReaction(message._id, emoji)}
-                  onDelete={(scope) => handleDeleteMessage(message._id, scope)}
-                  getStatusIcon={getStatusIcon}
-                  formatTime={formatTime}
-                  setLightboxMedia={setLightboxMedia}
-                />
+                <div className="relative" key={message._id}>
+                  <div className="absolute -left-8 top-1">
+                    <button
+                      onClick={() => toggleSelectMessage(message._id)}
+                      className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                      title={selectedMessageIds.has(message._id) ? 'Unselect' : 'Select'}
+                    >
+                      {selectedMessageIds.has(message._id) ? <FaCheckSquare /> : <FaSquare />}
+                    </button>
+                  </div>
+                  <MessageBubble
+                    key={message._id}
+                    message={message}
+                    isOwn={message.senderId._id === user._id}
+                    onReply={() => setReplyTo(message)}
+                    onReact={(emoji) => handleReaction(message._id, emoji)}
+                    onDelete={(scope) => handleDeleteMessage(message._id, scope)}
+                    getStatusIcon={getStatusIcon}
+                    formatTime={formatTime}
+                    setLightboxMedia={setLightboxMedia}
+                  />
+                </div>
               )}
             />
             <div ref={messagesEndRef} />
+            {hasMore && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  onClick={() => fetchMessages()}
+                  className="px-4 py-2 rounded-lg bg-white dark:bg-gray-800 border hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  Load older messages
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Reply Preview */}
@@ -515,13 +655,24 @@ const MessagesPage = () => {
                 </button>
               </div>
               
-              <button
-                onClick={handleSendMessage}
-                disabled={!inputText.trim() && !replyTo}
-                className="p-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <FaPaperPlane />
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedMessageIds.size > 0 && (
+                  <button
+                    onClick={() => setShowForwardModal(true)}
+                    className="p-3 rounded-lg bg-white dark:bg-gray-700 border hover:bg-gray-50 dark:hover:bg-gray-600"
+                    title="Forward"
+                  >
+                    <FaForward className="text-gray-700 dark:text-gray-200" />
+                  </button>
+                )}
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!inputText.trim() && !replyTo}
+                  className="p-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <FaPaperPlane />
+                </button>
+              </div>
             </div>
             
             {showEmojiPicker && (
