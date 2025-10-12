@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { toast } from "react-toastify";
 import { postsAPI } from "../utils/api";
+import { getAvatarUrl } from "../utils/helpers";
 import { useAuth } from "../../context/AuthContext";
 import {
   FiHeart,
@@ -54,7 +55,7 @@ const PostCard = ({ post, connections }) => {
     try {
       setLoading(true);
       const response = await postsAPI.sharePost(post._id, {});
-      setSharesCount(response.data.shares);
+      setSharesCount(response.data.sharesCount ?? response.data.shares ?? sharesCount + 1);
       toast.success("Post shared!");
     } catch (error) {
       toast.error("Failed to share post");
@@ -128,7 +129,7 @@ const PostCard = ({ post, connections }) => {
             <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center">
               {post.user.avatarUrl ? (
                 <img
-                  src={post.user.avatarUrl}
+                  src={getAvatarUrl(post.user.avatarUrl)}
                   alt={post.user.name}
                   className="w-12 h-12 rounded-full object-cover"
                 />
