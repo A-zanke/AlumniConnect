@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { postsAPI } from '../utils/api';
 
 const ACCEPTED_IMAGE = ['image/jpeg','image/png','image/gif','image/webp'];
 const ACCEPTED_VIDEO = ['video/mp4','video/webm','video/ogg'];
@@ -28,7 +28,7 @@ const PostComposer = ({ onPosted }) => {
       form.append('content', content);
       form.append('visibility', visibility);
       files.forEach(f => form.append('media', f));
-      await axios.post('/api/posts', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await postsAPI.createPost({ content, visibility, media: files[0] });
       toast.success('Posted!');
       setContent(''); setFiles([]);
       onPosted?.();

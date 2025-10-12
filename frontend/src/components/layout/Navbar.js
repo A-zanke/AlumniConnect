@@ -53,7 +53,7 @@ const Navbar = () => {
     { to: "/", label: "Home", icon: FiHome },
     { to: "/about", label: "About", icon: FiUsers },
   ];
-  const postsItem = isPosterRole ? [{ to: "/posts", label: "Posts", icon: FiFileText }] : [];
+  const postsItem = user ? [{ to: "/posts", label: "Posts", icon: FiFileText }] : [];
   const forumItem = (user && (user.role || "").toLowerCase() !== "teacher" && (user.role || "").toLowerCase() !== "alumni") ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }] : [];
   const netItem = user ? [{ to: "/network", label: "Network", icon: FiUsers }] : [];
   const adminItem = (user && (user.role || "").toLowerCase() === "admin") ? [{ to: "/admin", label: "Admin", icon: FiUser }] : [];

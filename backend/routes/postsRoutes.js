@@ -3,8 +3,12 @@ const router = express.Router();
 const { check } = require("express-validator");
 const {
   getAllPosts,
+  getFeed,
+  getPostById,
   createPost,
   reactToPost,
+  likePost,
+  sharePost,
   commentOnPost,
   deletePost,
   getUserPosts,
@@ -36,8 +40,12 @@ const upload = multer({
 
 // --- POST ROUTES ---
 
-// GET /api/posts - Get all posts for the main feed
+// GET /api/posts - Main feed
 router.get("/", protect, getAllPosts);
+// GET /api/posts/feed - Alias
+router.get("/feed", protect, getFeed);
+// GET /api/posts/:id - Single post
+router.get("/:id", protect, getPostById);
 
 // POST /api/posts - Create a new post
 router.post(
@@ -61,6 +69,10 @@ router.get("/saved/mine", protect, getSavedPosts);
 
 // POST /api/posts/:id/react - Add or update a reaction on a post
 router.post("/:id/react", protect, reactToPost);
+// PUT /api/posts/:id/like - Simple like toggle (compat)
+router.put("/:id/like", protect, likePost);
+// POST /api/posts/:id/share - Share a post
+router.post("/:id/share", protect, sharePost);
 
 // POST /api/posts/:id/comment - Add a comment to a post
 router.post(

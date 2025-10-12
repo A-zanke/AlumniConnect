@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { toast } from "react-toastify";
-import axios from "axios";
+import { postsAPI } from "../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import {
   FiHeart,
@@ -40,7 +40,7 @@ const PostCard = ({ post, connections }) => {
   const handleLike = async () => {
     try {
       setLoading(true);
-      const response = await axios.put(`/api/posts/${post._id}/like`);
+      const response = await postsAPI.likePost(post._id);
       setIsLiked(!isLiked);
       setLikesCount(response.data.likes);
     } catch (error) {
@@ -53,7 +53,7 @@ const PostCard = ({ post, connections }) => {
   const handleShare = async () => {
     try {
       setLoading(true);
-      const response = await axios.put(`/api/posts/${post._id}/share`);
+      const response = await postsAPI.sharePost(post._id, {});
       setSharesCount(response.data.shares);
       toast.success("Post shared!");
     } catch (error) {
@@ -69,10 +69,8 @@ const PostCard = ({ post, connections }) => {
 
     try {
       setLoading(true);
-      const response = await axios.post(`/api/posts/${post._id}/comment`, {
-        content: newComment,
-      });
-      setComments(response.data.comments);
+      const response = await postsAPI.commentOnPost(post._id, newComment);
+      setComments([...(comments || []), response.data]);
       setNewComment("");
       toast.success("Comment added!");
     } catch (error) {
@@ -106,7 +104,7 @@ const PostCard = ({ post, connections }) => {
     if (window.confirm("Are you sure you want to delete this post?")) {
       try {
         setLoading(true);
-        await axios.delete(`/api/posts/${post._id}`);
+        await postsAPI.deletePost(post._id);
         toast.success("Post deleted successfully");
         // Optionally, you can add a callback to remove the post from the UI
       } catch (error) {

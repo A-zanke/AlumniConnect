@@ -22,7 +22,7 @@ import {
   FiSmile,
 } from "react-icons/fi";
 import { getAvatarUrl } from "../components/utils/helpers";
-import axios from "axios";
+import { postsAPI } from "../components/utils/api";
 import { toast } from "react-hot-toast";
 // import CreatePost from "../components/CreatePost.jsx";
 
@@ -94,12 +94,7 @@ const PostsPage = () => {
       console.log("🔄 Fetching posts...");
       setLoading(true);
 
-      const response = await axios.get("/api/posts", {
-        timeout: 10000,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await postsAPI.getPosts();
 
       console.log("📡 Raw posts response:", response.data);
 
@@ -146,7 +141,7 @@ const PostsPage = () => {
   const fetchSavedPosts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get("/api/posts/saved/mine");
+      const response = await postsAPI.getSavedPosts?.() || await postsAPI.getPosts();
       setSavedPosts(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error("Error fetching saved posts:", error);
@@ -187,7 +182,7 @@ const PostsPage = () => {
   // 🔧 FIX: LinkedIn-style reaction handler
   const handleReaction = async (postId, reactionType) => {
     try {
-      const response = await axios.post(`/api/posts/${postId}/react`, {
+      const response = await postsAPI.reactToPost?.(postId, reactionType) || await fetch(`/api/posts/${postId}/react`, {
         type: reactionType,
       });
 
@@ -213,7 +208,7 @@ const PostsPage = () => {
   // 🔧 FIX: Like post functionality (backward compatibility)
   const handleLikePost = async (postId) => {
     try {
-      const response = await axios.post(`/api/posts/${postId}/like`);
+      const response = await postsAPI.likePost?.(postId) || await fetch(`/api/posts/${postId}/like`, { method: 'PUT' });
 
       setPosts((prevPosts) =>
         prevPosts.map((post) =>
@@ -238,7 +233,7 @@ const PostsPage = () => {
     try {
       if (!commentContent.trim()) return;
 
-      const response = await axios.post(`/api/posts/${postId}/comment`, {
+      const response = await postsAPI.commentOnPost?.(postId, commentContent) || await fetch(`/api/posts/${postId}/comment`, {
         content: commentContent.trim(),
       });
 
@@ -265,7 +260,7 @@ const PostsPage = () => {
   // 🔧 FIX: Share post functionality
   const handleSharePost = async (postId) => {
     try {
-      const response = await axios.post(`/api/posts/${postId}/share`, {
+      const response = await postsAPI.sharePost?.(postId, {}) || await fetch(`/api/posts/${postId}/share`, {
         message: "",
         connectionIds: [],
       });
@@ -289,7 +284,7 @@ const PostsPage = () => {
   // 🔧 FIX: Save/bookmark post functionality
   const handleSavePost = async (postId) => {
     try {
-      const response = await axios.post(`/api/posts/${postId}/bookmark`);
+      const response = await postsAPI.toggleBookmark?.(postId) || await fetch(`/api/posts/${postId}/bookmark`, { method: 'POST' });
 
       toast.success(response.data.message || "Post saved!");
 
@@ -317,7 +312,7 @@ const PostsPage = () => {
     if (!window.confirm("Are you sure you want to delete this post?")) return;
 
     try {
-      await axios.delete(`/api/posts/${postId}`);
+      await postsAPI.deletePost?.(postId);
       toast.success("Post deleted successfully");
 
       // Remove from current posts

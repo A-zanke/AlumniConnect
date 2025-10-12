@@ -13,14 +13,25 @@ const detectMediaType = (file) => {
   return "file";
 };
 
-// --- GET ALL POSTS ---
-// Fetches all non-private, approved posts for the main feed.
+// --- GET ALL POSTS (main feed) ---
+// Fetches approved posts visible to the current user (respect visibility)
 exports.getAllPosts = async (req, res) => {
   try {
-    const posts = await Post.find({
-      approved: true,
-      visibility: { $ne: "private" },
-    })
+    const currentUserId = req.user?._id;
+    const visibleQuery = [
+      { visibility: "public" },
+      { userId: currentUserId }, // author's own posts
+    ];
+
+    // If user has connections list on the User doc, include connections-only
+    const me = await User.findById(currentUserId).select("connections").lean();
+    const connectionIds = (me?.connections || []).map((id) => id);
+
+    if (connectionIds.length > 0) {
+      visibleQuery.push({ visibility: "connections", userId: { $in: connectionIds } });
+    }
+
+    const posts = await Post.find({ approved: true, $or: visibleQuery })
     .sort({ createdAt: -1 })
     .populate("userId", "name avatarUrl username role")
     .populate("mentions", "name avatarUrl username")
@@ -43,6 +54,50 @@ exports.getAllPosts = async (req, res) => {
   } catch (error) {
     console.error("Error in getAllPosts:", error);
     res.status(500).json({ message: "Server error while fetching posts." });
+  }
+};
+
+// --- GET FEED (alias) ---
+exports.getFeed = async (req, res) => {
+  return exports.getAllPosts(req, res);
+};
+
+// --- GET POST BY ID ---
+exports.getPostById = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .populate("userId", "name avatarUrl username role")
+      .populate("mentions", "name avatarUrl username")
+      .populate("comments.userId", "name avatarUrl username")
+      .populate("reactions.userId", "name avatarUrl username")
+      .lean();
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    // Visibility enforcement: allow if public, author, or connections-only where requester is in author's connections
+    const authorId = String(post.userId?._id || post.userId);
+    const meId = String(req.user?._id || "");
+    if (post.visibility === "private" && meId !== authorId && String(req.user?.role).toLowerCase() !== "admin") {
+      return res.status(403).json({ message: "Not authorized to view this post" });
+    }
+    if (post.visibility === "connections" && meId !== authorId) {
+      const author = await User.findById(authorId).select("connections");
+      const allowed = author?.connections?.some((c) => String(c) === meId);
+      if (!allowed) return res.status(403).json({ message: "Connections only" });
+    }
+
+    const shaped = {
+      ...post,
+      user: post.userId,
+      likesCount: post.likes?.length || 0,
+      commentsCount: post.comments?.length || 0,
+      reactionsCount: post.reactions?.length || 0,
+      sharesCount: post.shares || 0,
+      isBookmarked: req.user ? (post.bookmarkedBy || []).some((id) => String(id) === meId) : false,
+    };
+    res.json(shaped);
+  } catch (error) {
+    console.error("Error in getPostById:", error);
+    res.status(500).json({ message: "Server error while fetching post." });
   }
 };
 
@@ -144,8 +199,9 @@ exports.reactToPost = async (req, res) => {
     await post.populate('reactions.userId', 'name username avatarUrl');
 
     res.json({
-        reactions: post.reactions,
-        userReaction: post.reactions.find(r => r.userId.equals(userId)) || null
+      reactions: post.reactions,
+      reactionsCount: post.reactions.length,
+      userReaction: post.reactions.find(r => r.userId.equals(userId)) || null
     });
 
   } catch (error) {
@@ -179,11 +235,59 @@ exports.commentOnPost = async (req, res) => {
     // Populate the newly added comment to return full user data
     await post.populate("comments.userId", "name avatarUrl username");
     const addedComment = post.comments[post.comments.length - 1];
-
     res.status(201).json(addedComment);
   } catch (error) {
     console.error("Error in commentOnPost:", error);
     res.status(500).json({ message: "Server error while adding comment." });
+  }
+};
+
+// --- LIKE (backward-compat simple like) ---
+exports.likePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    const uid = String(req.user._id);
+    const already = post.likes.some((u) => String(u) === uid);
+    if (already) {
+      post.likes = post.likes.filter((u) => String(u) !== uid);
+    } else {
+      post.likes.push(req.user._id);
+    }
+    await post.save();
+    return res.json({ likes: post.likes.length, liked: !already });
+  } catch (e) {
+    console.error("Error in likePost:", e);
+    return res.status(500).json({ message: "Failed to like post" });
+  }
+};
+
+// --- SHARE ---
+exports.sharePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message = "", connectionIds = [] } = req.body || {};
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    post.shares = (post.shares || 0) + 1;
+    await post.save();
+    // Optionally notify the author
+    try {
+      const NotificationService = require('../services/notificationService');
+      await NotificationService.createNotification({
+        recipientId: post.userId,
+        senderId: req.user._id,
+        type: 'post_share',
+        content: `${req.user.name} shared your post`,
+        relatedId: post._id,
+        onModel: 'Post'
+      });
+    } catch (_) {}
+    return res.json({ sharesCount: post.shares });
+  } catch (e) {
+    console.error('Error in sharePost:', e);
+    return res.status(500).json({ message: 'Failed to share post' });
   }
 };
 

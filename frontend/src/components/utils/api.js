@@ -64,8 +64,10 @@ const appendToFormData = (formData, key, value) => {
 
 export const postsAPI = {
   getPosts: () => apiClient.get('/api/posts'),
+  getFeed: () => apiClient.get('/api/posts/feed'),
   getPost: (id) => apiClient.get(`/api/posts/${id}`),
   getUserPosts: (userId) => apiClient.get(`/api/posts/user/${userId}`),
+  getSavedPosts: () => apiClient.get('/api/posts/saved/mine'),
   createPost: (postData) => {
     if (postData.media) {
       const formData = new FormData();
@@ -82,8 +84,10 @@ export const postsAPI = {
   },
   deletePost: (id) => apiClient.delete(`/api/posts/${id}`),
   likePost: (id) => apiClient.put(`/api/posts/${id}/like`),
-  unlikePost: (id) => apiClient.put(`/api/posts/${id}/unlike`),
-  commentOnPost: (id, text) => apiClient.post(`/api/posts/${id}/comment`, { text }),
+  reactToPost: (id, type) => apiClient.post(`/api/posts/${id}/react`, { type }),
+  commentOnPost: (id, content) => apiClient.post(`/api/posts/${id}/comment`, { content }),
+  toggleBookmark: (id) => apiClient.post(`/api/posts/${id}/bookmark`),
+  sharePost: (id, payload) => apiClient.post(`/api/posts/${id}/share`, payload || {}),
   deleteComment: (postId, commentId) =>
     apiClient.delete(`/api/posts/${postId}/comment/${commentId}`),
 };
