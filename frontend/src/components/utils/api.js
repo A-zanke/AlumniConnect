@@ -63,7 +63,7 @@ const appendToFormData = (formData, key, value) => {
 };
 
 export const postsAPI = {
-  getPosts: () => apiClient.get('/api/posts'),
+  getPosts: (params) => apiClient.get('/api/posts', { params }),
   getFeed: () => apiClient.get('/api/posts/feed'),
   getPost: (id) => apiClient.get(`/api/posts/${id}`),
   getUserPosts: (userId) => apiClient.get(`/api/posts/user/${userId}`),
@@ -88,6 +88,8 @@ export const postsAPI = {
   commentOnPost: (id, content) => apiClient.post(`/api/posts/${id}/comment`, { content }),
   toggleBookmark: (id) => apiClient.post(`/api/posts/${id}/bookmark`),
   sharePost: (id, payload) => apiClient.post(`/api/posts/${id}/share`, payload || {}),
+  savePost: (id) => apiClient.post(`/api/posts/${id}/save`),
+  unsavePost: (id) => apiClient.delete(`/api/posts/${id}/save`),
   deleteComment: (postId, commentId) =>
     apiClient.delete(`/api/posts/${postId}/comment/${commentId}`),
 };
