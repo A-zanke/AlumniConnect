@@ -232,34 +232,69 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Chat logic remains unchanged
+  // Chat: idempotent send + status lifecycle + presence/typing
+  socket.on("typing", ({ recipientId }) => {
+    if (!recipientId) return;
+    io.to(recipientId).emit("typing:update", { from: socket.userId, typing: true, at: Date.now() });
+  });
+
+  socket.on("stop_typing", ({ recipientId }) => {
+    if (!recipientId) return;
+    io.to(recipientId).emit("typing:update", { from: socket.userId, typing: false, at: Date.now() });
+  });
+
+  socket.on("presence:ping", () => {
+    io.emit("presence:update", { userId: socket.userId, lastSeenAt: Date.now() });
+  });
+
   socket.on("chat:send", async (payload) => {
     try {
       const from = socket.userId;
-      const { to, content, attachments } = payload || {};
+      const { to, content, attachments, clientKey } = payload || {};
       if (!to || (!content && !attachments)) return;
       const me = await User.findById(from).select("connections");
       if (!me) return;
       const isConnected = me.connections.some((id) => id.toString() === to);
       if (!isConnected) return;
-      const messageData = { from, to, content: content || "" };
+      const participants = [from, to].sort();
+      const threadId = `${participants[0]}_${participants[1]}`;
+      const messageData = { threadId, clientKey, from, to, content: content || "" };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-      const msg = await Message.create(messageData);
+      let msg;
+      if (clientKey) {
+        msg = await Message.findOneAndUpdate(
+          { threadId, clientKey },
+          { $setOnInsert: messageData },
+          { upsert: true, new: true }
+        );
+      } else {
+        msg = await Message.create(messageData);
+      }
       const messagePayload = {
         _id: msg._id,
+        threadId,
         from,
         to,
         content: msg.content,
         attachments: msg.attachments || [],
         createdAt: msg.createdAt,
       };
+      socket.emit("message:ack", { id: msg._id, status: "sent" });
       io.to(to).emit("chat:receive", messagePayload);
-      socket.emit("chat:sent", messagePayload);
+      io.to(from).emit("message:delivered", { id: msg._id });
     } catch (e) {
       console.error("Socket chat error:", e);
     }
+  });
+
+  socket.on("thread:read", async ({ threadId }) => {
+    try {
+      if (!threadId) return;
+      await Message.updateMany({ threadId, to: socket.userId, status: { $ne: 'read' } }, { $set: { status: 'read', readAt: new Date() } });
+      io.emit("message:read", { threadId, userId: socket.userId, at: Date.now() });
+    } catch (e) {}
   });
 
   socket.join(socket.userId);

@@ -39,11 +39,11 @@ exports.getMessages = async (req, res) => {
   }
 };
 
-// Send a message
+// Send a message with idempotency and mutual-connection gating
 exports.sendMessage = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { content } = req.body;
+    const { content, clientKey, replyToId } = req.body;
     const currentUserId = req.user._id;
 
     // Check if users are connected
@@ -60,7 +60,13 @@ exports.sendMessage = async (req, res) => {
       return res.status(403).json({ message: 'You can only message connected users' });
     }
 
+    // Idempotency: if clientKey present, upsert on (threadId, clientKey)
+    const participants = [currentUserId.toString(), userId.toString()].sort();
+    const threadId = `${participants[0]}_${participants[1]}`;
+
     const messageData = {
+      threadId,
+      clientKey: clientKey || undefined,
       from: currentUserId,
       to: userId,
       content: content || ''
@@ -71,8 +77,16 @@ exports.sendMessage = async (req, res) => {
       messageData.attachments = [`/uploads/messages/${req.file.filename}`];
     }
 
-    // Create message
-    const message = await Message.create(messageData);
+    let message;
+    if (clientKey) {
+      message = await Message.findOneAndUpdate(
+        { threadId, clientKey },
+        { $setOnInsert: messageData },
+        { upsert: true, new: true }
+      );
+    } else {
+      message = await Message.create(messageData);
+    }
 
     // Create notification for recipient
     await NotificationService.createNotification({
@@ -84,10 +98,13 @@ exports.sendMessage = async (req, res) => {
 
     res.status(201).json({
       id: message._id,
+      threadId,
+      clientKey: message.clientKey,
       senderId: message.from,
       recipientId: message.to,
       content: message.content,
       attachments: message.attachments || [],
+      status: message.status,
       timestamp: message.createdAt
     });
   } catch (error) {

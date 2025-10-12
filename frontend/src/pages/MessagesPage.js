@@ -93,25 +93,28 @@ const MessagesPage = () => {
           setTimeout(scrollToBottom, 100);
         }
       });
-      
-      s.on('user_typing', (data) => {
-        if (data.userId !== user._id) {
-          setTypingUser(data.userName);
-          setIsTyping(true);
-          if (isTypingTimeout) clearTimeout(isTypingTimeout);
-          const timeout = setTimeout(() => {
-            setIsTyping(false);
-            setTypingUser(null);
-          }, 3000);
-          setIsTypingTimeout(timeout);
+
+      s.on('message:ack', ({ id, status }) => {
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, status } : m));
+      });
+      s.on('message:delivered', ({ id }) => {
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'delivered' } : m));
+      });
+      s.on('message:read', ({ threadId, userId }) => {
+        if (!selectedUser) return;
+        const t = [user._id, selectedUser._id].sort().join('_');
+        if (threadId === t) {
+          setMessages(prev => prev.map(m => m.senderId === user._id ? { ...m, status: 'read' } : m));
         }
       });
-
-      s.on('user_stopped_typing', (data) => {
+      
+      s.on('typing:update', (data) => {
         if (data.userId !== user._id) {
-          setIsTyping(false);
-          setTypingUser(null);
+          setTypingUser(data.userName);
+          setIsTyping(Boolean(data.typing));
           if (isTypingTimeout) clearTimeout(isTypingTimeout);
+          const timeout = setTimeout(() => { setIsTyping(false); setTypingUser(null); }, 3000);
+          setIsTypingTimeout(timeout);
         }
       });
       
@@ -177,11 +180,8 @@ const MessagesPage = () => {
       setTimeout(scrollToBottom, 100);
       
       if (socket) {
-        socket.emit('chat:send', { 
-          to: selectedUser._id, 
-          content: newMessage,
-          attachments: messageData.attachments || []
-        });
+        const clientKey = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+        socket.emit('chat:send', { to: selectedUser._id, content: newMessage, attachments: messageData.attachments || [], clientKey });
       }
     } catch (error) {
       console.error('Error sending message:', error);
