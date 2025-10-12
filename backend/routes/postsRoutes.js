@@ -1,84 +1,115 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
-const path = require("path");
+const { check } = require("express-validator");
 const {
   getAllPosts,
-  getUserPosts,
+  getFeed,
+  getPostById,
   createPost,
-  deletePost,
-  likePost,
-  commentOnPost,
-  sharePost,
   reactToPost,
-  replyToComment,
-  updatePost,
+  likePost,
+  sharePost,
+  commentOnPost,
+  updateComment,
+  deleteComment,
+  deletePost,
+  getUserPosts,
   toggleBookmark,
   getSavedPosts,
+  savePost,
+  unsavePost,
+  getUserSavedPosts,
+  softDeletePost,
+  updatePost,
 } = require("../controllers/postsController");
 const { protect } = require("../middleware/authMiddleware");
 const { roleMiddleware } = require("../middleware/roleMiddleware");
+const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../config/cloudinary");
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+// Configure multer for Cloudinary uploads
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "alumni-connect/posts",
+    allowed_formats: ["jpg", "jpeg", "png", "gif", "mp4", "mov", "avi", "webp"],
+    resource_type: "auto", // Automatically detect image or video
+    transformation: [{ quality: "auto", fetch_format: "auto" }],
   },
 });
-
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|avi/;
-  const extname = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
-  const mimetype = allowedTypes.test(file.mimetype);
-
-  if (mimetype && extname) {
-    return cb(null, true);
-  } else {
-    cb(new Error("Only images and videos are allowed"));
-  }
-};
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
-  fileFilter: fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit per file
 });
 
-// Post routes
-// Make posts feed visible to all authenticated users including admin
+// --- POST ROUTES ---
+
+// GET /api/posts - Main feed
 router.get("/", protect, getAllPosts);
-router.get("/user/:userId", protect, getUserPosts);
+// GET /api/posts/feed - Alias
+router.get("/feed", protect, getFeed);
+// GET /api/posts/:id - Single post
+router.get("/:id", protect, getPostById);
+
+// POST /api/posts - Create a new post
 router.post(
   "/",
   protect,
-  roleMiddleware(["teacher", "alumni", "admin"]),
-  upload.array("media", 5),
+  roleMiddleware(["teacher", "alumni", "admin", "student"]),
+  upload.array("media", 5), // 'media' is the field name, limit to 5 files
+  [
+    check("content", "Content can be up to 3000 characters")
+      .optional()
+      .isLength({ max: 3000 }),
+  ],
   createPost
 );
-router.put("/:id", protect, updatePost);
-router.delete("/:id", protect, deletePost);
 
-// Reaction routes (LinkedIn-style)
-router.post("/:id/react", protect, reactToPost);
+// GET /api/posts/user/:userId - Get all posts for a specific user
+router.get("/user/:userId", protect, getUserPosts);
 
-// Like routes (backward compatibility)
-router.post("/:id/like", protect, likePost);
-
-// Comment routes
-router.post("/:id/comment", protect, commentOnPost);
-router.post("/:id/comment/:commentId/reply", protect, replyToComment);
-
-// Share routes
-router.post("/:id/share", protect, sharePost);
-
-// Bookmark routes
-router.post("/:id/bookmark", protect, toggleBookmark);
+// GET /api/posts/saved/mine - Get all posts bookmarked by the current user
 router.get("/saved/mine", protect, getSavedPosts);
+// GET /api/users/:userId/saved-posts - Get user's saved posts
+router.get("/user/:userId/saved", protect, getUserSavedPosts);
+
+// POST /api/posts/:id/react - Add or update a reaction on a post
+router.post("/:id/react", protect, reactToPost);
+// PUT /api/posts/:id/like - Simple like toggle (compat)
+router.put("/:id/like", protect, likePost);
+// POST /api/posts/:id/share - Share a post
+router.post("/:id/share", protect, sharePost);
+// POST /api/posts/:id/save - Save
+router.post("/:id/save", protect, savePost);
+// DELETE /api/posts/:id/save - Unsave
+router.delete("/:id/save", protect, unsavePost);
+
+// POST /api/posts/:id/comment - Add a comment to a post
+router.post(
+  "/:id/comment",
+  protect,
+  [check("content", "Comment cannot be empty").not().isEmpty().trim().escape()],
+  commentOnPost
+);
+// PATCH /api/posts/:id/comments/:commentId - Edit comment
+router.patch("/:id/comments/:commentId", protect, updateComment);
+// DELETE /api/posts/:id/comments/:commentId - Delete comment
+router.delete("/:id/comments/:commentId", protect, deleteComment);
+
+// POST /api/posts/:id/bookmark - Toggle bookmark on a post
+router.post("/:id/bookmark", protect, toggleBookmark);
+
+// PUT /api/posts/:id - Update an existing post
+router.put(
+  "/:id",
+  protect,
+  [check("content", "Content cannot be empty").not().isEmpty().trim().escape()],
+  updatePost
+);
+
+// DELETE /api/posts/:id - Soft delete a post
+router.delete("/:id", protect, softDeletePost);
 
 module.exports = router;

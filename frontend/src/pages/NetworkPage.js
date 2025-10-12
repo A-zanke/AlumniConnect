@@ -719,8 +719,7 @@ const NetworkPage = () => {
             </div>
           ) : recommendations.length === 0 ? (
             <div className="text-center py-12 text-gray-600 bg-white rounded-2xl shadow-md">
-              No recommended alumni found yet. Update your skills and interests
-              to get better matches!
+              No suitable alumni recommendations yet.
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -730,7 +729,7 @@ const NetworkPage = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
-                  className="bg-white rounded-2xl shadow-md hover:shadow-lg transition-all p-6 cursor-pointer"
+                  className="bg-white rounded-2xl shadow-lg hover:shadow-2xl border border-transparent hover:border-indigo-200 transition-all p-6 cursor-pointer hover:-translate-y-1"
                   onClick={() =>
                     (window.location.href = `/profile/${
                       alum.username || alum._id
@@ -740,12 +739,12 @@ const NetworkPage = () => {
                   <div className="flex items-center gap-4 mb-4">
                     {alum.avatarUrl ? (
                       <img
-                        src={alum.avatarUrl}
+                        src={getAvatarUrl(alum.avatarUrl)}
                         alt={alum.name}
-                        className="h-16 w-16 rounded-full object-cover"
+                        className="h-16 w-16 rounded-full object-cover ring-2 ring-indigo-100"
                       />
                     ) : (
-                      <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
+                      <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
                         {(alum.name || "A").charAt(0).toUpperCase()}
                       </div>
                     )}
@@ -757,9 +756,11 @@ const NetworkPage = () => {
                         {alum.department || "Department"} •{" "}
                         {alum.graduationYear || "—"}
                       </div>
-                      <div className="text-sm text-gray-500 truncate">
-                        {alum.industry || "Industry"}
-                      </div>
+                      {alum.company && (
+                        <div className="text-sm text-gray-500 truncate">
+                          {alum.company}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {Array.isArray(alum.skills) && alum.skills.length > 0 && (
@@ -767,16 +768,16 @@ const NetworkPage = () => {
                       {alum.skills.slice(0, 5).map((s, i) => (
                         <span
                           key={`${s}-${i}`}
-                          className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium"
+                          className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium shadow-sm"
                         >
                           {s}
                         </span>
                       ))}
                     </div>
                   )}
-                  <div className="flex justify-end">
+                  <div className="flex items-center gap-2 justify-end">
                     <button
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md hover:shadow-lg"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleConnect(alum._id);
@@ -784,6 +785,13 @@ const NetworkPage = () => {
                     >
                       Connect
                     </button>
+                    <Link
+                      to={`/profile/${alum.username || alum._id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium transition-all shadow-sm"
+                    >
+                      View Profile
+                    </Link>
                   </div>
                 </motion.div>
               ))}

@@ -19,9 +19,11 @@ const RegisterPage = () => {
     graduationYear: "",
   });
 
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false); // overall submit loading
-  const [otpLoading, setOtpLoading] = useState(false); // send OTP button loading
+  const departments = ['CSE', 'AI-DS', 'E&TC', 'Mechanical', 'Civil', 'Other'];
+
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);         // overall submit loading
+  const [otpLoading, setOtpLoading] = useState(false);   // send OTP button loading
   const [verifyLoading, setVerifyLoading] = useState(false); // verify OTP button loading
 
   const { register, sendOtp, verifyOtp, checkUsername } = useAuth();
@@ -332,14 +334,9 @@ const RegisterPage = () => {
                 required
               >
                 <option value="">Select department</option>
-                <option value="AI-DS">
-                  Artificial Intelligence & Data Science
-                </option>
-                <option value="CSE">Computer Science and Enginnerring</option>
-                <option value="Civil">Civil Engineering</option>
-                <option value="Mechanical">Mechanical Engineering</option>
-                <option value="ETC">Computer Science & Desgining</option>
-                <option value="Other">Other</option>
+                {departments.map(dep => (
+                  <option key={dep} value={dep}>{dep}</option>
+                ))}
               </select>
               {formData.department === "Other" && (
                 <input

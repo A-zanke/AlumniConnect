@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const Department = require('../models/Department');
 const mongoose = require('mongoose');
 const { protect } = require('../middleware/authMiddleware');
 const { getAlumniRecommendations } = require('../controllers/recommendationsController');
@@ -68,14 +69,8 @@ router.get('/users', async (req, res) => {
 // GET /api/search/departments
 router.get('/departments', async (req, res) => {
   try {
-    const registrationDepartments = ['CSE', 'AI-DS', 'Civil', 'Mechanical', 'Electrical', 'ETC'];
-    const distinct = await User.distinct('department', { department: { $exists: true, $ne: '' } });
-    const set = new Set(registrationDepartments.map(d => String(d).trim()));
-    for (const d of distinct) {
-      if (typeof d === 'string' && d.trim()) set.add(d.trim());
-    }
-    const list = Array.from(set).sort((a, b) => a.localeCompare(b));
-    res.json(list);
+    const departments = await Department.find().sort({ name: 1 });
+    res.json(departments.map(d => d.name));
   } catch (error) {
     console.error('Departments fetch error:', error);
     res.status(500).json({ message: 'Failed to fetch departments' });

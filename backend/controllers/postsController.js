@@ -2,768 +2,544 @@ const fs = require("fs");
 const path = require("path");
 const Post = require("../models/Post");
 const User = require("../models/User");
+const cloudinary = require("../config/cloudinary");
+const { validationResult } = require('express-validator');
 
-const detectMedia = (file) => {
-  const type = (file.mimetype || "").toLowerCase();
-  if (type.startsWith("image/")) return "image";
-  if (type.startsWith("video/")) return "video";
+// Helper to detect media type
+const detectMediaType = (file) => {
+  const mimetype = file.mimetype || "";
+  if (mimetype.startsWith("image/")) return "image";
+  if (mimetype.startsWith("video/")) return "video";
   return "file";
 };
 
-exports.createPost = async (req, res) => {
-  try {
-    const { content = "", visibility = "public", tags = "", link = "" } = req.body;
-
-    if (!content.trim() && (!req.files || req.files.length === 0)) {
-      return res.status(400).json({ message: "Content or media required" });
-    }
-
-    const media = (req.files || []).map((f) => ({
-      url: `/uploads/${path.basename(f.path)}`,
-      type: detectMedia(f),
-      name: f.originalname,
-    }));
-
-    // Extract mentions from content using @username
-    const mentionUsernames = Array.from(
-      new Set(
-        (content.match(/@([a-zA-Z0-9_.-]+)/g) || []).map((m) => m.slice(1))
-      )
-    );
-    const mentionUsers =
-      mentionUsernames.length > 0
-        ? await User.find({ username: { $in: mentionUsernames } }).select("_id")
-        : [];
-
-    // Extract hashtags from content
-    const hashtags = Array.from(
-      new Set((content.match(/#([a-zA-Z0-9_]+)/g) || []).map((h) => h.slice(1)))
-    );
-
-    // Parse tags if provided
-    const parsedTags = tags
-      ? tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      : [];
-
-    const linkPreview = link && /^https?:\/\//i.test(link)
-      ? {
-          url: link,
-        }
-      : undefined;
-
-    const post = new Post({
-      userId: req.user._id,
-      content,
-      media,
-      postType: "text",
-      visibility: ["public", "connections", "private"].includes(visibility)
-        ? visibility
-        : "public",
-      tags: [...parsedTags, ...hashtags],
-      mentions: mentionUsers.map((u) => u._id),
-      linkPreview,
-      approved: true,
-    });
-
-    await post.save();
-
-    const populated = await Post.findById(post._id)
-      .populate("userId", "name avatarUrl username role")
-      .populate("mentions", "name avatarUrl username");
-
-    // Shape response for frontend
-    res.status(201).json({
-      _id: populated._id,
-      user: {
-        _id: populated.userId._id,
-        name: populated.userId.name,
-        username: populated.userId.username,
-        role: populated.userId.role,
-        avatarUrl: populated.userId.avatarUrl
-          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-              populated.userId.avatarUrl
-            }`
-          : null,
-      },
-      content: populated.content,
-      media:
-        populated.media?.map((m) => ({
-          ...m,
-          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-            m.url
-          }`,
-        })) || [],
-      visibility: populated.visibility,
-      tags: populated.tags || [],
-      mentions: populated.mentions || [],
-      likes: populated.likes || [],
-      comments: populated.comments || [],
-      linkPreview: populated.linkPreview || null,
-      createdAt: populated.createdAt,
-      updatedAt: populated.updatedAt,
-    });
-  } catch (e) {
-    console.error("createPost error:", e);
-    res.status(500).json({ message: "Error creating post" });
-  }
-};
-
-exports.getUserPosts = async (req, res) => {
-  try {
-    const posts = await Post.find({ userId: req.params.userId })
-      .sort({ createdAt: -1 })
-      .populate("userId", "name avatarUrl username role")
-      .populate("mentions", "name avatarUrl username")
-      .populate("comments.userId", "name avatarUrl username")
-      .populate("comments.replies.userId", "name avatarUrl username")
-      .populate("reactions.userId", "name avatarUrl username");
-
-    const shaped = posts.map((p) => ({
-      _id: p._id,
-      user: {
-        _id: p.userId._id,
-        name: p.userId?.name,
-        username: p.userId?.username,
-        role: p.userId?.role,
-        avatarUrl: p.userId?.avatarUrl
-          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-              p.userId.avatarUrl
-            }`
-          : null,
-      },
-      content: p.content,
-      media:
-        p.media?.map((m) => ({
-          ...m,
-          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-            m.url
-          }`,
-        })) || [],
-      visibility: p.visibility,
-      tags: p.tags || [],
-      mentions: p.mentions || [],
-      likes: p.likes || [],
-      reactions:
-        p.reactions?.map((r) => ({
-          userId: r.userId._id,
-          type: r.type,
-          user: {
-            name: r.userId?.name,
-            username: r.userId?.username,
-            avatarUrl: r.userId?.avatarUrl
-              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-                  r.userId.avatarUrl
-                }`
-              : null,
-          },
-        })) || [],
-      comments:
-        p.comments?.map((c) => ({
-          _id: c._id,
-          content: c.content,
-          user: {
-            _id: c.userId._id,
-            name: c.userId?.name,
-            username: c.userId?.username,
-            avatarUrl: c.userId?.avatarUrl
-              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-                  c.userId.avatarUrl
-                }`
-              : null,
-          },
-          replies:
-            c.replies?.map((r) => ({
-              _id: r._id,
-              content: r.content,
-              user: {
-                _id: r.userId._id,
-                name: r.userId?.name,
-                username: r.userId?.username,
-                avatarUrl: r.userId?.avatarUrl
-                  ? `${
-                      process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"
-                    }${r.userId.avatarUrl}`
-                  : null,
-              },
-              createdAt: r.createdAt,
-            })) || [],
-          createdAt: c.createdAt,
-        })) || [],
-      linkPreview: p.linkPreview || null,
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
-    }));
-
-    res.json(shaped);
-  } catch (e) {
-    console.error("getUserPosts error:", e);
-    res.status(500).json({ message: "Error fetching posts" });
-  }
-};
-
+// --- GET ALL POSTS (main feed) ---
+// Fetches approved posts visible to the current user (respect visibility)
 exports.getAllPosts = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const currentUserId = req.user?._id;
+    const { sort = 'recent', page = 1, pageSize = 20, tag, hasMedia } = req.query;
+    const skip = (Math.max(parseInt(page) || 1, 1) - 1) * (Math.min(parseInt(pageSize) || 20, 50));
+    const limit = Math.min(parseInt(pageSize) || 20, 50);
 
-    const posts = await Post.find({
-      approved: true,
-      // Show all non-private posts to everyone
-      visibility: { $ne: "private" },
-    })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
+    const visibleQuery = [
+      { visibility: "public", deletedAt: null },
+      { userId: currentUserId, deletedAt: null }, // author's own posts
+    ];
+
+    // If user has connections list on the User doc, include connections-only
+    const me = await User.findById(currentUserId).select("connections").lean();
+    const connectionIds = (me?.connections || []).map((id) => id);
+
+    if (connectionIds.length > 0) {
+      visibleQuery.push({ visibility: "connections", userId: { $in: connectionIds } });
+    }
+
+    const andFilters = [{ approved: true }];
+    if (tag) andFilters.push({ tags: String(tag) });
+    if (String(hasMedia || '').toLowerCase() === 'true') andFilters.push({ media: { $exists: true, $not: { $size: 0 } } });
+
+    const sortSpec = sort === 'popular'
+      ? { 'reactions.length': -1, 'comments.length': -1, shares: -1, createdAt: -1 }
+      : { createdAt: -1 };
+
+    const posts = await Post.find({ $and: andFilters, $or: visibleQuery })
+    .sort(sortSpec)
+    .skip(skip).limit(limit)
+    .populate("userId", "name avatarUrl username role")
+    .populate("mentions", "name avatarUrl username")
+    .populate("comments.userId", "name avatarUrl username")
+    .populate("reactions.userId", "name avatarUrl username")
+    .lean(); // Use .lean() for faster queries
+
+    const shapedPosts = posts.map(post => ({
+      ...post,
+      user: post.userId, // Simplify user object
+      likesCount: post.likes?.length || 0,
+      commentsCount: post.comments?.length || 0,
+      reactionsCount: post.reactions?.length || 0,
+      sharesCount: post.shares || 0,
+      // Ensure frontend knows if the current user has bookmarked this post
+      isBookmarked: req.user ? post.bookmarkedBy?.some(id => id.equals(req.user._id)) : false,
+    }));
+
+    res.json(shapedPosts);
+  } catch (error) {
+    console.error("Error in getAllPosts:", error);
+    res.status(500).json({ message: "Server error while fetching posts." });
+  }
+};
+
+// --- GET FEED (alias) ---
+exports.getFeed = async (req, res) => {
+  return exports.getAllPosts(req, res);
+};
+
+// --- GET POST BY ID ---
+exports.getPostById = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
       .populate("userId", "name avatarUrl username role")
       .populate("mentions", "name avatarUrl username")
       .populate("comments.userId", "name avatarUrl username")
-      .populate("comments.replies.userId", "name avatarUrl username")
-      .populate("reactions.userId", "name avatarUrl username");
+      .populate("reactions.userId", "name avatarUrl username")
+      .lean();
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const shaped = posts.map((p) => ({
-      _id: p._id,
-      user: {
-        _id: p.userId._id,
-        name: p.userId?.name,
-        username: p.userId?.username,
-        role: p.userId?.role,
-        avatarUrl: p.userId?.avatarUrl
-          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-              p.userId.avatarUrl
-            }`
-          : null,
-      },
-      content: p.content,
-      media:
-        p.media?.map((m) => ({
-          ...m,
-          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-            m.url
-          }`,
-        })) || [],
-      visibility: p.visibility,
-      tags: p.tags || [],
-      mentions: p.mentions || [],
-      likes: p.likes || [],
-      reactions:
-        p.reactions?.map((r) => ({
-          userId: r.userId._id,
-          type: r.type,
-          user: {
-            name: r.userId?.name,
-            username: r.userId?.username,
-            avatarUrl: r.userId?.avatarUrl
-              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-                  r.userId.avatarUrl
-                }`
-              : null,
-          },
-        })) || [],
-      comments:
-        p.comments?.map((c) => ({
-          _id: c._id,
-          content: c.content,
-          user: {
-            _id: c.userId._id,
-            name: c.userId?.name,
-            username: c.userId?.username,
-            avatarUrl: c.userId?.avatarUrl
-              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-                  c.userId.avatarUrl
-                }`
-              : null,
-          },
-          replies:
-            c.replies?.map((r) => ({
-              _id: r._id,
-              content: r.content,
-              user: {
-                _id: r.userId._id,
-                name: r.userId?.name,
-                username: r.userId?.username,
-                avatarUrl: r.userId?.avatarUrl
-                  ? `${
-                      process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"
-                    }${r.userId.avatarUrl}`
-                  : null,
-              },
-              createdAt: r.createdAt,
-            })) || [],
-          createdAt: c.createdAt,
-        })) || [],
-      linkPreview: p.linkPreview || null,
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
-    }));
+    // Visibility enforcement: allow if public, author, or connections-only where requester is in author's connections
+    const authorId = String(post.userId?._id || post.userId);
+    const meId = String(req.user?._id || "");
+    if (post.visibility === "private" && meId !== authorId && String(req.user?.role).toLowerCase() !== "admin") {
+      return res.status(403).json({ message: "Not authorized to view this post" });
+    }
+    if (post.visibility === "connections" && meId !== authorId) {
+      const author = await User.findById(authorId).select("connections");
+      const allowed = author?.connections?.some((c) => String(c) === meId);
+      if (!allowed) return res.status(403).json({ message: "Connections only" });
+    }
 
+    const shaped = {
+      ...post,
+      user: post.userId,
+      likesCount: post.likes?.length || 0,
+      commentsCount: post.comments?.length || 0,
+      reactionsCount: post.reactions?.length || 0,
+      sharesCount: post.shares || 0,
+      isBookmarked: req.user ? (post.bookmarkedBy || []).some((id) => String(id) === meId) : false,
+    };
     res.json(shaped);
-  } catch (e) {
-    console.error("getAllPosts error:", e);
-    res.status(500).json({ message: "Error fetching posts" });
+  } catch (error) {
+    console.error("Error in getPostById:", error);
+    res.status(500).json({ message: "Server error while fetching post." });
   }
 };
 
-exports.likePost = async (req, res) => {
+// --- CREATE POST ---
+// Creates a new post with content, media, mentions, and visibility.
+exports.createPost = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
   try {
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+    const { content, visibility = "public" } = req.body;
+    
+    if (!content?.trim() && (!req.files || req.files.length === 0)) {
+      return res.status(400).json({ message: "Post content or media is required." });
+    }
 
+    const mediaFiles = req.files ? req.files.map(file => ({
+      url: file.path,
+      type: detectMediaType(file),
+      public_id: file.filename, // from multer-storage-cloudinary
+    })) : [];
+
+    // Extract mentions and find user IDs
+    const mentionUsernames = (content.match(/@(\w+)/g) || []).map(m => m.substring(1));
+    const mentionedUsers = await User.find({ username: { $in: mentionUsernames } }).select('_id');
+
+    const newPost = new Post({
+      userId: req.user._id,
+      content: content.trim(),
+      media: mediaFiles,
+      visibility,
+      mentions: mentionedUsers.map(u => u._id),
+      approved: true, // Auto-approve for now
+    });
+
+    await newPost.save();
+
+    // Populate the newly created post to return full data to frontend
+    const populatedPost = await Post.findById(newPost._id)
+      .populate("userId", "name avatarUrl username role")
+      .populate("mentions", "name avatarUrl username")
+      .lean();
+
+    const shapedPost = {
+      ...populatedPost,
+      user: populatedPost.userId,
+      likesCount: 0,
+      commentsCount: 0,
+      reactionsCount: 0,
+      sharesCount: 0,
+      isBookmarked: false,
+    };
+
+    res.status(201).json(shapedPost);
+  } catch (error) {
+    console.error("Error in createPost:", error);
+    res.status(500).json({ message: "Server error while creating post." });
+  }
+};
+
+// --- REACT TO POST (LinkedIn Style) ---
+exports.reactToPost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type } = req.body;
     const userId = req.user._id;
-    const isLiked = post.likes.includes(userId);
 
-    if (isLiked) {
-      post.likes = post.likes.filter((id) => !id.equals(userId));
+    const validReactions = ["like", "love", "celebrate", "support", "insightful", "curious"];
+    if (!validReactions.includes(type)) {
+      return res.status(400).json({ message: "Invalid reaction type." });
+    }
+
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+
+    const existingReactionIndex = post.reactions.findIndex(r => r.userId.equals(userId));
+
+    if (existingReactionIndex > -1) {
+      // User has reacted before
+      if (post.reactions[existingReactionIndex].type === type) {
+        // Same reaction, so remove it (toggle off)
+        post.reactions.splice(existingReactionIndex, 1);
+      } else {
+        // Different reaction, so update it
+        post.reactions[existingReactionIndex].type = type;
+      }
     } else {
-      post.likes.push(userId);
+      // New reaction
+      post.reactions.push({ userId, type });
     }
 
     await post.save();
+    
+    // Populate reactions to return user info
+    await post.populate('reactions.userId', 'name username avatarUrl');
 
     res.json({
-      liked: !isLiked,
-      likesCount: post.likes.length,
-      likes: post.likes,
+      reactions: post.reactions,
+      reactionsCount: post.reactions.length,
+      userReaction: post.reactions.find(r => r.userId.equals(userId)) || null
     });
-  } catch (e) {
-    console.error("likePost error:", e);
-    res.status(500).json({ message: "Error liking post" });
+
+  } catch (error) {
+    console.error("Error in reactToPost:", error);
+    res.status(500).json({ message: "Server error while reacting to post." });
   }
 };
 
+// --- COMMENT ON POST ---
 exports.commentOnPost = async (req, res) => {
   try {
     const { content } = req.body;
     if (!content?.trim()) {
-      return res.status(400).json({ message: "Comment content required" });
+      return res.status(400).json({ message: "Comment content cannot be empty." });
     }
 
     const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+    if (!post) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+    if (post.disabledComments) {
+      return res.status(403).json({ message: "Comments are disabled for this post." });
+    }
 
-    const comment = {
+    const newComment = {
       userId: req.user._id,
       content: content.trim(),
       createdAt: new Date(),
     };
 
-    post.comments.push(comment);
+    post.comments.push(newComment);
     await post.save();
 
-    // Get the newly added comment with populated user data
-    const updatedPost = await Post.findById(req.params.id)
-      .populate("comments.userId", "name avatarUrl username")
-      .populate("mentions", "username");
-
-    const newComment = updatedPost.comments[updatedPost.comments.length - 1];
-
-    res.status(201).json({
-      _id: newComment._id,
-      content: newComment.content,
-      user: {
-        _id: newComment.userId._id,
-        name: newComment.userId.name,
-        username: newComment.userId.username,
-        avatarUrl: newComment.userId.avatarUrl
-          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-              newComment.userId.avatarUrl
-            }`
-          : null,
-      },
-      createdAt: newComment.createdAt,
-    });
-  } catch (e) {
-    console.error("commentOnPost error:", e);
-    res.status(500).json({ message: "Error adding comment" });
+    // Populate the newly added comment to return full user data
+    await post.populate("comments.userId", "name avatarUrl username");
+    const addedComment = post.comments[post.comments.length - 1];
+    res.status(201).json(addedComment);
+  } catch (error) {
+    console.error("Error in commentOnPost:", error);
+    res.status(500).json({ message: "Server error while adding comment." });
   }
 };
 
+// --- EDIT/DELETE COMMENT ---
+exports.updateComment = async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const { content } = req.body;
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+    if (String(comment.userId) !== String(req.user._id)) return res.status(403).json({ message: 'Not authorized' });
+    comment.content = String(content || '').trim();
+    comment.isEdited = true; comment.editedAt = new Date();
+    await post.save();
+    await post.populate('comments.userId', 'name avatarUrl username');
+    return res.json(comment);
+  } catch (e) {
+    console.error('updateComment error', e);
+    return res.status(500).json({ message: 'Failed to edit comment' });
+  }
+};
+
+exports.deleteComment = async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+    if (String(comment.userId) !== String(req.user._id) && String(post.userId) !== String(req.user._id)) return res.status(403).json({ message: 'Not authorized' });
+    comment.deleteOne();
+    await post.save();
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('deleteComment error', e);
+    return res.status(500).json({ message: 'Failed to delete comment' });
+  }
+};
+
+// --- SAVE / UNSAVE ---
+exports.savePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const uid = String(req.user._id);
+    const has = (post.bookmarkedBy || []).some((u) => String(u) === uid);
+    if (!has) post.bookmarkedBy.push(req.user._id);
+    await post.save();
+    return res.json({ saved: true });
+  } catch (e) {
+    console.error('savePost error', e);
+    return res.status(500).json({ message: 'Failed to save post' });
+  }
+};
+
+exports.unsavePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    const uid = String(req.user._id);
+    post.bookmarkedBy = (post.bookmarkedBy || []).filter((u) => String(u) !== uid);
+    await post.save();
+    return res.json({ saved: false });
+  } catch (e) {
+    console.error('unsavePost error', e);
+    return res.status(500).json({ message: 'Failed to unsave post' });
+  }
+};
+
+exports.getUserSavedPosts = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const posts = await Post.find({ bookmarkedBy: userId, deletedAt: null })
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name avatarUrl username role')
+      .lean();
+    const shaped = posts.map((p) => ({ ...p, user: p.userId }));
+    return res.json(shaped);
+  } catch (e) {
+    console.error('getUserSavedPosts error', e);
+    return res.status(500).json({ message: 'Failed to fetch saved posts' });
+  }
+};
+
+// --- SOFT DELETE POST ---
+exports.softDeletePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+    if (String(post.userId) !== String(req.user._id) && String(req.user.role).toLowerCase() !== 'admin') return res.status(403).json({ message: 'Not authorized' });
+    post.deletedAt = new Date();
+    await post.save();
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('softDeletePost error', e);
+    return res.status(500).json({ message: 'Failed to delete post' });
+  }
+};
+
+// --- LIKE (backward-compat simple like) ---
+exports.likePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    const uid = String(req.user._id);
+    const already = post.likes.some((u) => String(u) === uid);
+    if (already) {
+      post.likes = post.likes.filter((u) => String(u) !== uid);
+    } else {
+      post.likes.push(req.user._id);
+    }
+    await post.save();
+    return res.json({ likes: post.likes.length, liked: !already });
+  } catch (e) {
+    console.error("Error in likePost:", e);
+    return res.status(500).json({ message: "Failed to like post" });
+  }
+};
+
+// --- SHARE ---
 exports.sharePost = async (req, res) => {
   try {
-    const { connectionIds = [], message = "" } = req.body;
-    const post = await Post.findById(req.params.id);
-
+    const { id } = req.params;
+    const { message = "", connectionIds = [] } = req.body || {};
+    const post = await Post.findById(id);
     if (!post) return res.status(404).json({ message: "Post not found" });
-
-    // Increment share counter
     post.shares = (post.shares || 0) + 1;
     await post.save();
-
-    // Optionally create message entries to each connection
-    // and emit socket notifications if available
+    // Optionally notify the author
     try {
-      const Message = require("../models/Message");
-      const shareLink = `${process.env.FRONTEND_PUBLIC_URL || "http://localhost:3000"}/posts/${post._id}`;
-      const content = message && message.trim().length > 0 ? `${message}\n${shareLink}` : shareLink;
-      await Promise.all(
-        (connectionIds || []).map((to) =>
-          Message.create({ from: req.user._id, to, content })
-        )
-      );
-      // Emit socket event to receivers
-      if (req.io) {
-        (connectionIds || []).forEach((to) => {
-          req.io.to(String(to)).emit("share:receive", {
-            from: String(req.user._id),
-            to: String(to),
-            postId: String(post._id),
-            content,
-          });
-        });
-      }
-    } catch (err) {
-      // Non-fatal
-    }
-
-    res.json({ message: "Post shared successfully", sharedWith: connectionIds.length, shares: post.shares });
+      const NotificationService = require('../services/notificationService');
+      await NotificationService.createNotification({
+        recipientId: post.userId,
+        senderId: req.user._id,
+        type: 'post_share',
+        content: `${req.user.name} shared your post`,
+        relatedId: post._id,
+        onModel: 'Post'
+      });
+    } catch (_) {}
+    return res.json({ sharesCount: post.shares });
   } catch (e) {
-    console.error("sharePost error:", e);
-    res.status(500).json({ message: "Error sharing post" });
+    console.error('Error in sharePost:', e);
+    return res.status(500).json({ message: 'Failed to share post' });
   }
 };
 
+// --- DELETE POST ---
 exports.deletePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    // Check if user owns the post or is admin
-    if (
-      post.userId.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized to delete this post" });
+    if (!post) {
+      return res.status(404).json({ message: "Post not found." });
     }
 
-    // Delete associated media files
+    // Check if user is the owner or an admin
+    if (!post.userId.equals(req.user._id) && req.user.role !== "admin") {
+      return res.status(403).json({ message: "You are not authorized to delete this post." });
+    }
+
+    // Delete media from Cloudinary
     if (post.media && post.media.length > 0) {
-      post.media.forEach((m) => {
-        try {
-          const filePath = path.join(__dirname, "..", m.url);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        } catch (err) {
-          console.error("Error deleting media file:", err);
+      const deletePromises = post.media.map(m => {
+        if (m.public_id) {
+          return cloudinary.uploader.destroy(m.public_id);
         }
+        return Promise.resolve();
       });
+      await Promise.all(deletePromises);
     }
 
-    await Post.findByIdAndDelete(req.params.id);
-    res.json({ message: "Post deleted successfully" });
-  } catch (e) {
-    console.error("deletePost error:", e);
-    res.status(500).json({ message: "Error deleting post" });
+    await post.deleteOne();
+
+    res.json({ message: "Post deleted successfully." });
+  } catch (error) {
+    console.error("Error in deletePost:", error);
+    res.status(500).json({ message: "Server error while deleting post." });
   }
 };
 
-// React to post (LinkedIn-style reactions)
-exports.reactToPost = async (req, res) => {
-  try {
-    const { reactionType } = req.body;
-    const validReactions = [
-      "like",
-      "love",
-      "celebrate",
-      "support",
-      "insightful",
-      "curious",
-    ];
-
-    if (!validReactions.includes(reactionType)) {
-      return res.status(400).json({ message: "Invalid reaction type" });
+// --- GET USER'S POSTS ---
+exports.getUserPosts = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const posts = await Post.find({ userId })
+            .sort({ createdAt: -1 })
+            .populate("userId", "name avatarUrl username role")
+            .lean();
+        
+        const shapedPosts = posts.map(post => ({
+            ...post,
+            user: post.userId,
+            likesCount: post.likes?.length || 0,
+            commentsCount: post.comments?.length || 0,
+            reactionsCount: post.reactions?.length || 0,
+            isBookmarked: req.user ? post.bookmarkedBy?.some(id => id.equals(req.user._id)) : false,
+        }));
+        
+        res.json(shapedPosts);
+    } catch (error) {
+        console.error("Error in getUserPosts:", error);
+        res.status(500).json({ message: "Server error while fetching user posts." });
     }
-
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    const userId = req.user._id;
-    const existingReactionIndex = post.reactions.findIndex((r) =>
-      r.userId.equals(userId)
-    );
-
-    if (existingReactionIndex !== -1) {
-      // User already reacted - update or remove
-      if (post.reactions[existingReactionIndex].type === reactionType) {
-        // Same reaction - remove it
-        post.reactions.splice(existingReactionIndex, 1);
-        // Also remove from likes array for backward compatibility
-        post.likes = post.likes.filter((id) => !id.equals(userId));
-      } else {
-        // Different reaction - update it
-        post.reactions[existingReactionIndex].type = reactionType;
-      }
-    } else {
-      // New reaction
-      post.reactions.push({ userId, type: reactionType });
-      // Also add to likes array for backward compatibility
-      if (!post.likes.includes(userId)) {
-        post.likes.push(userId);
-      }
-    }
-
-    await post.save();
-
-    // Calculate reaction counts
-    const reactionCounts = {};
-    validReactions.forEach((type) => {
-      reactionCounts[type] = post.reactions.filter(
-        (r) => r.type === type
-      ).length;
-    });
-
-    res.json({
-      reactions: post.reactions,
-      reactionCounts,
-      totalReactions: post.reactions.length,
-      userReaction:
-        post.reactions.find((r) => r.userId.equals(userId))?.type || null,
-    });
-  } catch (e) {
-    console.error("reactToPost error:", e);
-    res.status(500).json({ message: "Error reacting to post" });
-  }
 };
 
-// Update post (content and optional link)
-exports.updatePost = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { content = "", link = "" } = req.body;
-    const post = await Post.findById(id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    // Only owner or admin can edit
-    if (
-      post.userId.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
-      return res.status(403).json({ message: "Not authorized to edit this post" });
-    }
-
-    if (typeof content === "string" && content.trim()) {
-      post.content = content.trim();
-    }
-    if (typeof link === "string") {
-      if (link && /^https?:\/\//i.test(link)) {
-        post.linkPreview = { ...(post.linkPreview || {}), url: link };
-      } else if (!link) {
-        post.linkPreview = undefined;
-      }
-    }
-
-    await post.save();
-    const populated = await Post.findById(post._id)
-      .populate("userId", "name avatarUrl username role");
-
-    res.json({
-      _id: populated._id,
-      user: {
-        _id: populated.userId._id,
-        name: populated.userId.name,
-        username: populated.userId.username,
-        role: populated.userId.role,
-        avatarUrl: populated.userId.avatarUrl
-          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-              populated.userId.avatarUrl
-            }`
-          : null,
-      },
-      content: populated.content,
-      media:
-        populated.media?.map((m) => ({
-          ...m,
-          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-            m.url
-          }`,
-        })) || [],
-      linkPreview: populated.linkPreview || null,
-      createdAt: populated.createdAt,
-      updatedAt: populated.updatedAt,
-    });
-  } catch (e) {
-    console.error("updatePost error:", e);
-    res.status(500).json({ message: "Error updating post" });
-  }
-};
-
-// Toggle bookmark
+// --- TOGGLE BOOKMARK ---
 exports.toggleBookmark = async (req, res) => {
-  try {
-    const postId = req.params.id;
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) {
+            return res.status(404).json({ message: "Post not found." });
+        }
+        
+        const userId = req.user._id;
+        const isBookmarked = post.bookmarkedBy.some(id => id.equals(userId));
 
-    const idx = (user.bookmarkedPosts || []).findIndex((id) => id.equals(postId));
-    let bookmarked = false;
-    if (idx >= 0) {
-      user.bookmarkedPosts.splice(idx, 1);
-      bookmarked = false;
-    } else {
-      user.bookmarkedPosts.push(postId);
-      bookmarked = true;
+        if (isBookmarked) {
+            post.bookmarkedBy = post.bookmarkedBy.filter(id => !id.equals(userId));
+        } else {
+            post.bookmarkedBy.push(userId);
+        }
+
+        await post.save();
+        res.json({ bookmarked: !isBookmarked, message: isBookmarked ? "Post removed from saved" : "Post saved successfully" });
+
+    } catch (error) {
+        console.error("Error in toggleBookmark:", error);
+        res.status(500).json({ message: "Server error while saving post." });
     }
-    await user.save();
-    res.json({ bookmarked, postId });
-  } catch (e) {
-    console.error("toggleBookmark error:", e);
-    res.status(500).json({ message: "Error updating bookmark" });
-  }
 };
 
-// Get saved/bookmarked posts for current user
+// --- GET SAVED POSTS ---
 exports.getSavedPosts = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).select("bookmarkedPosts");
-    const ids = user?.bookmarkedPosts || [];
-    if (!ids.length) return res.json([]);
+    try {
+        const posts = await Post.find({ bookmarkedBy: req.user._id })
+            .sort({ createdAt: -1 })
+            .populate("userId", "name avatarUrl username role")
+            .lean();
 
-    const posts = await Post.find({ _id: { $in: ids } })
-      .sort({ createdAt: -1 })
-      .populate("userId", "name avatarUrl username role")
-      .populate("mentions", "name avatarUrl username")
-      .populate("comments.userId", "name avatarUrl username")
-      .populate("comments.replies.userId", "name avatarUrl username")
-      .populate("reactions.userId", "name avatarUrl username");
+        const shapedPosts = posts.map(post => ({
+            ...post,
+            user: post.userId,
+            likesCount: post.likes?.length || 0,
+            commentsCount: post.comments?.length || 0,
+            reactionsCount: post.reactions?.length || 0,
+            isBookmarked: true, // All posts here are bookmarked
+        }));
 
-    const shaped = posts.map((p) => ({
-      _id: p._id,
-      user: {
-        _id: p.userId._id,
-        name: p.userId?.name,
-        username: p.userId?.username,
-        role: p.userId?.role,
-        avatarUrl: p.userId?.avatarUrl
-          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-              p.userId.avatarUrl
-            }`
-          : null,
-      },
-      content: p.content,
-      media:
-        p.media?.map((m) => ({
-          ...m,
-          url: `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-            m.url
-          }`,
-        })) || [],
-      visibility: p.visibility,
-      tags: p.tags || [],
-      mentions: p.mentions || [],
-      likes: p.likes || [],
-      reactions:
-        p.reactions?.map((r) => ({
-          userId: r.userId._id,
-          type: r.type,
-          user: {
-            name: r.userId?.name,
-            username: r.userId?.username,
-            avatarUrl: r.userId?.avatarUrl
-              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-                  r.userId.avatarUrl
-                }`
-              : null,
-          },
-        })) || [],
-      comments:
-        p.comments?.map((c) => ({
-          _id: c._id,
-          content: c.content,
-          user: {
-            _id: c.userId._id,
-            name: c.userId?.name,
-            username: c.userId?.username,
-            avatarUrl: c.userId?.avatarUrl
-              ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-                  c.userId.avatarUrl
-                }`
-              : null,
-          },
-          replies:
-            c.replies?.map((r) => ({
-              _id: r._id,
-              content: r.content,
-              user: {
-                _id: r.userId._id,
-                name: r.userId?.name,
-                username: r.userId?.username,
-                avatarUrl: r.userId?.avatarUrl
-                  ? `${
-                      process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"
-                    }${r.userId.avatarUrl}`
-                  : null,
-              },
-              createdAt: r.createdAt,
-            })) || [],
-          createdAt: c.createdAt,
-        })) || [],
-      linkPreview: p.linkPreview || null,
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
-    }));
-
-    res.json(shaped);
-  } catch (e) {
-    console.error("getSavedPosts error:", e);
-    res.status(500).json({ message: "Error fetching saved posts" });
-  }
-};
-// Reply to a comment
-exports.replyToComment = async (req, res) => {
-  try {
-    const { content } = req.body;
-    const { id: postId, commentId } = req.params;
-
-    if (!content?.trim()) {
-      return res.status(400).json({ message: "Reply content required" });
+        res.json(shapedPosts);
+    } catch (error) {
+        console.error("Error in getSavedPosts:", error);
+        res.status(500).json({ message: "Server error while fetching saved posts." });
     }
+};
 
-    const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+// --- UPDATE POST ---
+exports.updatePost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { content } = req.body;
 
-    const comment = post.comments.id(commentId);
-    if (!comment) return res.status(404).json({ message: "Comment not found" });
+        const post = await Post.findById(id);
+        if (!post) {
+            return res.status(404).json({ message: "Post not found." });
+        }
 
-    const reply = {
-      userId: req.user._id,
-      content: content.trim(),
-      createdAt: new Date(),
-    };
+        if (!post.userId.equals(req.user._id)) {
+            return res.status(403).json({ message: "You are not authorized to edit this post." });
+        }
 
-    comment.replies.push(reply);
-    await post.save();
+        post.content = content.trim();
+        post.isEdited = true;
+        post.editedAt = Date.now();
 
-    // Get the newly added reply with populated user data
-    const updatedPost = await Post.findById(postId).populate(
-      "comments.replies.userId",
-      "name avatarUrl username"
-    );
+        await post.save();
 
-    const updatedComment = updatedPost.comments.id(commentId);
-    const newReply = updatedComment.replies[updatedComment.replies.length - 1];
+        const populatedPost = await Post.findById(id).populate("userId", "name avatarUrl username role").lean();
+        
+        res.json({ ...populatedPost, user: populatedPost.userId });
 
-    res.status(201).json({
-      _id: newReply._id,
-      content: newReply.content,
-      user: {
-        _id: newReply.userId._id,
-        name: newReply.userId.name,
-        username: newReply.userId.username,
-        avatarUrl: newReply.userId.avatarUrl
-          ? `${process.env.BACKEND_PUBLIC_URL || "http://localhost:3001"}${
-              newReply.userId.avatarUrl
-            }`
-          : null,
-      },
-      createdAt: newReply.createdAt,
-    });
-  } catch (e) {
-    console.error("replyToComment error:", e);
-    res.status(500).json({ message: "Error adding reply" });
-  }
+    } catch (error) {
+        console.error("Error in updatePost:", error);
+        res.status(500).json({ message: "Server error while updating post." });
+    }
 };

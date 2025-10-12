@@ -5,6 +5,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import PrivateRoute from "./components/PrivateRoute";
 import Navbar from "./components/layout/Navbar";
+
 import Footer from "./components/layout/Footer";
 import HomePage from "./pages/HomePage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";

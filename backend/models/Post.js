@@ -9,9 +9,50 @@ const replySchema = new mongoose.Schema(
     },
     content: {
       type: String,
-      required: true,
+      required: function () {
+        return !this.media || this.media.length === 0;
+      }, // ✅ Content only required if no media
       trim: true,
     },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+    },
+    editHistory: [
+      {
+        version: { type: Number },
+        content: { type: String },
+        editedAt: { type: Date },
+        editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      },
+    ],
+    deletedAt: {
+      type: Date,
+    },
+    reactions: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        type: {
+          type: String,
+          enum: [
+            "like",
+            "love",
+            "celebrate",
+            "support",
+            "insightful",
+            "curious",
+          ],
+          required: true,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
@@ -28,6 +69,45 @@ const commentSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+    },
+    editHistory: [
+      {
+        version: { type: Number },
+        content: { type: String },
+        editedAt: { type: Date },
+        editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      },
+    ],
+    deletedAt: {
+      type: Date,
+    },
+    reactions: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        type: {
+          type: String,
+          enum: [
+            "like",
+            "love",
+            "celebrate",
+            "support",
+            "insightful",
+            "curious",
+          ],
+          required: true,
+        },
+      },
+    ],
     replies: [replySchema],
   },
   { timestamps: true }
@@ -54,6 +134,7 @@ const postSchema = new mongoose.Schema(
           default: "image",
         },
         name: String,
+        public_id: String, // Cloudinary public_id for deletion
       },
     ],
     postType: {
@@ -112,6 +193,12 @@ const postSchema = new mongoose.Schema(
       description: { type: String },
       image: { type: String },
     },
+    bookmarkedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     approved: {
       type: Boolean,
       default: true,

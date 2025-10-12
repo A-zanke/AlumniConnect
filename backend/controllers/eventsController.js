@@ -268,6 +268,9 @@ const listEvents = async (req, res) => {
 		if (role === 'admin') {
 			// Admin sees everything
 			filter = { status: { $in: ['active', 'pending'] } };
+		} else {
+			// Filter by audience for non-admin users
+			filter.audience = { $in: [role] };
 		}
 
 		// Filter for upcoming events if requested
