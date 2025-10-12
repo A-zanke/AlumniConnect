@@ -23,7 +23,7 @@ router.get('/recommendations/:studentId', protect, async (req, res) => {
     const scriptPath = path.resolve(__dirname, '..', '..', 'ml', 'ai_recommender.py');
     const execName = process.platform === 'win32' ? 'python' : 'python3';
     // Adjustable similarity threshold: query param or env, defaults to 0.6
-    const rawThreshold = parseFloat(req.query.threshold || process.env.REC_SIMILARITY_THRESHOLD || '0.6');
+    const rawThreshold = parseFloat(req.query.threshold || process.env.REC_SIMILARITY_THRESHOLD || '0.3');
     const threshold = Number.isFinite(rawThreshold) ? Math.min(Math.max(rawThreshold, 0), 1) : 0.6;
 
     // Pass top_k = 0 to return dynamic, unbounded (post-threshold) results

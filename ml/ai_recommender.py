@@ -156,7 +156,7 @@ def compute_recommendations(student: Dict[str, Any], alumni: List[Dict[str, Any]
     # Pair each alum with score
     # Adjustable threshold (default 0.6)
     try:
-        threshold = float(os.environ.get("REC_SIMILARITY_THRESHOLD", "0.6"))
+        threshold = float(os.environ.get("REC_SIMILARITY_THRESHOLD", "0.3"))
     except Exception:
         threshold = 0.6
 
