@@ -140,8 +140,9 @@ def compute_recommendations(student: Dict[str, Any], alumni: List[Dict[str, Any]
 
     # Department filter: only consider same/related departments
     eligible_alumni = [a for a in alumni if _departments_related(student.get("department"), a.get("department"))]
+    # If none in same/related departments, relax to all alumni to allow skill-based matches
     if not eligible_alumni:
-        return []
+        eligible_alumni = alumni
 
     corpus = [build_feature_text(student)] + [build_feature_text(a) for a in eligible_alumni]
     
@@ -156,9 +157,9 @@ def compute_recommendations(student: Dict[str, Any], alumni: List[Dict[str, Any]
     # Pair each alum with score
     # Adjustable threshold (default 0.6)
     try:
-        threshold = float(os.environ.get("REC_SIMILARITY_THRESHOLD", "0.3"))
+        threshold = float(os.environ.get("REC_SIMILARITY_THRESHOLD", "0.1"))
     except Exception:
-        threshold = 0.6
+        threshold = 0.1
 
     paired = [
         {

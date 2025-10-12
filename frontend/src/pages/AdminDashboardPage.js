@@ -127,6 +127,7 @@ const AdminDashboardPage = () => {
 
   return (
     <div style={{ padding:'24px', maxWidth:1300, margin:'0 auto' }}>
+      {/* Keep a single AdminNavbar at top; content below */}
       <AdminNavbar />
       <h2 style={{ fontSize:28, fontWeight:800, marginBottom:16 }}>Admin Dashboard</h2>
 
