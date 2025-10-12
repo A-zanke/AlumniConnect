@@ -112,6 +112,8 @@ const avatarRoutes = require("./routes/avatarRoutes");
 const forumRoutes = require("./routes/forumRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 const aiRoutes = require("./routes/aiRoutes");
+const testimonialRoutes = require('./routes/testimonialRoutes');
+app.use('/api/testimonials', testimonialRoutes);
 
 app.use("/api/forum", forumRoutes);
 app.use("/api/chatbot", chatbotRoutes);

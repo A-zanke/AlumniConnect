@@ -19,7 +19,7 @@ const RegisterPage = () => {
     graduationYear: "",
   });
 
-  const [departments, setDepartments] = useState([]);
+  const departments = ['CSE', 'AI-DS', 'E&TC', 'Mechanical', 'Civil', 'Other'];
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);         // overall submit loading
@@ -36,22 +36,6 @@ const RegisterPage = () => {
   const [usernameSuggestions, setUsernameSuggestions] = useState([]);
 
   const navigate = useNavigate();
-
-  // Fetch departments on mount
-  useEffect(() => {
-    const fetchDepartments = async () => {
-      try {
-        const response = await fetch('/api/departments');
-        if (response.ok) {
-          const data = await response.json();
-          setDepartments(data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch departments:', error);
-      }
-    };
-    fetchDepartments();
-  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -353,7 +337,6 @@ const RegisterPage = () => {
                 {departments.map(dep => (
                   <option key={dep} value={dep}>{dep}</option>
                 ))}
-                <option value="Other">Other</option>
               </select>
               {formData.department === "Other" && (
                 <input

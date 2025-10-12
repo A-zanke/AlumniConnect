@@ -11,7 +11,7 @@ import axios from 'axios';
 
 const years = [1, 2, 3, 4];
 const roles = ['student', 'teacher', 'alumni'];
-const DEFAULT_DEPARTMENTS = ['CSE', 'AI-DS', 'Civil', 'Mechanical', 'Electrical', 'ETC'];
+const DEFAULT_DEPARTMENTS = ['CSE', 'AI-DS', 'E&TC', 'Mechanical', 'Civil', 'Other'];
 const graduationYears = [2020, 2021, 2022, 2023, 2024, 2025];
 
 const safeFormat = (value, fmt) => {
