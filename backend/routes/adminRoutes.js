@@ -37,7 +37,7 @@ router.get('/export/users', exportUsers);
 
 // ===================== Events =====================
 router.get('/events', listAllEvents);
-router.get('/events/pending', async (req, res, next) => next()); // placeholder if needed
+router.get('/events/pending', listEventRequests);
 router.put('/events/:id/approve', approveEvent);
 router.put('/events/:id/reject', rejectEvent);
 router.delete('/events/:id', deleteEvent);

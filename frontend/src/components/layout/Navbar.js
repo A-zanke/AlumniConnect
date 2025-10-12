@@ -121,79 +121,114 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex lg:items-center lg:space-x-2">
-            {/* Events Dropdown for Students */}
-            {isStudent && (
-              <motion.div
-                className="relative"
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                onMouseEnter={() => setShowEventsDropdown(true)}
-                onMouseLeave={() => setShowEventsDropdown(false)}
-              >
-                <button
-                  className={`relative flex items-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all duration-300 group ${
-                    location.pathname === "/events" ||
-                    location.pathname === "/posts"
-                      ? "text-indigo-600 bg-indigo-100"
-                      : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
-                  }`}
+            {isStudent ? (
+              <>
+                {/* Home first for students */}
+                <motion.div
+                  key={navItems[0].to}
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0 }}
                 >
-                  <FiCalendar
-                    size={18}
-                    className="transition-transform duration-300 group-hover:rotate-12"
+                  <NavLink
+                    to={navItems[0].to}
+                    label={navItems[0].label}
+                    icon={navItems[0].icon}
+                    isActive={location.pathname === navItems[0].to}
                   />
-                  <span>Events</span>
-                  <FiChevronDown
-                    size={16}
-                    className={`transition-transform duration-300 ${
-                      showEventsDropdown ? "rotate-180" : ""
+                </motion.div>
+
+                {/* Events Dropdown for Students - now second */}
+                <motion.div
+                  className="relative"
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  onMouseEnter={() => setShowEventsDropdown(true)}
+                  onMouseLeave={() => setShowEventsDropdown(false)}
+                >
+                  <button
+                    className={`relative flex items-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all duration-300 group ${
+                      location.pathname === "/events" ||
+                      location.pathname === "/posts"
+                        ? "text-indigo-600 bg-indigo-100"
+                        : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
                     }`}
+                  >
+                    <FiCalendar
+                      size={18}
+                      className="transition-transform duration-300 group-hover:rotate-12"
+                    />
+                    <span>Events</span>
+                    <FiChevronDown
+                      size={16}
+                      className={`transition-transform duration-300 ${
+                        showEventsDropdown ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  <AnimatePresence>
+                    {showEventsDropdown && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border z-50"
+                      >
+                        <Link
+                          to="/events"
+                          className="flex items-center gap-3 px-4 py-3 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-t-xl transition-colors"
+                        >
+                          <FiCalendar size={18} />
+                          <span>All Events</span>
+                        </Link>
+                        <Link
+                          to="/posts"
+                          className="flex items-center gap-3 px-4 py-3 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-b-xl transition-colors"
+                        >
+                          <FiFileText size={18} />
+                          <span>Posts</span>
+                        </Link>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+
+                {/* Rest of navItems for students */}
+                {navItems.slice(1).map((item, index) => (
+                  <motion.div
+                    key={item.to}
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: (index + 2) * 0.1 }}
+                  >
+                    <NavLink
+                      to={item.to}
+                      label={item.label}
+                      icon={item.icon}
+                      isActive={location.pathname === item.to}
+                    />
+                  </motion.div>
+                ))}
+              </>
+            ) : (
+              navItems.map((item, index) => (
+                <motion.div
+                  key={item.to}
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <NavLink
+                    to={item.to}
+                    label={item.label}
+                    icon={item.icon}
+                    isActive={location.pathname === item.to}
                   />
-                </button>
-
-                <AnimatePresence>
-                  {showEventsDropdown && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border z-50"
-                    >
-                      <Link
-                        to="/events"
-                        className="flex items-center gap-3 px-4 py-3 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-t-xl transition-colors"
-                      >
-                        <FiCalendar size={18} />
-                        <span>All Events</span>
-                      </Link>
-                      <Link
-                        to="/posts"
-                        className="flex items-center gap-3 px-4 py-3 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-b-xl transition-colors"
-                      >
-                        <FiFileText size={18} />
-                        <span>Posts</span>
-                      </Link>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+                </motion.div>
+              ))
             )}
-
-            {navItems.map((item, index) => (
-              <motion.div
-                key={item.to}
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <NavLink
-                  to={item.to}
-                  label={item.label}
-                  icon={item.icon}
-                  isActive={location.pathname === item.to}
-                />
-              </motion.div>
-            ))}
 
             {/* Search Button */}
             <motion.button
@@ -339,78 +374,117 @@ const Navbar = () => {
             transition={{ duration: 0.3, ease: "easeInOut" }}
           >
             <div className="px-4 py-6 space-y-2">
-              {/* Events Dropdown for Students in Mobile */}
-              {isStudent && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="space-y-1"
-                >
-                  <button
-                    onClick={() => setShowEventsDropdown(!showEventsDropdown)}
-                    className={`w-full flex items-center justify-between px-4 py-4 rounded-xl font-semibold transition-all duration-300 ${
-                      location.pathname === "/events" ||
-                      location.pathname === "/posts"
-                        ? "text-indigo-600 bg-gradient-to-r from-indigo-100 to-purple-100"
-                        : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
-                    }`}
+              {isStudent ? (
+                <>
+                  {/* Home first for students in mobile */}
+                  <motion.div
+                    key={navItems[0].to}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0 }}
                   >
-                    <div className="flex items-center gap-3">
-                      <FiCalendar size={20} />
-                      <span>Events</span>
-                    </div>
-                    <FiChevronDown
-                      size={16}
-                      className={`transition-transform duration-300 ${
-                        showEventsDropdown ? "rotate-180" : ""
-                      }`}
+                    <MobileNavLink
+                      to={navItems[0].to}
+                      label={navItems[0].label}
+                      icon={navItems[0].icon}
+                      onClick={toggleMenu}
+                      isActive={location.pathname === navItems[0].to}
                     />
-                  </button>
+                  </motion.div>
 
-                  <AnimatePresence>
-                    {showEventsDropdown && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="ml-4 space-y-1"
-                      >
-                        <MobileNavLink
-                          to="/events"
-                          label="All Events"
-                          icon={FiCalendar}
-                          onClick={toggleMenu}
-                          isActive={location.pathname === "/events"}
-                        />
-                        <MobileNavLink
-                          to="/posts"
-                          label="Posts"
-                          icon={FiFileText}
-                          onClick={toggleMenu}
-                          isActive={location.pathname === "/posts"}
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
+                  {/* Events Dropdown for Students in Mobile - now second */}
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="space-y-1"
+                  >
+                    <button
+                      onClick={() => setShowEventsDropdown(!showEventsDropdown)}
+                      className={`w-full flex items-center justify-between px-4 py-4 rounded-xl font-semibold transition-all duration-300 ${
+                        location.pathname === "/events" ||
+                        location.pathname === "/posts"
+                          ? "text-indigo-600 bg-gradient-to-r from-indigo-100 to-purple-100"
+                          : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <FiCalendar size={20} />
+                        <span>Events</span>
+                      </div>
+                      <FiChevronDown
+                        size={16}
+                        className={`transition-transform duration-300 ${
+                          showEventsDropdown ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    <AnimatePresence>
+                      {showEventsDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="ml-4 space-y-1"
+                        >
+                          <MobileNavLink
+                            to="/events"
+                            label="All Events"
+                            icon={FiCalendar}
+                            onClick={toggleMenu}
+                            isActive={location.pathname === "/events"}
+                          />
+                          <MobileNavLink
+                            to="/posts"
+                            label="Posts"
+                            icon={FiFileText}
+                            onClick={toggleMenu}
+                            isActive={location.pathname === "/posts"}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+
+                  {/* Rest of navItems for students in mobile */}
+                  {navItems.slice(1).map((item, index) => (
+                    <motion.div
+                      key={item.to}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: (index + 2) * 0.1 }}
+                    >
+                      <MobileNavLink
+                        to={item.to}
+                        label={item.label}
+                        icon={item.icon}
+                        onClick={toggleMenu}
+                        isActive={location.pathname === item.to}
+                      />
+                    </motion.div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {navItems.map((item, index) => (
+                    <motion.div
+                      key={item.to}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <MobileNavLink
+                        to={item.to}
+                        label={item.label}
+                        icon={item.icon}
+                        onClick={toggleMenu}
+                        isActive={location.pathname === item.to}
+                      />
+                    </motion.div>
+                  ))}
+                </>
               )}
-
-              {navItems.map((item, index) => (
-                <motion.div
-                  key={item.to}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <MobileNavLink
-                    to={item.to}
-                    label={item.label}
-                    icon={item.icon}
-                    onClick={toggleMenu}
-                    isActive={location.pathname === item.to}
-                  />
-                </motion.div>
-              ))}
 
               <motion.div
                 initial={{ opacity: 0, x: -20 }}

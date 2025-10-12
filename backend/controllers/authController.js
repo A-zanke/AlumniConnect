@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Otp = require("../models/Otp");
 const bcrypt = require("bcryptjs");
-const { sendOtpEmail } = require("../services/emailService");
+const { sendOtpEmail, sendWelcomeEmail } = require("../services/emailService");
 
 // Generate JWT
 const generateToken = (id) => {
@@ -29,20 +29,34 @@ const registerUser = async (req, res) => {
       graduationYear,
     } = req.body;
 
+    const roleLower = (role || "student").toLowerCase();
+
+    // For alumni, generate password and username if not provided
+    let finalPassword = password;
+    let finalUsername = username;
+    if (roleLower === "alumni") {
+      if (!finalPassword) {
+        finalPassword = crypto.randomBytes(4).toString('hex');
+      }
+      if (!finalUsername) {
+        finalUsername = email.split('@')[0];
+      }
+    }
+
     // Validate required fields
-    if (!username || !password || !confirmPassword || !name || !email) {
+    if (!finalUsername || !finalPassword || !name || !email) {
       return res
         .status(400)
         .json({ message: "Please fill in all required fields" });
     }
 
-    // Check if passwords match
-    if (password !== confirmPassword) {
+    // Check if passwords match (only if confirmPassword provided)
+    if (confirmPassword && finalPassword !== confirmPassword) {
       return res.status(400).json({ message: "Passwords do not match" });
     }
 
     // Check if username exists (email can repeat)
-    const userExists = await User.findOne({ username });
+    const userExists = await User.findOne({ username: finalUsername });
 
     if (userExists) {
       return res.status(400).json({ message: "Username already taken" });
@@ -50,7 +64,7 @@ const registerUser = async (req, res) => {
 
     // Relaxed password validation: accept common passwords but require minimum length
     const acceptablePassword = /^.{6,}$/;
-    if (!acceptablePassword.test(password)) {
+    if (!acceptablePassword.test(finalPassword)) {
       return res
         .status(400)
         .json({ message: "Password must be at least 6 characters" });
@@ -62,21 +76,26 @@ const registerUser = async (req, res) => {
     });
     const isEmailVerified = Boolean(verifiedOtp);
 
+    // For alumni, set emailVerified based on graduationYear
+    let finalEmailVerified = isEmailVerified;
+    if (roleLower === "alumni") {
+      finalEmailVerified = graduationYear < 2025;
+    }
+
     // Create user in User collection
     const user = await User.create({
-      username,
-      password,
+      username: finalUsername,
+      password: finalPassword,
       name,
       email,
-      role: (role || "student").toLowerCase(),
+      role: roleLower,
       department,
       year,
       graduationYear,
-      emailVerified: isEmailVerified,
+      emailVerified: finalEmailVerified,
     });
 
     // Also create in respective role collection (best-effort; do not fail registration on error)
-    const roleLower = (role || "student").toLowerCase();
     try {
       if (roleLower === "student") {
         const Student = require("../models/Student");
@@ -98,24 +117,24 @@ const registerUser = async (req, res) => {
         await Student.create({
           _id: user._id,
           name,
-          username,
+          username: finalUsername,
           email,
           password: user.password,
           department: departmentId,
           year,
           graduationYear,
-          emailVerified: isEmailVerified,
+          emailVerified: finalEmailVerified,
         });
       } else if (roleLower === "alumni") {
         const Alumni = require("../models/Alumni");
         await Alumni.create({
           _id: user._id,
           name,
-          username,
+          username: finalUsername,
           email,
           password: user.password,
           graduationYear,
-          emailVerified: isEmailVerified,
+          emailVerified: finalEmailVerified,
         });
       } else if (roleLower === "teacher") {
         const Teacher = require("../models/Teacher");
@@ -136,25 +155,36 @@ const registerUser = async (req, res) => {
         await Teacher.create({
           _id: user._id,
           name,
-          username,
+          username: finalUsername,
           email,
           password: user.password,
           department: departmentId,
-          emailVerified: isEmailVerified,
+          emailVerified: finalEmailVerified,
         });
       } else if (roleLower === "admin") {
         const Admin = require("../models/Admin");
         await Admin.create({
           _id: user._id,
           name,
-          username,
+          username: finalUsername,
           email,
           password: user.password,
-          emailVerified: isEmailVerified,
+          emailVerified: finalEmailVerified,
         });
       }
     } catch (e) {
       console.error("Role profile creation failed:", e?.message || e);
+    }
+
+    // For alumni, send welcome email
+    if (roleLower === "alumni") {
+      try {
+        const loginUrl = process.env.FRONTEND_URL || 'http://localhost:3000/login';
+        await sendWelcomeEmail({ to: email, password: finalPassword, loginUrl });
+      } catch (emailError) {
+        console.error("Welcome email send failed:", emailError?.message || emailError);
+        // Do not fail registration on email error
+      }
     }
 
     if (user) {

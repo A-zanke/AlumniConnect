@@ -2,6 +2,9 @@
 // Usage: node scripts/migrate_users.js
 
 const mongoose = require('mongoose');
+const crypto = require('node:crypto');
+const bcrypt = require('bcryptjs');
+const { sendWelcomeEmail } = require('../backend/services/emailService');
 const User = require('../backend/models/User');
 const Student = mongoose.model('Student', require('../backend/models/Student').schema, 'students');
 const Department = mongoose.model('Department', require('../backend/models/Department').schema, 'departments');
@@ -41,7 +44,7 @@ async function migrate() {
               password: user.password || '',
               department: departmentId,
               year: user.year || null,
-              
+
               graduationYear: user.graduationYear || null,
               emailVerified: user.emailVerified || false
             });
@@ -57,15 +60,41 @@ async function migrate() {
       } else if (user.role === 'alumni') {
         const exists = await Alumni.findOne({ _id: user._id });
         if (!exists) {
+          let plainPassword = user.password || crypto.randomBytes(4).toString('hex');
+          let hashedPassword = user.password;
+          if (!user.password) {
+            const salt = await bcrypt.genSalt(10);
+            hashedPassword = await bcrypt.hash(plainPassword, salt);
+          } else {
+            hashedPassword = user.password; // already hashed
+          }
+
+          let finalEmailVerified = user.emailVerified || false;
+          if (user.graduationYear < 2025) {
+            finalEmailVerified = true;
+          }
+
           await Alumni.create({
             _id: user._id,
             name: user.name || '',
             username: user.username || '',
             email: user.email || '',
-            password: user.password || '',
+            password: hashedPassword,
             graduationYear: user.graduationYear || null,
-            emailVerified: user.emailVerified || false
+            emailVerified: finalEmailVerified
           });
+
+          // Send welcome email if new password was generated
+          if (!user.password) {
+            try {
+              const loginUrl = process.env.FRONTEND_URL || 'http://localhost:3000/login';
+              await sendWelcomeEmail({ to: user.email, password: plainPassword, loginUrl });
+              console.log(`Welcome email sent to ${user.email}`);
+            } catch (emailError) {
+              console.error(`Failed to send welcome email to ${user.email}:`, emailError?.message || emailError);
+            }
+          }
+
           alumniCount++;
         } else {
           skipped++;

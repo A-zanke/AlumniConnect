@@ -44,4 +44,38 @@ async function sendOtpEmail({ to, code }) {
     throw e;
   }
 }
-module.exports = { sendOtpEmail };
+
+async function sendWelcomeEmail({ to, password, loginUrl }) {
+  const mailer = getTransporter();
+  try {
+    await mailer.verify();
+  } catch (e) {
+    console.error('SMTP verify failed:', e?.message || e);
+    throw e;
+  }
+
+  const appName = process.env.APP_NAME || 'MIT Alumni Connect';
+  const fromEmail = process.env.MAIL_FROM || 'no-reply@mit.asia';
+
+  try {
+    await mailer.sendMail({
+      from: `${appName} <${fromEmail}>`,
+      to,
+      subject: `Welcome to ${appName} - Your Account Details`,
+      text: `Welcome to ${appName}!\n\nYour account has been created successfully.\n\nTemporary Password: ${password}\n\nLogin URL: ${loginUrl}\n\nPlease change your password after logging in.\n\nBest regards,\n${appName} Team`,
+      html: `<div style="font-family:sans-serif;font-size:16px">
+        <h2>Welcome to ${appName}!</h2>
+        <p>Your account has been created successfully.</p>
+        <p><strong>Temporary Password:</strong> ${password}</p>
+        <p><a href="${loginUrl}">Click here to login</a></p>
+        <p>Please change your password after logging in for security.</p>
+        <p>Best regards,<br>${appName} Team</p>
+      </div>`
+    });
+  } catch (e) {
+    console.error('sendMail failed:', e?.response || e?.message || e);
+    throw e;
+  }
+}
+
+module.exports = { sendOtpEmail, sendWelcomeEmail };

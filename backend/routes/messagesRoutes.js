@@ -7,6 +7,8 @@ const {
   getMessages,
   sendMessage,
   deleteMessage,
+  deleteChat,
+  deleteAllMessages,
   getConversations
 } = require('../controllers/messagesController');
 
@@ -45,6 +47,12 @@ router.post('/:userId', protect, upload.single('image'), sendMessage);
 
 // Delete a message
 router.delete('/:messageId', protect, deleteMessage);
+
+// Delete entire chat with a user
+router.delete('/chat/:userId', protect, deleteChat);
+
+// Delete all messages for current user
+router.delete('/all', protect, deleteAllMessages);
 
 // Get conversation list for current user
 router.get('/', protect, getConversations);
