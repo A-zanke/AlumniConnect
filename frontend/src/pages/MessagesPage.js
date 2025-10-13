@@ -79,8 +79,9 @@ const MessagesPage = () => {
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [sharedMedia, setSharedMedia] = useState([]);
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+  const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
 
-  // Load conversations list (people you chat with)
+  // Load conversations + merge with connections (for names/avatars/presence)
   useEffect(() => {
     if (!user) return;
 
@@ -88,13 +89,60 @@ const MessagesPage = () => {
       try {
         setLoading(true);
         const token = localStorage.getItem("token");
-        const resp = await axios.get(`${baseURL}/api/messages`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const [convResp, connResp] = await Promise.all([
+          axios.get(`${baseURL}/api/messages`, { headers: { Authorization: `Bearer ${token}` } }),
+          connectionAPI.getConnections().catch(() => ({ data: [] })),
+        ]);
+        const convList = Array.isArray(convResp?.data?.data) ? convResp.data.data : [];
+        const rawConnections = Array.isArray(connResp?.data) ? connResp.data : [];
+
+        const map = new Map();
+        convList.forEach((item) => {
+          if (!item?.user?._id) return;
+          map.set(String(item.user._id), {
+            _id: String(item.user._id),
+            user: item.user,
+            lastMessage: item.lastMessage || "",
+            lastMessageTime: item.lastMessageTime || null,
+          });
         });
-        const list = Array.isArray(resp?.data?.data) ? resp.data.data : [];
-        setConnections(list);
-        if (list.length > 0 && !selectedUser) {
-          setSelectedUser(list[0].user);
+        rawConnections.forEach((u) => {
+          const uid = String(u?._id || u?.id || "");
+          if (!uid) return;
+          if (!map.has(uid)) {
+            map.set(uid, {
+              _id: uid,
+              user: {
+                _id: uid,
+                name: u.name || u.fullName || u.username || "Unknown",
+                username: u.username || "user",
+                avatarUrl: u.avatarUrl || u.avatar || null,
+                isOnline: u.isOnline,
+                lastSeen: u.lastSeen,
+              },
+              lastMessage: "",
+              lastMessageTime: null,
+            });
+          } else {
+            const entry = map.get(uid);
+            entry.user = {
+              ...entry.user,
+              name: entry.user?.name || u.name || u.fullName || u.username || "Unknown",
+              username: entry.user?.username || u.username || "user",
+              avatarUrl: entry.user?.avatarUrl || u.avatarUrl || u.avatar || null,
+              isOnline: entry.user?.isOnline ?? u.isOnline,
+              lastSeen: entry.user?.lastSeen ?? u.lastSeen,
+            };
+          }
+        });
+        const merged = Array.from(map.values()).sort((a, b) => {
+          const at = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+          const bt = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+          return bt - at;
+        });
+        setConnections(merged);
+        if (merged.length > 0 && !selectedUser) {
+          setSelectedUser(merged[0].user);
         }
       } catch (error) {
         console.error("Error fetching conversations:", error);
@@ -111,7 +159,7 @@ const MessagesPage = () => {
   useEffect(() => {
     if (user) {
       const token = localStorage.getItem("token");
-      const s = io("/", { auth: { token } });
+      const s = io(SOCKET_URL, { auth: { token }, withCredentials: true, transports: ["websocket"] });
 
       s.on("connect", () => {
         console.log("Connected to server");
@@ -630,10 +678,10 @@ const MessagesPage = () => {
                             {selectedUser.name}
                           </p>
                           <p className="text-sm text-gray-500">
-                            {(presenceData[selectedUser._id]?.isOnline ?? selectedUser.isOnline)
+            {((presenceData[selectedUser._id]?.isOnline) ?? (selectedUser.isOnline))
                               ? "Online"
                               : `Last seen ${formatLastSeen(
-                                  presenceData[selectedUser._id]?.lastSeen ?? selectedUser.lastSeen
+                                  (presenceData[selectedUser._id]?.lastSeen) ?? (selectedUser.lastSeen)
                                 )}`}
                           </p>
                           {isTyping && typingUser && (
