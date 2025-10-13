@@ -186,6 +186,7 @@ http.listen(PORT, "0.0.0.0", () => {
 const jwt = require("jsonwebtoken");
 const User = require("./models/User");
 const Message = require("./models/Message");
+const Block = require("./models/Block");
 
 io.use(async (socket, next) => {
   try {
@@ -249,7 +250,7 @@ io.on("connection", (socket) => {
     io.emit("presence:update", { userId: socket.userId, lastSeenAt: Date.now() });
   });
 
-  socket.on("chat:send", async (payload) => {
+  const handleSend = async (payload) => {
     try {
       const from = socket.userId;
       const { to, content, attachments, clientKey } = payload || {};
@@ -258,6 +259,12 @@ io.on("connection", (socket) => {
       if (!me) return;
       const isConnected = me.connections.some((id) => id.toString() === to);
       if (!isConnected) return;
+      // Block checks
+      const [ab, ba] = await Promise.all([
+        Block.findOne({ blocker: from, blocked: to }).lean(),
+        Block.findOne({ blocker: to, blocked: from }).lean(),
+      ]);
+      if (ab || ba) return;
       const participants = [from, to].sort();
       const threadId = `${participants[0]}_${participants[1]}`;
       const messageData = { threadId, clientKey, from, to, content: content || "" };
@@ -285,11 +292,16 @@ io.on("connection", (socket) => {
       };
       socket.emit("message:ack", { id: msg._id, status: "sent" });
       io.to(to).emit("chat:receive", messagePayload);
+      io.to(to).emit("receiveMessage", messagePayload);
       io.to(from).emit("message:delivered", { id: msg._id });
     } catch (e) {
       console.error("Socket chat error:", e);
     }
-  });
+  };
+
+  socket.on("chat:send", handleSend);
+  // Alias to meet API contract
+  socket.on("sendMessage", handleSend);
 
   socket.on("thread:read", async ({ threadId }) => {
     try {
