@@ -1092,10 +1092,7 @@ const MessagesPage = () => {
                       </div>
                     )}
 
-                    <form
-                      onSubmit={handleSendMessage}
-                      className="flex items-end space-x-3"
-                    >
+                    <form onSubmit={handleSendMessage} className="flex items-end gap-3 sticky bottom-0">
                       <div className="flex-1 relative">
                         <input
                           type="text"
@@ -1121,13 +1118,7 @@ const MessagesPage = () => {
                             <FiSmile className="text-lg" />
                           </button>
                         </div>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageSelect}
-                          className="hidden"
-                        />
+                        <input ref={fileInputRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx" onChange={handleImageSelect} className="hidden" />
                         {showEmojiPicker && (
                           <div className="absolute bottom-full right-0 mb-2 z-20">
                             <Picker

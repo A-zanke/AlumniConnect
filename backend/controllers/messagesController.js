@@ -138,9 +138,9 @@ exports.sendMessage = async (req, res) => {
     const content = (req.body.content || "").toString();
     const attachments = [];
     const files = req.files || {};
-    const imageFile = (files.image && files.image[0]) || (files.media && files.media[0]);
+    const imageFile = (files?.image && files.image[0]) || (files?.media && files.media[0]) || (req.file || null);
     if (imageFile) {
-      const rel = path.posix.join("/uploads/media", imageFile.filename);
+      const rel = path.posix.join("/uploads/messages", imageFile.filename || imageFile); // keep compatibility
       attachments.push(rel);
     }
     if (req.body.replyToId) {
