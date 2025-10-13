@@ -1,10 +1,11 @@
-// backend/routes/messageRoutes.js
-// Express routes for chat APIs with multer for media. No extra files beyond uploads dir.
+// backend/routes/messagesRoutes.js
+// Express routes for chat APIs with multer for media. No extra code files are created.
 
-const express = require("express"); // [attached_file:4]
-const path = require("path"); // [attached_file:4]
-const fs = require("fs"); // [attached_file:4]
-const multer = require("multer"); // [attached_file:4]
+const express = require("express");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
+const { protect } = require("../middleware/authMiddleware");
 
 const {
   getMessages,
@@ -18,11 +19,11 @@ const {
   getMedia,
   deleteChat,
   getBlocks,
-} = require("../controllers/messageController"); // [attached_file:4]
+} = require("../controllers/messagesController");
 
-// Ensure uploads dir exists
-const uploadsDir = path.join(process.cwd(), "uploads", "media"); // [attached_file:4]
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); // [attached_file:4]
+// Ensure uploads/media dir exists (server serves /uploads/*)
+const uploadsDir = path.join(__dirname, "..", "uploads", "media");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -31,48 +32,63 @@ const storage = multer.diskStorage({
     const name = `media-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
     cb(null, name);
   },
-}); // [attached_file:4]
+});
 
 const fileFilter = (_req, file, cb) => {
   const ok = /image\/(jpeg|jpg|png|gif|webp)/i.test(file.mimetype);
   if (!ok) return cb(new Error("Only image files are allowed!"));
   cb(null, true);
-}; // [attached_file:4]
+};
 
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 12 * 1024 * 1024 }, // 12MB // [attached_file:4]
-}); // [attached_file:4]
+  limits: { fileSize: 12 * 1024 * 1024 }, // 12MB
+});
 
-const router = express.Router(); // [attached_file:4]
+const router = express.Router();
+
+// All routes protected
+router.use(protect);
 
 // Conversations list + presence info
-router.get("/messages", getConversations); // [attached_file:4]
-router.get("/messages/blocks", getBlocks); // [attached_file:4]
+router.get("/", getConversations);
+router.get("/blocks", getBlocks);
 
-// Conversation and media
-router.get("/messages/:userId", getMessages); // [attached_file:4]
-router.get("/media/:userId", getMedia); // [attached_file:4]
+// Conversation and media (order matters: static paths first)
+router.get("/media/:userId", getMedia);
+router.get("/:userId", getMessages);
 
-// Send with optional media
-router.post("/messages", upload.single("media"), sendMessage); // [attached_file:4]
+// React to message (avoid being captured by /:userId)
+router.post("/react", react);
 
-// Delete single and bulk
-router.delete("/messages/:messageId", deleteMessage); // [attached_file:4]
-router.delete("/messages/bulk-delete", express.json(), bulkDelete); // [attached_file:4]
+// Send with optional media (support both `/` and `/:userId`)
+router.post(
+  "/",
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "media", maxCount: 1 },
+  ]),
+  sendMessage
+);
+router.post(
+  "/:userId",
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "media", maxCount: 1 },
+  ]),
+  sendMessage
+);
 
-// React to message
-router.post("/messages/react", express.json(), react); // [attached_file:4]
+// Delete single and bulk (bulk route before dynamic id)
+router.delete("/bulk-delete", bulkDelete);
+router.delete("/:messageId", deleteMessage);
 
 // Delete chat
-router.delete("/messages/chat/:userId", deleteChat); // [attached_file:4]
+router.delete("/chat/:userId", deleteChat);
 
 // Report user and block/unblock
-router.post("/report", express.json(), report); // [attached_file:4]
-router.post("/block", express.json(), block); // [attached_file:4]
+router.post("/report", report);
+router.post("/block", block);
 
-// Static serve for uploaded media (optional: serve via main app)
-// In main app, ensure: app.use('/uploads/media', express.static(path.join(process.cwd(),'uploads','media')));
-
-module.exports = router; // [attached_file:4]
+module.exports = router;

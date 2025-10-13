@@ -1,20 +1,10 @@
-import React, {
-  useState,
-  useEffect,
-  useContext,
-  useRef,
-  useCallback,
-} from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import Spinner from "../components/ui/Spinner";
 import { toast } from "react-toastify";
-import {
-  connectionAPI,
-  fetchMessages,
-  sendMessage,
-  userAPI,
-} from "../components/utils/api";
+import { connectionAPI, fetchMessages, userAPI } from "../components/utils/api";
 import { io } from "socket.io-client";
+import axios from "axios";
 import { getAvatarUrl } from "../components/utils/helpers";
 import {
   FiSend,
@@ -24,7 +14,15 @@ import {
   FiSearch,
   FiVideo,
   FiPhone,
+  FiArrowLeft,
+  FiCornerUpLeft,
+  FiTrash2,
+  FiFlag,
+  FiUserX,
+  FiX,
+  FiCheck,
 } from "react-icons/fi";
+import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Custom CSS for better scrolling
@@ -58,6 +56,7 @@ const MessagesPage = () => {
   const [newMessage, setNewMessage] = useState("");
   const [socket, setSocket] = useState(null);
   const messageContainerRef = useRef(null);
+  const seenIdsRef = useRef(new Set());
   const [error, setError] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -68,48 +67,44 @@ const MessagesPage = () => {
   const [isTypingTimeout, setIsTypingTimeout] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Load connections (people user can message)
+  // New UI/feature states
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState(new Set());
+  const [activeReactionFor, setActiveReactionFor] = useState(null);
+  const [replyTo, setReplyTo] = useState(null);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [sharedMedia, setSharedMedia] = useState([]);
+  const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
+  // Load conversations list (people you chat with)
   useEffect(() => {
     if (!user) return;
 
-    const fetchConnections = async () => {
+    const fetchConversations = async () => {
       try {
         setLoading(true);
-        // Get users the current user is connected with (can message)
-        const response = await connectionAPI.getConnections();
-        setConnections(response.data);
-
-        // Fetch presence data for all connections
-        const presencePromises = response.data.map(async (conn) => {
-          try {
-            const presence = await userAPI.getPresence(conn._id);
-            return { userId: conn._id, ...presence };
-          } catch (error) {
-            console.error(`Error fetching presence for ${conn._id}:`, error);
-            return { userId: conn._id, isOnline: false, lastSeen: null };
-          }
+        const token = localStorage.getItem("token");
+        const resp = await axios.get(`${baseURL}/api/messages`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
-
-        const presenceResults = await Promise.all(presencePromises);
-        const presenceMap = {};
-        presenceResults.forEach((presence) => {
-          presenceMap[presence.userId] = presence;
-        });
-        setPresenceData(presenceMap);
-
-        // Select first connection by default if exists
-        if (response.data.length > 0 && !selectedUser) {
-          setSelectedUser(response.data[0]);
+        const list = Array.isArray(resp?.data?.data) ? resp.data.data : [];
+        setConnections(list);
+        if (list.length > 0 && !selectedUser) {
+          setSelectedUser(list[0].user);
         }
       } catch (error) {
-        console.error("Error fetching connections:", error);
-        toast.error("Failed to load connections");
+        console.error("Error fetching conversations:", error);
+        toast.error("Failed to load conversations");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchConnections();
+    fetchConversations();
   }, [user]);
 
   // Initialize Socket.IO connection
@@ -130,15 +125,18 @@ const MessagesPage = () => {
         userAPI.updatePresence(false);
       });
 
-      s.on("chat:receive", (msg) => {
+      const handleIncoming = (msg) => {
+        const id = msg._id || msg.id;
+        if (id && seenIdsRef.current.has(String(id))) return;
         if (
           (msg.from === selectedUser?._id && msg.to === user._id) ||
           (msg.from === user._id && msg.to === selectedUser?._id)
         ) {
+          if (id) seenIdsRef.current.add(String(id));
           setMessages((prev) => [
             ...prev,
             {
-              id: msg._id,
+              id: id,
               senderId: msg.from,
               recipientId: msg.to,
               content: msg.content,
@@ -149,33 +147,42 @@ const MessagesPage = () => {
           // Scroll to bottom when receiving new message
           setTimeout(scrollToBottom, 100);
         }
+      };
+      s.on("chat:receive", handleIncoming);
+      s.on("receiveMessage", handleIncoming);
+
+      // reactions
+      s.on("messageReacted", ({ messageId, reactions }) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId ? { ...m, reactions: reactions || [] } : m
+          )
+        );
       });
 
-      // Listen for typing events
-      s.on("user_typing", (data) => {
-        if (data.userId !== user._id) {
-          setTypingUser(data.userName);
-          setIsTyping(true);
-
-          // Clear typing indicator after 3 seconds
-          if (isTypingTimeout) {
-            clearTimeout(isTypingTimeout);
-          }
-          const timeout = setTimeout(() => {
-            setIsTyping(false);
-            setTypingUser(null);
-          }, 3000);
-          setIsTypingTimeout(timeout);
+      // deletions
+      s.on("messageDeleted", (payload) => {
+        if (payload?.messageId) {
+          setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+        } else if (payload?.messageIds) {
+          const ids = new Set(payload.messageIds.map(String));
+          setMessages((prev) => prev.filter((m) => !ids.has(String(m.id))));
+        } else if (payload?.chatCleared && payload?.userId === selectedUser?._id) {
+          setMessages([]);
         }
       });
 
-      s.on("user_stopped_typing", (data) => {
-        if (data.userId !== user._id) {
-          setIsTyping(false);
-          setTypingUser(null);
-          if (isTypingTimeout) {
-            clearTimeout(isTypingTimeout);
-          }
+      // Typing indicator events
+      s.on("typing:update", ({ from, typing }) => {
+        if (from !== user._id && selectedUser && from === selectedUser._id) {
+          setTypingUser(selectedUser.name);
+          setIsTyping(!!typing);
+          if (isTypingTimeout) clearTimeout(isTypingTimeout);
+          const timeout = setTimeout(() => {
+            setIsTyping(false);
+            setTypingUser(null);
+          }, 2500);
+          setIsTypingTimeout(timeout);
         }
       });
 
@@ -216,7 +223,15 @@ const MessagesPage = () => {
     try {
       setLoading(true);
       const data = await fetchMessages(selectedUser._id);
-      setMessages(data);
+      setMessages(Array.isArray(data) ? data : []);
+      // also fetch shared media previews
+      try {
+        const token = localStorage.getItem("token");
+        const resp = await axios.get(`${baseURL}/api/messages/media/${selectedUser._id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setSharedMedia(resp?.data?.media || []);
+      } catch {}
       setError(null);
     } catch (err) {
       setError("Failed to fetch messages");
@@ -236,42 +251,30 @@ const MessagesPage = () => {
     if ((!newMessage.trim() && !selectedImage) || !selectedUser) return;
 
     try {
-      // Send message with image via API
-      const messageData = await sendMessage(
-        selectedUser._id,
-        newMessage,
-        selectedImage
-      );
+      // Build multipart form to support reply and image
+      const formData = new FormData();
+      formData.append("content", newMessage);
+      if (selectedImage) formData.append("image", selectedImage);
+      if (replyTo?.id) formData.append("replyToId", replyTo.id);
 
-      // Add to local messages
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: messageData.id,
-          senderId: messageData.senderId,
-          recipientId: messageData.recipientId,
-          content: messageData.content,
-          attachments: messageData.attachments || [],
-          timestamp: messageData.timestamp,
-        },
-      ]);
+      const token = localStorage.getItem("token");
+      const resp = await axios.post(`${baseURL}/api/messages/${selectedUser._id}`, formData, {
+        headers: { "Content-Type": "multipart/form-data", Authorization: `Bearer ${token}` },
+      });
+      const messageData = resp.data;
+
+      // Push optimistically; no socket emit to avoid duplicates (server emits)
+      if (messageData?.id) seenIdsRef.current.add(String(messageData.id));
+      setMessages((prev) => [...prev, messageData]);
 
       // Clear input and image
       setNewMessage("");
       setSelectedImage(null);
       setImagePreview(null);
+      setReplyTo(null);
 
       // Scroll to bottom after sending
       setTimeout(scrollToBottom, 100);
-
-      // Also emit to socket for real-time updates
-      if (socket) {
-        socket.emit("chat:send", {
-          to: selectedUser._id,
-          content: newMessage,
-          attachments: messageData.attachments || [],
-        });
-      }
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error("Failed to send message");
@@ -289,19 +292,127 @@ const MessagesPage = () => {
         recipientId: selectedUser._id,
       });
 
-      // Clear existing timeout
-      if (isTypingTimeout) {
-        clearTimeout(isTypingTimeout);
-      }
-
-      // Set new timeout to stop typing indicator
+      if (isTypingTimeout) clearTimeout(isTypingTimeout);
       const timeout = setTimeout(() => {
-        socket.emit("stop_typing", {
-          userId: user._id,
-          recipientId: selectedUser._id,
-        });
-      }, 1000);
+        socket.emit("stop_typing", { userId: user._id, recipientId: selectedUser._id });
+      }, 900);
       setIsTypingTimeout(timeout);
+    }
+  };
+
+  const toggleMessageSelection = (id) => {
+    setSelectedMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async (scope = "me") => {
+    try {
+      const ids = Array.from(selectedMessageIds);
+      if (ids.length === 0) return;
+      const token = localStorage.getItem("token");
+      await axios.delete(`${baseURL}/api/messages/bulk-delete`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { messageIds: ids, for: scope },
+      });
+      setMessages((prev) => prev.filter((m) => !ids.includes(m.id)));
+      setSelectedMessageIds(new Set());
+      setSelectionMode(false);
+    } catch (e) {
+      toast.error("Failed to delete messages");
+    }
+  };
+
+  const handleDeleteSingle = async (id, scope = "me") => {
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${baseURL}/api/messages/${id}?for=${scope}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch (e) {
+      toast.error("Failed to delete message");
+    }
+  };
+
+  const handleReact = async (id, emoji) => {
+    try {
+      const token = localStorage.getItem("token");
+      const resp = await axios.post(
+        `${baseURL}/api/messages/react`,
+        { messageId: id, emoji },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, reactions: resp.data.reactions } : m))
+      );
+    } catch (e) {
+      toast.error("Failed to react");
+    }
+  };
+
+  const handleReport = async () => {
+    try {
+      const reason = prompt("Report reason?") || "";
+      const token = localStorage.getItem("token");
+      await axios.post(
+        `${baseURL}/api/messages/report`,
+        { targetUserId: selectedUser._id, reason },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success("Reported to admin");
+      setShowMenu(false);
+    } catch (e) {
+      toast.error("Failed to report");
+    }
+  };
+
+  const handleBlockToggle = async (block = true) => {
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(
+        `${baseURL}/api/messages/block`,
+        { targetUserId: selectedUser._id, action: block ? "block" : "unblock" },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success(block ? "User blocked" : "User unblocked");
+      setShowMenu(false);
+    } catch (e) {
+      toast.error("Failed to update block");
+    }
+  };
+
+  const handleDeleteChat = async (scope = "me") => {
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${baseURL}/api/messages/chat/${selectedUser._id}?for=${scope}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMessages([]);
+      setShowMenu(false);
+    } catch (e) {
+      toast.error("Failed to delete chat");
+    }
+  };
+
+  const findMessageById = (id) => messages.find((m) => String(m.id) === String(id));
+
+  const renderHighlighted = (text) => {
+    if (!chatSearchQuery) return text;
+    try {
+      const parts = text.split(new RegExp(`(${chatSearchQuery.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")})`, "ig"));
+      return parts.map((part, i) =>
+        part.toLowerCase() === chatSearchQuery.toLowerCase() ? (
+          <mark key={i} className="bg-yellow-200 rounded px-0.5">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      );
+    } catch {
+      return text;
     }
   };
 
@@ -379,7 +490,7 @@ const MessagesPage = () => {
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-gradient-to-b from-gray-50 to-gray-100 border-r border-gray-200 flex flex-col"
+              className={`${showSidebar ? "flex" : "hidden"} lg:flex bg-gradient-to-b from-gray-50 to-gray-100 border-r border-gray-200 flex-col`}
             >
               {/* Search Header */}
               <div className="p-6 border-b border-gray-200">
@@ -410,10 +521,10 @@ const MessagesPage = () => {
                     {connections
                       .filter(
                         (conn) =>
-                          conn.name
+                          (conn.user?.name || "")
                             .toLowerCase()
                             .includes(searchQuery.toLowerCase()) ||
-                          conn.username
+                          (conn.user?.username || "")
                             .toLowerCase()
                             .includes(searchQuery.toLowerCase())
                       )
@@ -423,9 +534,12 @@ const MessagesPage = () => {
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.1 }}
-                          onClick={() => setSelectedUser(connection)}
+                          onClick={() => {
+                            setSelectedUser(connection.user);
+                            setShowSidebar(false);
+                          }}
                           className={`cursor-pointer p-4 rounded-2xl m-2 transition-all.duration-200 ${
-                            selectedUser?._id === connection._id
+                            selectedUser?._id === connection.user?._id
                               ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105"
                               : "hover:bg-white hover:shadow-md hover:scale-105"
                           }`}
@@ -433,33 +547,35 @@ const MessagesPage = () => {
                           <div className="flex items-center">
                             <div className="relative">
                               <img
-                                src={
-                                  connection.avatarUrl
-                                    ? getAvatarUrl(connection.avatarUrl)
-                                    : "/default-avatar.png"
-                                }
-                                alt={connection.name}
+                                src={connection.user?.avatarUrl ? getAvatarUrl(connection.user.avatarUrl) : "/default-avatar.png"}
+                                alt={connection.user?.name}
                                 className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
                               />
+                              {connection.user?.isOnline && (
+                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                              )}
                             </div>
                             <div className="ml-4 flex-1 min-w-0">
                               <p
                                 className={`text-sm font-semibold truncate ${
-                                  selectedUser?._id === connection._id
+                                  selectedUser?._id === connection.user?._id
                                     ? "text-white"
                                     : "text-gray-900"
                                 }`}
                               >
-                                {connection.name}
+                                {connection.user?.name}
                               </p>
                               <p
                                 className={`text-xs truncate ${
-                                  selectedUser?._id === connection._id
+                                  selectedUser?._id === connection.user?._id
                                     ? "text-blue-100"
                                     : "text-gray-500"
                                 }`}
                               >
-                                @{connection.username}
+                                @{connection.user?.username}
+                              </p>
+                              <p className={`text-xs mt-1 truncate ${selectedUser?._id === connection.user?._id ? "text-blue-100" : "text-gray-500"}`}>
+                                {connection.lastMessage || ""}
                               </p>
                             </div>
                           </div>
@@ -471,7 +587,7 @@ const MessagesPage = () => {
             </motion.div>
 
             {/* Chat Area */}
-            <div className="lg:col-span-2 flex flex-col h-full">
+            <div className={`${showSidebar ? "hidden" : "flex"} lg:flex lg:col-span-2 flex-col h-full`}>
               {selectedUser ? (
                 <>
                   {/* Chat Header */}
@@ -482,6 +598,13 @@ const MessagesPage = () => {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center">
+                        {/* Mobile back */}
+                        <button
+                          className="mr-3 lg:hidden p-2 rounded-full hover:bg-white/60"
+                          onClick={() => setShowSidebar(true)}
+                        >
+                          <FiArrowLeft />
+                        </button>
                         <div className="relative">
                           {selectedUser.avatarUrl ? (
                             <img
@@ -514,22 +637,76 @@ const MessagesPage = () => {
                                 )}`}
                           </p>
                           {isTyping && typingUser && (
-                            <p className="text-sm text-blue-500 italic">
-                              typing...
-                            </p>
+                            <div className="text-sm text-blue-500 italic flex items-center gap-1">
+                              <span className="inline-flex gap-1">
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></span>
+                              </span>
+                              typing
+                            </div>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
+                        {/* Chat search */}
+                        <div className="hidden md:flex items-center relative mr-2">
+                          <FiSearch className="absolute left-3 text-gray-400" />
+                          <input
+                            value={chatSearchQuery}
+                            onChange={(e) => setChatSearchQuery(e.target.value)}
+                            placeholder="Search in chat"
+                            className="pl-9 pr-3 py-2 rounded-xl border bg-white focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
                         <button className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200">
                           <FiVideo className="text-gray-600" />
                         </button>
                         <button className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200">
                           <FiPhone className="text-gray-600" />
                         </button>
-                        <button className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200">
-                          <FiMoreVertical className="text-gray-600" />
-                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={() => setShowMenu((v) => !v)}
+                            className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+                          >
+                            <FiMoreVertical className="text-gray-600" />
+                          </button>
+                          {showMenu && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white border shadow-xl rounded-xl z-20">
+                              <button
+                                onClick={() => setSelectionMode((v) => !v)}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
+                              >
+                                {selectionMode ? "Cancel selection" : "Select messages"}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteChat("me")}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
+                              >
+                                Delete chat (for me)
+                              </button>
+                              <button
+                                onClick={() => handleDeleteChat("everyone")}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-600"
+                              >
+                                Delete chat (for everyone)
+                              </button>
+                              <button
+                                onClick={() => handleBlockToggle(true)}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
+                              >
+                                Block user
+                              </button>
+                              <button
+                                onClick={handleReport}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
+                              >
+                                Report user
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -581,9 +758,34 @@ const MessagesPage = () => {
                                       : "bg-white text-gray-800 border border-gray-200"
                                   }`}
                                 >
+                                  {/* Selection checkbox */}
+                                  {selectionMode && (
+                                    <div className={`mb-2 ${message.senderId === user._id ? "text-blue-100" : "text-gray-400"}`}>
+                                      <label className="inline-flex items-center gap-2 text-xs">
+                                        <input
+                                          type="checkbox"
+                                          className="accent-blue-600"
+                                          checked={selectedMessageIds.has(message.id)}
+                                          onChange={() => toggleMessageSelection(message.id)}
+                                        />
+                                        Select
+                                      </label>
+                                    </div>
+                                  )}
+
+                                  {/* Reply preview within bubble */}
+                                  {message.replyTo?.id && (
+                                    <div className={`mb-2 p-2 rounded-xl ${message.senderId === user._id ? "bg-white/10" : "bg-gray-100"}`}>
+                                      <div className="text-xs opacity-70 mb-1">Replying to</div>
+                                      <div className="text-xs line-clamp-2">
+                                        {findMessageById(message.replyTo.id)?.content || "Media"}
+                                      </div>
+                                    </div>
+                                  )}
+
                                   {message.content && (
                                     <p className="text-sm leading-relaxed">
-                                      {message.content}
+                                      {renderHighlighted(message.content)}
                                     </p>
                                   )}
                                   {message.attachments &&
@@ -614,12 +816,57 @@ const MessagesPage = () => {
                                                 key={idx}
                                                 src={attachment}
                                                 alt="Message attachment"
-                                                className="max-w-full h-auto rounded-2xl shadow-md"
+                                                onClick={() => setLightboxSrc(attachment)}
+                                                className="max-w-full h-auto rounded-2xl shadow-md cursor-zoom-in hover:opacity-90 transition"
                                               />
                                             )
                                         )}
                                       </div>
                                     )}
+                                  {/* Quick reactions */}
+                                  <div className={`mt-2 flex items-center gap-3 ${message.senderId === user._id ? "justify-end" : "justify-start"}`}>
+                                    <div className="flex gap-2 opacity-80">
+                                      {message.reactions && message.reactions.length > 0 && (
+                                        <div className="text-xs">
+                                          {message.reactions.map((r, i) => (
+                                            <span key={i} className="mr-1 select-none">
+                                              {r.emoji}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="relative">
+                                      <button
+                                        className="text-xs opacity-60 hover:opacity-100"
+                                        onClick={() => setActiveReactionFor((v) => (v === message.id ? null : message.id))}
+                                      >
+                                        😀
+                                      </button>
+                                      {activeReactionFor === message.id && (
+                                        <div className="absolute -top-12 left-0 bg-white border rounded-xl shadow-lg px-2 py-1 flex gap-2 z-10">
+                                          {"👍❤️😂😮😢😡".split("").map((emo, i) => (
+                                            <button key={i} onClick={() => { handleReact(message.id, emo); setActiveReactionFor(null); }} className="hover:scale-110 transition">
+                                              {emo}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button
+                                      title="Reply"
+                                      onClick={() => setReplyTo({ id: message.id })}
+                                      className="text-xs opacity-60 hover:opacity-100"
+                                    >
+                                      <FiCornerUpLeft />
+                                    </button>
+                                    <div className="relative">
+                                      <button className="text-xs opacity-60 hover:opacity-100">
+                                        ···
+                                      </button>
+                                      <div className="absolute hidden group-hover:block"></div>
+                                    </div>
+                                  </div>
                                   <p
                                     className={`text-xs mt-2 ${
                                       message.senderId === user._id
@@ -634,6 +881,17 @@ const MessagesPage = () => {
                                       minute: "2-digit",
                                     })}
                                   </p>
+                                </div>
+                                {/* Actions under bubble */}
+                                <div className={`mt-1 flex gap-3 ${message.senderId === user._id ? "justify-end" : "justify-start"}`}>
+                                  <button onClick={() => handleDeleteSingle(message.id, "me")} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                                    <FiTrash2 /> For me
+                                  </button>
+                                  {message.senderId === user._id && (
+                                    <button onClick={() => handleDeleteSingle(message.id, "everyone")} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1">
+                                      <FiTrash2 /> Everyone
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </motion.div>
@@ -666,6 +924,21 @@ const MessagesPage = () => {
                       </div>
                     )}
 
+                    {/* Reply banner */}
+                    {replyTo?.id && (
+                      <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-100 flex items-start justify-between">
+                        <div>
+                          <div className="text-xs font-semibold text-blue-700 mb-1">Replying to</div>
+                          <div className="text-xs text-blue-800 line-clamp-2">
+                            {findMessageById(replyTo.id)?.content || "Media"}
+                          </div>
+                        </div>
+                        <button onClick={() => setReplyTo(null)} className="text-blue-600 hover:text-blue-800">
+                          <FiX />
+                        </button>
+                      </div>
+                    )}
+
                     <form
                       onSubmit={handleSendMessage}
                       className="flex items-end space-x-3"
@@ -689,7 +962,8 @@ const MessagesPage = () => {
                           </button>
                           <button
                             type="button"
-                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors.duration-200"
+                            onClick={() => setShowEmojiPicker((v) => !v)}
+                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors duration-200"
                           >
                             <FiSmile className="text-lg" />
                           </button>
@@ -701,6 +975,19 @@ const MessagesPage = () => {
                           onChange={handleImageSelect}
                           className="hidden"
                         />
+                        {showEmojiPicker && (
+                          <div className="absolute bottom-full right-0 mb-2 z-20">
+                            <Picker
+                              onEmojiClick={(e, data) => {
+                                const emoji = data?.emoji || data?.native || "";
+                                setNewMessage((prev) => prev + emoji);
+                              }}
+                              skinTonesDisabled
+                              searchDisabled
+                              previewConfig={{ showPreview: false }}
+                            />
+                          </div>
+                        )}
                       </div>
                       <button
                         type="submit"
@@ -710,6 +997,18 @@ const MessagesPage = () => {
                         <FiSend className="text-lg" />
                       </button>
                     </form>
+
+                    {selectionMode && (
+                      <div className="mt-3 flex items-center justify-between text-sm">
+                        <div>
+                          Selected: {selectedMessageIds.size}
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleBulkDelete("me")} className="px-3 py-2 rounded-xl border hover:bg-gray-50">Delete for me</button>
+                          <button onClick={() => handleBulkDelete("everyone")} className="px-3 py-2 rounded-xl border text-red-600 hover:bg-red-50">Delete for everyone</button>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 </>
               ) : (
@@ -727,6 +1026,13 @@ const MessagesPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Lightbox for media */}
+      {lightboxSrc && (
+        <div className="fixed inset-0 bg-black/80 z-30 flex items-center justify-center" onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} alt="media" className="max-h-[90vh] max-w-[90vw] rounded-2xl shadow-2xl" />
+        </div>
+      )}
     </div>
   );
 };

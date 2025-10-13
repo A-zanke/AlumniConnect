@@ -150,7 +150,7 @@ app.use(
   express.static(uploadsDir)
 );
 
-// Serve message images
+// Serve message images (explicit directory) - kept for backward compatibility
 app.use(
   "/uploads/messages",
   (req, res, next) => {
