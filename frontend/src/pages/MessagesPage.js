@@ -80,6 +80,14 @@ const MessagesPage = () => {
   const [sharedMedia, setSharedMedia] = useState([]);
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
+  const [theme, setTheme] = useState(() => localStorage.getItem("chatTheme") || "light");
+  const [showRightPanel, setShowRightPanel] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState("media"); // media | links | docs
+  const [openHeaderMenu, setOpenHeaderMenu] = useState(false);
+  const [openMessageMenuFor, setOpenMessageMenuFor] = useState(null); // messageId
+  const messageMenuRef = useRef(null);
+  const headerMenuRef = useRef(null);
+  const reactionMenuRef = useRef(null);
 
   // Load conversations + merge with connections (for names/avatars/presence)
   useEffect(() => {
@@ -292,6 +300,32 @@ const MessagesPage = () => {
   useEffect(() => {
     fetchMessagesData();
   }, [fetchMessagesData]);
+
+  // Theme persistence and body class
+  useEffect(() => {
+    localStorage.setItem("chatTheme", theme);
+    const root = document.documentElement;
+    if (theme === "dark") root.classList.add("dark");
+    else root.classList.remove("dark");
+  }, [theme]);
+
+  // Global click-outside listeners for menus
+  useEffect(() => {
+    const handler = (e) => {
+      if (messageMenuRef.current && !messageMenuRef.current.contains(e.target)) {
+        setOpenMessageMenuFor(null);
+      }
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
+        setOpenHeaderMenu(false);
+      }
+      if (reactionMenuRef.current && !reactionMenuRef.current.contains(e.target)) {
+        setActiveReactionFor(null);
+      }
+      if (showEmojiPicker) setShowEmojiPicker(false);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [showEmojiPicker]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -697,6 +731,22 @@ const MessagesPage = () => {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
+                        {/* Theme toggle */}
+                        <button
+                          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+                          className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition"
+                          title="Toggle theme"
+                        >
+                          {theme === "dark" ? "🌙" : "☀️"}
+                        </button>
+                        {/* Right panel toggle */}
+                        <button
+                          onClick={() => setShowRightPanel((v) => !v)}
+                          className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition"
+                          title="Media/Links/Docs"
+                        >
+                          📎
+                        </button>
                         {/* Chat search */}
                         <div className="hidden md:flex items-center relative mr-2">
                           <FiSearch className="absolute left-3 text-gray-400" />
@@ -707,38 +757,20 @@ const MessagesPage = () => {
                             className="pl-9 pr-3 py-2 rounded-xl border bg-white focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
-                        <button className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200">
-                          <FiVideo className="text-gray-600" />
-                        </button>
-                        <button className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200">
-                          <FiPhone className="text-gray-600" />
-                        </button>
-                        <div className="relative">
+                        <div className="relative" ref={headerMenuRef}>
                           <button
-                            onClick={() => setShowMenu((v) => !v)}
+                            onClick={() => setOpenHeaderMenu((v) => !v)}
                             className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
                           >
                             <FiMoreVertical className="text-gray-600" />
                           </button>
-                          {showMenu && (
-                            <div className="absolute right-0 mt-2 w-56 bg-white border shadow-xl rounded-xl z-20">
+                          {openHeaderMenu && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1e1e1e] border shadow-xl rounded-xl z-20">
                               <button
                                 onClick={() => setSelectionMode((v) => !v)}
                                 className="w-full text-left px-4 py-2 hover:bg-gray-50"
                               >
                                 {selectionMode ? "Cancel selection" : "Select messages"}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteChat("me")}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
-                              >
-                                Delete chat (for me)
-                              </button>
-                              <button
-                                onClick={() => handleDeleteChat("everyone")}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-600"
-                              >
-                                Delete chat (for everyone)
                               </button>
                               <button
                                 onClick={() => handleBlockToggle(true)}
@@ -871,48 +903,88 @@ const MessagesPage = () => {
                                         )}
                                       </div>
                                     )}
-                                  {/* Quick reactions */}
-                                  <div className={`mt-2 flex items-center gap-3 ${message.senderId === user._id ? "justify-end" : "justify-start"}`}>
-                                    <div className="flex gap-2 opacity-80">
-                                      {message.reactions && message.reactions.length > 0 && (
-                                        <div className="text-xs">
-                                          {message.reactions.map((r, i) => (
-                                            <span key={i} className="mr-1 select-none">
-                                              {r.emoji}
-                                            </span>
-                                          ))}
+                                  {/* Reactions (stick to bottom-right) */}
+                                  <div className={`mt-2 flex items-end ${message.senderId === user._id ? "justify-end" : "justify-start"}`}>
+                                    <div className="relative" ref={reactionMenuRef}>
+                                      <div className="flex items-center gap-2 text-xs opacity-80 ${message.senderId === user._id ? 'justify-end' : 'justify-start'}">
+                                        {message.reactions && message.reactions.length > 0 && (
+                                          <div className="inline-flex bg-black/5 dark:bg-white/10 rounded-full px-2 py-0.5">
+                                            {message.reactions.map((r, i) => (
+                                              <span key={i} className="mr-1 select-none">
+                                                {r.emoji}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                        <button
+                                          className="text-xs opacity-60 hover:opacity-100"
+                                          onClick={() => setActiveReactionFor((v) => (v === message.id ? null : message.id))}
+                                          title="Add reaction"
+                                        >
+                                          😀
+                                        </button>
+                                        <button
+                                          title="Reply"
+                                          onClick={() => setReplyTo({ id: message.id })}
+                                          className="text-xs opacity-60 hover:opacity-100"
+                                        >
+                                          <FiCornerUpLeft />
+                                        </button>
+                                        <div className="relative inline-block" ref={messageMenuRef}>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOpenMessageMenuFor((id) => (id === message.id ? null : message.id));
+                                            }}
+                                            className="text-xs opacity-60 hover:opacity-100"
+                                            title="More"
+                                          >
+                                            ···
+                                          </button>
+                                          {openMessageMenuFor === message.id && (
+                                            <div className={`absolute ${message.senderId === user._id ? 'right-0' : 'left-0'} mt-2 w-40 bg-white dark:bg-[#1e1e1e] border shadow-xl rounded-xl z-20`}
+                                            >
+                                              <button
+                                                onClick={() => { setReplyTo({ id: message.id }); setOpenMessageMenuFor(null); }}
+                                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
+                                              >
+                                                Reply
+                                              </button>
+                                              <button
+                                                onClick={() => { navigator.clipboard.writeText(message.content || ''); setOpenMessageMenuFor(null); }}
+                                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
+                                              >
+                                                Copy
+                                              </button>
+                                              <button
+                                                onClick={() => { handleDeleteSingle(message.id, 'me'); setOpenMessageMenuFor(null); }}
+                                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-600"
+                                              >
+                                                Delete for me
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
-                                    </div>
-                                    <div className="relative">
-                                      <button
-                                        className="text-xs opacity-60 hover:opacity-100"
-                                        onClick={() => setActiveReactionFor((v) => (v === message.id ? null : message.id))}
-                                      >
-                                        😀
-                                      </button>
+                                      </div>
                                       {activeReactionFor === message.id && (
-                                        <div className="absolute -top-12 left-0 bg-white border rounded-xl shadow-lg px-2 py-1 flex gap-2 z-10">
+                                        <div className="absolute -top-12 right-0 bg-white dark:bg-[#1e1e1e] border rounded-xl shadow-lg px-2 py-1 flex gap-2 z-30">
                                           {"👍❤️😂😮😢😡".split("").map((emo, i) => (
-                                            <button key={i} onClick={() => { handleReact(message.id, emo); setActiveReactionFor(null); }} className="hover:scale-110 transition">
+                                            <button
+                                              key={i}
+                                              onClick={() => {
+                                                // toggle reaction: if already mine with same emoji, remove
+                                                const mine = (message.reactions || []).find((r) => String(r.userId) === String(user._id));
+                                                const emoji = mine && mine.emoji === emo ? "" : emo;
+                                                handleReact(message.id, emoji);
+                                                setActiveReactionFor(null);
+                                              }}
+                                              className="hover:scale-110 transition"
+                                            >
                                               {emo}
                                             </button>
                                           ))}
                                         </div>
                                       )}
-                                    </div>
-                                    <button
-                                      title="Reply"
-                                      onClick={() => setReplyTo({ id: message.id })}
-                                      className="text-xs opacity-60 hover:opacity-100"
-                                    >
-                                      <FiCornerUpLeft />
-                                    </button>
-                                    <div className="relative">
-                                      <button className="text-xs opacity-60 hover:opacity-100">
-                                        ···
-                                      </button>
-                                      <div className="absolute hidden group-hover:block"></div>
                                     </div>
                                   </div>
                                   <p
@@ -930,17 +1002,7 @@ const MessagesPage = () => {
                                     })}
                                   </p>
                                 </div>
-                                {/* Actions under bubble */}
-                                <div className={`mt-1 flex gap-3 ${message.senderId === user._id ? "justify-end" : "justify-start"}`}>
-                                  <button onClick={() => handleDeleteSingle(message.id, "me")} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
-                                    <FiTrash2 /> For me
-                                  </button>
-                                  {message.senderId === user._id && (
-                                    <button onClick={() => handleDeleteSingle(message.id, "everyone")} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1">
-                                      <FiTrash2 /> Everyone
-                                    </button>
-                                  )}
-                                </div>
+                                {/* No extra under-bubble actions per prompt; managed via menu */}
                               </div>
                             </motion.div>
                           ))}
@@ -948,6 +1010,49 @@ const MessagesPage = () => {
                       </div>
                     )}
                   </div>
+
+                  {/* Right panel (Media/Links/Docs) */}
+                  {showRightPanel && (
+                    <div className="border-t border-gray-200 bg-white dark:bg-[#121212] p-3">
+                      <div className="flex items-center gap-3 mb-3">
+                        <button className={`px-3 py-1 rounded-xl ${rightPanelTab==='media'?'bg-blue-600 text-white':'bg-gray-100'}`} onClick={()=>setRightPanelTab('media')}>Media</button>
+                        <button className={`px-3 py-1 rounded-xl ${rightPanelTab==='links'?'bg-blue-600 text-white':'bg-gray-100'}`} onClick={()=>setRightPanelTab('links')}>Links</button>
+                        <button className={`px-3 py-1 rounded-xl ${rightPanelTab==='docs'?'bg-blue-600 text-white':'bg-gray-100'}`} onClick={()=>setRightPanelTab('docs')}>Docs</button>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto custom-scrollbar">
+                        {rightPanelTab==='media' && (
+                          <div className="grid grid-cols-3 gap-2">
+                            {sharedMedia.length === 0 ? <div className="text-sm text-gray-500">No media yet</div> : sharedMedia.map((src, i)=> (
+                              <img key={i} src={src} alt="m" onClick={()=>setLightboxSrc(src)} className="w-full h-24 object-cover rounded-lg shadow" />
+                            ))}
+                          </div>
+                        )}
+                        {rightPanelTab==='links' && (
+                          <div className="space-y-2">
+                            {messages.filter(m=>/https?:\/\//i.test(m.content||'')).map((m,i)=>{
+                              const links = (m.content.match(/https?:[^\s]+/g)||[]);
+                              return links.map((lnk, idx)=> (
+                                <a key={`${i}-${idx}`} href={lnk} target="_blank" rel="noreferrer" className="block p-2 rounded-lg bg-gray-50 hover:bg-gray-100 truncate">{lnk}</a>
+                              ));
+                            })}
+                          </div>
+                        )}
+                        {rightPanelTab==='docs' && (
+                          <div className="space-y-2">
+                            {messages.flatMap(m=> (m.attachments||[]).filter(a=>/\.(pdf|docx?|pptx?)$/i.test(a)).map((doc)=>({id:m.id, doc}))).length===0 ? (
+                              <div className="text-sm text-gray-500">No documents</div>
+                            ) : (
+                              messages.flatMap(m=> (m.attachments||[]).filter(a=>/\.(pdf|docx?|pptx?)$/i.test(a)).map((doc)=>({id:m.id, doc}))).map((d,i)=> (
+                                <a key={i} href={d.doc} className="block p-2 rounded-lg bg-gray-50 hover:bg-gray-100 truncate" download>
+                                  {d.doc.split('/').pop()}
+                                </a>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Message Input */}
                   <motion.div
