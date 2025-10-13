@@ -630,10 +630,10 @@ const MessagesPage = () => {
                             {selectedUser.name}
                           </p>
                           <p className="text-sm text-gray-500">
-                            {presenceData[selectedUser._id]?.isOnline
+                            {(presenceData[selectedUser._id]?.isOnline ?? selectedUser.isOnline)
                               ? "Online"
                               : `Last seen ${formatLastSeen(
-                                  presenceData[selectedUser._id]?.lastSeen
+                                  presenceData[selectedUser._id]?.lastSeen ?? selectedUser.lastSeen
                                 )}`}
                           </p>
                           {isTyping && typingUser && (
