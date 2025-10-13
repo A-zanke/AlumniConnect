@@ -5,7 +5,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import PrivateRoute from "./components/PrivateRoute";
 import Navbar from "./components/layout/Navbar";
-
+import MessagesPage from "./pages/MessagesPage";
 import Footer from "./components/layout/Footer";
 import HomePage from "./pages/HomePage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
@@ -16,7 +16,7 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import EventsPage from "./pages/EventsPage";
 import EventDetailsPage from "./pages/EventDetailsPage";
 import NetworkPage from "./pages/NetworkPage";
-import MessagesPage from "./pages/MessagesPage";
+// import MessagesPage from "./pages/MessagesPage";
 import ForumPage from "./pages/ForumPage";
 import ForumPostPage from "./pages/ForumPostPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -57,14 +57,6 @@ function App() {
                 />
                 <Route
                   path="/messages"
-                  element={
-                    <PrivateRoute>
-                      <MessagesPage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/messages/:threadId"
                   element={
                     <PrivateRoute>
                       <MessagesPage />
