@@ -80,7 +80,6 @@ const MessagesPage = () => {
   const [sharedMedia, setSharedMedia] = useState([]);
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
-  const [theme, setTheme] = useState(() => localStorage.getItem("chatTheme") || "light");
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState("media"); // media | links | docs
   const [openHeaderMenu, setOpenHeaderMenu] = useState(false);
@@ -301,13 +300,7 @@ const MessagesPage = () => {
     fetchMessagesData();
   }, [fetchMessagesData]);
 
-  // Theme persistence and body class
-  useEffect(() => {
-    localStorage.setItem("chatTheme", theme);
-    const root = document.documentElement;
-    if (theme === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
-  }, [theme]);
+  // Remove theme toggle per request (keep class intact)
 
   // Global click-outside listeners for menus
   useEffect(() => {
@@ -566,8 +559,8 @@ const MessagesPage = () => {
           </p>
         </motion.div>
 
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
-          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-8rem)]">
+        <div className="bg-white rounded-none shadow-none overflow-hidden border-0">
+          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-8rem)] lg:h-[calc(100vh-6rem)]">
             {/* Contacts Sidebar */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -669,7 +662,8 @@ const MessagesPage = () => {
             </motion.div>
 
             {/* Chat Area */}
-            <div className={`${showSidebar ? "hidden" : "flex"} lg:flex lg:col-span-2 flex-col h-full`}>
+            <div className={`${showSidebar ? "hidden" : "flex"} lg:flex lg:col-span-2 flex-col h-full`}
+                 style={{minHeight: 'calc(100vh - 6rem)'}}>
               {selectedUser ? (
                 <>
                   {/* Chat Header */}
@@ -731,22 +725,7 @@ const MessagesPage = () => {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        {/* Theme toggle */}
-                        <button
-                          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-                          className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition"
-                          title="Toggle theme"
-                        >
-                          {theme === "dark" ? "🌙" : "☀️"}
-                        </button>
-                        {/* Right panel toggle */}
-                        <button
-                          onClick={() => setShowRightPanel((v) => !v)}
-                          className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition"
-                          title="Media/Links/Docs"
-                        >
-                          📎
-                        </button>
+                        {/* Right panel toggle removed per request */}
                         {/* Chat search */}
                         <div className="hidden md:flex items-center relative mr-2">
                           <FiSearch className="absolute left-3 text-gray-400" />
@@ -1011,8 +990,8 @@ const MessagesPage = () => {
                     )}
                   </div>
 
-                  {/* Right panel (Media/Links/Docs) */}
-                  {showRightPanel && (
+                  {/* Right panel (Media/Links/Docs) - removed per request */}
+                  {false && (
                     <div className="border-t border-gray-200 bg-white dark:bg-[#121212] p-3">
                       <div className="flex items-center gap-3 mb-3">
                         <button className={`px-3 py-1 rounded-xl ${rightPanelTab==='media'?'bg-blue-600 text-white':'bg-gray-100'}`} onClick={()=>setRightPanelTab('media')}>Media</button>
