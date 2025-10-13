@@ -137,7 +137,7 @@ export const connectionAPI = {
 };
 
 export const recommendationsAPI = {
-  getAlumni: (studentId) => apiClient.get(`/api/ai/recommendations/${studentId}`),
+  getAlumni: (studentId) => apiClient.get(`/api/recommendations/alumni`),
 };
 
 export const userAPI = {

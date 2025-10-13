@@ -1,12 +1,31 @@
-import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
-import Spinner from '../components/ui/Spinner';
-import { toast } from 'react-toastify';
-import { connectionAPI, fetchMessages, sendMessage, userAPI } from '../components/utils/api';
-import { io } from 'socket.io-client';
-import { getAvatarUrl } from '../components/utils/helpers';
-import { FiSend, FiImage, FiSmile, FiMoreVertical, FiSearch, FiVideo, FiPhone } from 'react-icons/fi';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useRef,
+  useCallback,
+} from "react";
+import { useAuth } from "../context/AuthContext";
+import Spinner from "../components/ui/Spinner";
+import { toast } from "react-toastify";
+import {
+  connectionAPI,
+  fetchMessages,
+  sendMessage,
+  userAPI,
+} from "../components/utils/api";
+import { io } from "socket.io-client";
+import { getAvatarUrl } from "../components/utils/helpers";
+import {
+  FiSend,
+  FiImage,
+  FiSmile,
+  FiMoreVertical,
+  FiSearch,
+  FiVideo,
+  FiPhone,
+} from "react-icons/fi";
+import { motion, AnimatePresence } from "framer-motion";
 
 // Custom CSS for better scrolling
 const customScrollbarStyles = `
@@ -36,7 +55,7 @@ const MessagesPage = () => {
   const [connections, setConnections] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState("");
   const [socket, setSocket] = useState(null);
   const messageContainerRef = useRef(null);
   const [error, setError] = useState(null);
@@ -44,7 +63,7 @@ const MessagesPage = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [presenceData, setPresenceData] = useState({});
   const [isTypingTimeout, setIsTypingTimeout] = useState(null);
   const fileInputRef = useRef(null);
@@ -59,7 +78,7 @@ const MessagesPage = () => {
         // Get users the current user is connected with (can message)
         const response = await connectionAPI.getConnections();
         setConnections(response.data);
-        
+
         // Fetch presence data for all connections
         const presencePromises = response.data.map(async (conn) => {
           try {
@@ -70,21 +89,21 @@ const MessagesPage = () => {
             return { userId: conn._id, isOnline: false, lastSeen: null };
           }
         });
-        
+
         const presenceResults = await Promise.all(presencePromises);
         const presenceMap = {};
-        presenceResults.forEach(presence => {
+        presenceResults.forEach((presence) => {
           presenceMap[presence.userId] = presence;
         });
         setPresenceData(presenceMap);
-        
+
         // Select first connection by default if exists
         if (response.data.length > 0 && !selectedUser) {
           setSelectedUser(response.data[0]);
         }
       } catch (error) {
-        console.error('Error fetching connections:', error);
-        toast.error('Failed to load connections');
+        console.error("Error fetching connections:", error);
+        toast.error("Failed to load connections");
       } finally {
         setLoading(false);
       }
@@ -96,42 +115,48 @@ const MessagesPage = () => {
   // Initialize Socket.IO connection
   useEffect(() => {
     if (user) {
-      const token = localStorage.getItem('token');
-      const s = io('/', { auth: { token } });
-      
-      s.on('connect', () => {
-        console.log('Connected to server');
+      const token = localStorage.getItem("token");
+      const s = io("/", { auth: { token } });
+
+      s.on("connect", () => {
+        console.log("Connected to server");
         // Set user as online when connected
         userAPI.updatePresence(true);
       });
-      
-      s.on('disconnect', () => {
-        console.log('Disconnected from server');
+
+      s.on("disconnect", () => {
+        console.log("Disconnected from server");
         // Set user as offline when disconnected
         userAPI.updatePresence(false);
       });
-      
-      s.on('chat:receive', (msg) => {
-        if ((msg.from === selectedUser?._id && msg.to === user._id) || (msg.from === user._id && msg.to === selectedUser?._id)) {
-          setMessages(prev => [...prev, { 
-            id: msg._id,
-            senderId: msg.from, 
-            recipientId: msg.to, 
-            content: msg.content, 
-            attachments: msg.attachments || [],
-            timestamp: msg.createdAt 
-          }]);
+
+      s.on("chat:receive", (msg) => {
+        if (
+          (msg.from === selectedUser?._id && msg.to === user._id) ||
+          (msg.from === user._id && msg.to === selectedUser?._id)
+        ) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: msg._id,
+              senderId: msg.from,
+              recipientId: msg.to,
+              content: msg.content,
+              attachments: msg.attachments || [],
+              timestamp: msg.createdAt,
+            },
+          ]);
           // Scroll to bottom when receiving new message
           setTimeout(scrollToBottom, 100);
         }
       });
-      
+
       // Listen for typing events
-      s.on('user_typing', (data) => {
+      s.on("user_typing", (data) => {
         if (data.userId !== user._id) {
           setTypingUser(data.userName);
           setIsTyping(true);
-          
+
           // Clear typing indicator after 3 seconds
           if (isTypingTimeout) {
             clearTimeout(isTypingTimeout);
@@ -144,7 +169,7 @@ const MessagesPage = () => {
         }
       });
 
-      s.on('user_stopped_typing', (data) => {
+      s.on("user_stopped_typing", (data) => {
         if (data.userId !== user._id) {
           setIsTyping(false);
           setTypingUser(null);
@@ -153,9 +178,9 @@ const MessagesPage = () => {
           }
         }
       });
-      
+
       setSocket(s);
-      return () => { 
+      return () => {
         s.disconnect();
         if (isTypingTimeout) {
           clearTimeout(isTypingTimeout);
@@ -168,9 +193,10 @@ const MessagesPage = () => {
   useEffect(() => {
     if (messageContainerRef.current) {
       const scrollToBottom = () => {
-        messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+        messageContainerRef.current.scrollTop =
+          messageContainerRef.current.scrollHeight;
       };
-      
+
       // Use requestAnimationFrame to ensure DOM is updated
       requestAnimationFrame(scrollToBottom);
     }
@@ -179,21 +205,22 @@ const MessagesPage = () => {
   // Auto-scroll when new message is added
   const scrollToBottom = useCallback(() => {
     if (messageContainerRef.current) {
-      messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+      messageContainerRef.current.scrollTop =
+        messageContainerRef.current.scrollHeight;
     }
   }, []);
 
   const fetchMessagesData = useCallback(async () => {
     if (!selectedUser) return;
-    
+
     try {
       setLoading(true);
       const data = await fetchMessages(selectedUser._id);
       setMessages(data);
       setError(null);
     } catch (err) {
-      setError('Failed to fetch messages');
-      console.error('Error fetching messages:', err);
+      setError("Failed to fetch messages");
+      console.error("Error fetching messages:", err);
     } finally {
       setLoading(false);
     }
@@ -205,66 +232,73 @@ const MessagesPage = () => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    
+
     if ((!newMessage.trim() && !selectedImage) || !selectedUser) return;
-    
+
     try {
       // Send message with image via API
-      const messageData = await sendMessage(selectedUser._id, newMessage, selectedImage);
-      
+      const messageData = await sendMessage(
+        selectedUser._id,
+        newMessage,
+        selectedImage
+      );
+
       // Add to local messages
-      setMessages(prev => [...prev, {
-        id: messageData.id,
-        senderId: messageData.senderId,
-        recipientId: messageData.recipientId,
-        content: messageData.content,
-        attachments: messageData.attachments || [],
-        timestamp: messageData.timestamp
-      }]);
-      
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: messageData.id,
+          senderId: messageData.senderId,
+          recipientId: messageData.recipientId,
+          content: messageData.content,
+          attachments: messageData.attachments || [],
+          timestamp: messageData.timestamp,
+        },
+      ]);
+
       // Clear input and image
-      setNewMessage('');
+      setNewMessage("");
       setSelectedImage(null);
       setImagePreview(null);
-      
+
       // Scroll to bottom after sending
       setTimeout(scrollToBottom, 100);
-      
+
       // Also emit to socket for real-time updates
       if (socket) {
-        socket.emit('chat:send', { 
-          to: selectedUser._id, 
+        socket.emit("chat:send", {
+          to: selectedUser._id,
           content: newMessage,
-          attachments: messageData.attachments || []
+          attachments: messageData.attachments || [],
         });
       }
     } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error('Failed to send message');
+      console.error("Error sending message:", error);
+      toast.error("Failed to send message");
     }
   };
 
   // Handle typing indicator
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
-    
+
     if (socket && selectedUser) {
-      socket.emit('typing', {
+      socket.emit("typing", {
         userId: user._id,
         userName: user.name,
-        recipientId: selectedUser._id
+        recipientId: selectedUser._id,
       });
-      
+
       // Clear existing timeout
       if (isTypingTimeout) {
         clearTimeout(isTypingTimeout);
       }
-      
+
       // Set new timeout to stop typing indicator
       const timeout = setTimeout(() => {
-        socket.emit('stop_typing', {
+        socket.emit("stop_typing", {
           userId: user._id,
-          recipientId: selectedUser._id
+          recipientId: selectedUser._id,
         });
       }, 1000);
       setIsTypingTimeout(timeout);
@@ -273,12 +307,12 @@ const MessagesPage = () => {
 
   // Format last seen time
   const formatLastSeen = (lastSeen) => {
-    if (!lastSeen) return 'Unknown';
+    if (!lastSeen) return "Unknown";
     const date = new Date(lastSeen);
     const now = new Date();
     const diffInMinutes = Math.floor((now - date) / (1000 * 60));
-    
-    if (diffInMinutes < 1) return 'Just now';
+
+    if (diffInMinutes < 1) return "Just now";
     if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
     if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
     return date.toLocaleDateString();
@@ -298,12 +332,12 @@ const MessagesPage = () => {
     setSelectedImage(null);
     setImagePreview(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage(e);
     }
@@ -326,7 +360,7 @@ const MessagesPage = () => {
       <style>{customScrollbarStyles}</style>
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
@@ -334,13 +368,15 @@ const MessagesPage = () => {
           <h1 className="text-4xl font-bold gradient-text-animated">
             Messages
           </h1>
-          <p className="text-gray-600 mt-2">Connect and chat with your network in real-time</p>
+          <p className="text-gray-600 mt-2">
+            Connect and chat with your network in real-time
+          </p>
         </motion.div>
-        
+
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100">
           <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-8rem)]">
             {/* Contacts Sidebar */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className="bg-gradient-to-b from-gray-50 to-gray-100 border-r border-gray-200 flex flex-col"
@@ -358,69 +394,88 @@ const MessagesPage = () => {
                   />
                 </div>
               </div>
-              
+
               {/* Connections List */}
               <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {connections.length === 0 ? (
                   <div className="p-6 text-center text-gray-500">
                     <div className="text-6xl mb-4">💬</div>
                     <p className="text-lg font-medium">No connections yet</p>
-                    <p className="text-sm mt-2">Connect with people to start conversations</p>
+                    <p className="text-sm mt-2">
+                      Connect with people to start conversations
+                    </p>
                   </div>
                 ) : (
                   <div className="p-2">
                     {connections
-                      .filter(conn => 
-                        conn.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        conn.username.toLowerCase().includes(searchQuery.toLowerCase())
+                      .filter(
+                        (conn) =>
+                          conn.name
+                            .toLowerCase()
+                            .includes(searchQuery.toLowerCase()) ||
+                          conn.username
+                            .toLowerCase()
+                            .includes(searchQuery.toLowerCase())
                       )
                       .map((connection, index) => (
-                      <motion.div
-                        key={connection._id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        onClick={() => setSelectedUser(connection)}
-                        className={`cursor-pointer p-4 rounded-2xl m-2 transition-all.duration-200 ${
-                          selectedUser?._id === connection._id 
-                            ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105' 
-                            : 'hover:bg-white hover:shadow-md hover:scale-105'
-                        }`}
-                      >
-                        <div className="flex items-center">
-                          <div className="relative">
-                            <img
-                              src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : '/default-avatar.png'}
-                              alt={connection.name}
-                              className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
-                            />
+                        <motion.div
+                          key={connection._id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          onClick={() => setSelectedUser(connection)}
+                          className={`cursor-pointer p-4 rounded-2xl m-2 transition-all.duration-200 ${
+                            selectedUser?._id === connection._id
+                              ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105"
+                              : "hover:bg-white hover:shadow-md hover:scale-105"
+                          }`}
+                        >
+                          <div className="flex items-center">
+                            <div className="relative">
+                              <img
+                                src={
+                                  connection.avatarUrl
+                                    ? getAvatarUrl(connection.avatarUrl)
+                                    : "/default-avatar.png"
+                                }
+                                alt={connection.name}
+                                className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
+                              />
+                            </div>
+                            <div className="ml-4 flex-1 min-w-0">
+                              <p
+                                className={`text-sm font-semibold truncate ${
+                                  selectedUser?._id === connection._id
+                                    ? "text-white"
+                                    : "text-gray-900"
+                                }`}
+                              >
+                                {connection.name}
+                              </p>
+                              <p
+                                className={`text-xs truncate ${
+                                  selectedUser?._id === connection._id
+                                    ? "text-blue-100"
+                                    : "text-gray-500"
+                                }`}
+                              >
+                                @{connection.username}
+                              </p>
+                            </div>
                           </div>
-                          <div className="ml-4 flex-1 min-w-0">
-                            <p className={`text-sm font-semibold truncate ${
-                              selectedUser?._id === connection._id ? 'text-white' : 'text-gray-900'
-                            }`}>
-                              {connection.name}
-                            </p>
-                            <p className={`text-xs truncate ${
-                              selectedUser?._id === connection._id ? 'text-blue-100' : 'text-gray-500'
-                            }`}>
-                              @{connection.username}
-                            </p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      ))}
                   </div>
                 )}
               </div>
             </motion.div>
-            
+
             {/* Chat Area */}
             <div className="lg:col-span-2 flex flex-col h-full">
               {selectedUser ? (
                 <>
                   {/* Chat Header */}
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0"
@@ -430,7 +485,11 @@ const MessagesPage = () => {
                         <div className="relative">
                           {selectedUser.avatarUrl ? (
                             <img
-                              src={selectedUser.avatarUrl ? getAvatarUrl(selectedUser.avatarUrl) : '/default-avatar.png'}
+                              src={
+                                selectedUser.avatarUrl
+                                  ? getAvatarUrl(selectedUser.avatarUrl)
+                                  : "/default-avatar.png"
+                              }
                               alt={selectedUser.name}
                               className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
                             />
@@ -442,18 +501,22 @@ const MessagesPage = () => {
                             />
                           )}
                         </div>
-                        
+
                         <div className="ml-4">
-                          <p className="text-lg font-semibold text-gray-900">{selectedUser.name}</p>
+                          <p className="text-lg font-semibold text-gray-900">
+                            {selectedUser.name}
+                          </p>
                           <p className="text-sm text-gray-500">
-                            {presenceData[selectedUser._id]?.isOnline ? (
-                              'Online'
-                            ) : (
-                              `Last seen ${formatLastSeen(presenceData[selectedUser._id]?.lastSeen)}`
-                            )}
+                            {presenceData[selectedUser._id]?.isOnline
+                              ? "Online"
+                              : `Last seen ${formatLastSeen(
+                                  presenceData[selectedUser._id]?.lastSeen
+                                )}`}
                           </p>
                           {isTyping && typingUser && (
-                            <p className="text-sm text-blue-500 italic">typing...</p>
+                            <p className="text-sm text-blue-500 italic">
+                              typing...
+                            </p>
                           )}
                         </div>
                       </div>
@@ -470,18 +533,23 @@ const MessagesPage = () => {
                       </div>
                     </div>
                   </motion.div>
-                  
+
                   {/* Messages */}
                   <div
                     ref={messageContainerRef}
                     className="flex-1 p-6 overflow-y-auto bg-gradient-to-b from-white to-gray-50 custom-scrollbar min-h-0"
-                    style={{ maxHeight: 'calc(100vh - 20rem)' }}
+                    style={{ maxHeight: "calc(100vh - 20rem)" }}
                   >
                     {messages.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-gray-500">
                         <div className="text-6xl mb-4">💭</div>
-                        <p className="text-xl font-medium">Start the conversation</p>
-                        <p className="text-sm mt-2">Send a message to begin chatting with {selectedUser.name}</p>
+                        <p className="text-xl font-medium">
+                          Start the conversation
+                        </p>
+                        <p className="text-sm mt-2">
+                          Send a message to begin chatting with{" "}
+                          {selectedUser.name}
+                        </p>
                       </div>
                     ) : (
                       <div className="space-y-4">
@@ -494,56 +562,76 @@ const MessagesPage = () => {
                               exit={{ opacity: 0, y: -20, scale: 0.95 }}
                               transition={{ duration: 0.3 }}
                               className={`flex ${
-                                message.senderId === user._id ? 'justify-end' : 'justify-start'
+                                message.senderId === user._id
+                                  ? "justify-end"
+                                  : "justify-start"
                               }`}
                             >
-                              <div className={`max-w-[70%] ${
-                                message.senderId === user._id ? 'order-2' : 'order-1'
-                              }`}>
+                              <div
+                                className={`max-w-[70%] ${
+                                  message.senderId === user._id
+                                    ? "order-2"
+                                    : "order-1"
+                                }`}
+                              >
                                 <div
                                   className={`rounded-3xl px-6 py-4 shadow-lg message-bubble smooth-transition ${
                                     message.senderId === user._id
-                                      ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
-                                      : 'bg-white text-gray-800 border border-gray-200'
+                                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white"
+                                      : "bg-white text-gray-800 border border-gray-200"
                                   }`}
                                 >
                                   {message.content && (
-                                    <p className="text-sm leading-relaxed">{message.content}</p>
+                                    <p className="text-sm leading-relaxed">
+                                      {message.content}
+                                    </p>
                                   )}
-                                  {message.attachments && message.attachments.length > 0 && (
-                                    <div className="mt-2 space-y-2">
-                                      {message.attachments.map((attachment, idx) => (
-                                        attachment.startsWith('/forum/') ? (
-                                          <a
-                                            key={idx}
-                                            href={attachment}
-                                            onClick={(e) => { e.preventDefault(); window.location.href = attachment; }}
-                                            className="block p-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors"
-                                          >
-                                            <div className="text-sm font-semibold text-blue-800">Forum Post</div>
-                                            <div className="text-xs text-blue-700 opacity-80">Tap to open the original post</div>
-                                          </a>
-                                        ) : (
-                                          <img
-                                            key={idx}
-                                            src={attachment}
-                                            alt="Message attachment"
-                                            className="max-w-full h-auto rounded-2xl shadow-md"
-                                          />
-                                        )
-                                      ))}
-                                    </div>
-                                  )}
+                                  {message.attachments &&
+                                    message.attachments.length > 0 && (
+                                      <div className="mt-2 space-y-2">
+                                        {message.attachments.map(
+                                          (attachment, idx) =>
+                                            attachment.startsWith("/forum/") ? (
+                                              <a
+                                                key={idx}
+                                                href={attachment}
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  window.location.href =
+                                                    attachment;
+                                                }}
+                                                className="block p-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                              >
+                                                <div className="text-sm font-semibold text-blue-800">
+                                                  Forum Post
+                                                </div>
+                                                <div className="text-xs text-blue-700 opacity-80">
+                                                  Tap to open the original post
+                                                </div>
+                                              </a>
+                                            ) : (
+                                              <img
+                                                key={idx}
+                                                src={attachment}
+                                                alt="Message attachment"
+                                                className="max-w-full h-auto rounded-2xl shadow-md"
+                                              />
+                                            )
+                                        )}
+                                      </div>
+                                    )}
                                   <p
                                     className={`text-xs mt-2 ${
                                       message.senderId === user._id
-                                        ? 'text-blue-100'
-                                        : 'text-gray-500'
+                                        ? "text-blue-100"
+                                        : "text-gray-500"
                                     }`}
                                   >
-                                    {new Date(message.timestamp).toLocaleTimeString([], {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
+                                    {new Date(
+                                      message.timestamp
+                                    ).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
                                     })}
                                   </p>
                                 </div>
@@ -554,9 +642,9 @@ const MessagesPage = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Message Input */}
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="p-6 border-t border-gray-200 bg-white flex-shrink-0"
@@ -577,8 +665,11 @@ const MessagesPage = () => {
                         </button>
                       </div>
                     )}
-                    
-                    <form onSubmit={handleSendMessage} className="flex items-end space-x-3">
+
+                    <form
+                      onSubmit={handleSendMessage}
+                      className="flex items-end space-x-3"
+                    >
                       <div className="flex-1 relative">
                         <input
                           type="text"
@@ -624,8 +715,12 @@ const MessagesPage = () => {
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-gray-500 bg-gradient-to-b from-gray-50 to-white">
                   <div className="text-8xl mb-6">💬</div>
-                  <p className="text-2xl font-semibold mb-2">Welcome to Messages</p>
-                  <p className="text-lg">Select a conversation to start chatting</p>
+                  <p className="text-2xl font-semibold mb-2">
+                    Welcome to Messages
+                  </p>
+                  <p className="text-lg">
+                    Select a conversation to start chatting
+                  </p>
                 </div>
               )}
             </div>

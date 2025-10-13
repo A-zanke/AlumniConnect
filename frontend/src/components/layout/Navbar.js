@@ -62,7 +62,8 @@ const Navbar = () => {
     ...baseItems,
     // Non-students get direct Events link
     ...(!isStudent ? [{ to: "/events", label: "Events", icon: FiCalendar }] : []),
-    ...postsItem,
+    // For students, Posts is in the Events dropdown, so exclude it here to avoid duplication
+    ...(!isStudent ? postsItem : []),
     ...forumItem,
     ...netItem,
     ...adminItem,
