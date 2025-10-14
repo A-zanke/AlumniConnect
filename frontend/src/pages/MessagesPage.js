@@ -1092,7 +1092,10 @@ const MessagesPage = () => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setShowEmojiPicker((v) => !v)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowEmojiPicker((v) => !v);
+                            }}
                             className="p-2 text-gray-400 hover:text-blue-500 transition-colors duration-200"
                           >
                             <FiSmile className="text-lg" />
