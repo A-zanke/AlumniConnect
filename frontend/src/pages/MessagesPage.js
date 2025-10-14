@@ -87,7 +87,7 @@ const MessagesPage = () => {
   const [rightPanelTab, setRightPanelTab] = useState("media"); // media | links | docs
   const [openHeaderMenu, setOpenHeaderMenu] = useState(false);
   const [openMessageMenuFor, setOpenMessageMenuFor] = useState(null); // messageId
-  const messageMenuRef = useRef(null);
+  const messageMenuRef = useRef(null); // not relied upon for close, kept for anchor semantics
   const headerMenuRef = useRef(null);
   const reactionMenuRef = useRef(null);
   const emojiAreaRef = useRef(null);
@@ -311,9 +311,8 @@ const MessagesPage = () => {
   // Global click-outside listeners for menus
   useEffect(() => {
     const handler = (e) => {
-      if (messageMenuRef.current && !messageMenuRef.current.contains(e.target)) {
-        setOpenMessageMenuFor(null);
-      }
+      // Close message dropdown on any outside click; menu stops propagation
+      if (openMessageMenuFor) setOpenMessageMenuFor(null);
       if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
         setOpenHeaderMenu(false);
       }
@@ -326,7 +325,7 @@ const MessagesPage = () => {
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
-  }, [showEmojiPicker]);
+  }, [showEmojiPicker, openMessageMenuFor]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -579,8 +578,8 @@ const MessagesPage = () => {
       <style>{customScrollbarStyles}</style>
       <div className="container mx-auto px-4 py-0">
         <div className="bg-white rounded-none shadow-none overflow-hidden border-0">
-          {/* Full-height grid directly under navbar */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)]">
+          {/* Full-height grid directly under navbar, centered and constrained to viewport width */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)] max-w-screen-xl mx-auto">
             {/* Contacts Sidebar */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -948,7 +947,7 @@ const MessagesPage = () => {
                                             >
                                               <button onClick={() => { setActiveReactionFor(message.id); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">React</button>
                                               <button onClick={() => { setReplyTo({ id: message.id }); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Reply</button>
-                                              <button onClick={() => { navigator.clipboard.writeText(message.content || ''); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Copy</button>
+                                              <button onClick={() => { navigator.clipboard.writeText(message.content || ''); toast.success('Message copied'); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Copy</button>
                                               <button onClick={() => { setForwardSource(message); setShowForwardDialog(true); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Forward</button>
                                               <button onClick={() => { handleDeleteSingle(message.id, 'me'); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Delete for me</button>
                                               {message.senderId === user._id && (
