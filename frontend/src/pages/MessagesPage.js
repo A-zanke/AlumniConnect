@@ -269,9 +269,15 @@ const MessagesPage = () => {
         await fetch(`/api/messages/chat/${selectedUser._id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
         setMessages([]);
         toast.success('Chat deleted successfully');
+      } catch (error) {
+        console.error('Error deleting chat:', error);
+        toast.error('Failed to delete chat');
+      }
+    }
+  };
 
   const handleClearAll = async () => {
-    if (confirm('Clear all messages?')) {
+    if (window.confirm('Clear all messages?')) {
       try {
         await fetch('/api/messages/all', { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
         setMessages([]);

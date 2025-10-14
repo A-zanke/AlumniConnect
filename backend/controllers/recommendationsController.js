@@ -61,7 +61,7 @@ exports.getAlumniRecommendations = async (req, res) => {
   try {
     const me = await User.findById(req.user._id).lean();
     if (!me) return res.status(404).json({ message: "User not found" });
-    
+
     // Only students get recommendations
     if (String(me.role).toLowerCase() !== "student") {
       return res.json([]);
@@ -88,7 +88,25 @@ exports.getAlumniRecommendations = async (req, res) => {
     // Return only matched alumni (max 15 to avoid overwhelming UI)
     const recommendations = scored.slice(0, 15);
 
-    res.json(recommendations);
+    // Enrich with connection status
+    const enriched = await Promise.all(recommendations.map(async (rec) => {
+      const other = await User.findById(rec._id).lean();
+      if (!other) return { ...rec, status: 'none' };
+
+      const isConnected = (me.connections || []).some(id => id.toString() === rec._id) &&
+                          (other.connections || []).some(id => id.toString() === me._id.toString());
+      if (isConnected) return { ...rec, status: 'connected' };
+
+      const iRequestedOther = (other.connectionRequests || []).some(id => id.toString() === me._id.toString());
+      if (iRequestedOther) return { ...rec, status: 'requested' };
+
+      const otherRequestedMe = (me.connectionRequests || []).some(id => id.toString() === rec._id);
+      if (otherRequestedMe) return { ...rec, status: 'incoming' };
+
+      return { ...rec, status: 'none' };
+    }));
+
+    res.json(enriched);
   } catch (e) {
     console.error("getAlumniRecommendations error:", e);
     res.status(500).json({ message: "Failed to fetch recommendations" });

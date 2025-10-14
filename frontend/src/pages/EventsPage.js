@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { eventsAPI } from '../components/utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { toast } from 'react-toastify';
@@ -81,7 +82,7 @@ const EventsPage = () => {
       ]);
 			setEvents(Array.isArray(allRes.data) ? allRes.data : []);
 			setMyEvents(Array.isArray(mineRes.data) ? mineRes.data : []);
-      // Derive attended events for students: those with RSVP or targeted audience match
+      // Derive attended events for students: those with RSVP
       if (String(user?.role||'').toLowerCase() === 'student') {
         const uid = user?._id;
         const attended = (Array.isArray(allRes.data) ? allRes.data : []).filter(e => Array.isArray(e.rsvps) && e.rsvps.some(id => String(id) === String(uid)));
@@ -111,6 +112,23 @@ const EventsPage = () => {
 			fetchPendingEvents();
 		}
 	}, [fetchAll, fetchPendingEvents, user]);
+
+	const { socket } = useSocket();
+
+	useEffect(() => {
+		if (socket) {
+			const handleNewEvent = (data) => {
+				console.log('New event received:', data);
+				setEvents(prev => [data, ...prev]);
+			};
+
+			socket.on('newEvent', handleNewEvent);
+
+			return () => {
+				socket.off('newEvent', handleNewEvent);
+			};
+		}
+	}, [socket]);
 
 	const handleChange = (e) => {
 		const { name, value, type, checked } = e.target;

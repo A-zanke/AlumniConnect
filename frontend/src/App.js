@@ -3,6 +3,7 @@ import Chatbot from "./components/ui/Chatbot";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
+import { SocketProvider } from "./context/SocketContext";
 import PrivateRoute from "./components/PrivateRoute";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
@@ -31,133 +32,135 @@ function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <Router>
-          <div className="flex flex-col min-h-screen">
-            <Navbar />
-            <main className="flex-grow">
-              <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route
-                  path="/forgot-password"
-                  element={<ForgotPasswordPage />}
-                />
-                <Route path="/events" element={<EventsPage />} />
-                <Route path="/events/:id" element={<EventDetailsPage />} />
-                <Route path="/about" element={<AboutPage />} />
-                <Route
-                  path="/network"
-                  element={
-                    <PrivateRoute>
-                      <NetworkPage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/messages"
-                  element={
-                    <PrivateRoute>
-                      <MessagesPage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/forum"
-                  element={
-                    <PrivateRoute roles={["student", "admin"]}>
-                      <ForumPage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/forum/:id"
-                  element={
-                    <PrivateRoute roles={["student", "admin"]}>
-                      <ForumPostPage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/posts"
-                  element={
-                    <PrivateRoute>
-                      <PostsPage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/profile"
-                  element={
-                    <PrivateRoute>
-                      <ProfilePage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/profile/:username"
-                  element={
-                    <PrivateRoute>
-                      <ProfilePage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/profile/id/:userId"
-                  element={
-                    <PrivateRoute>
-                      <ProfilePage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route path="/search" element={<SearchPage />} />
-                <Route
-                  path="/admin"
-                  element={
-                    <PrivateRoute roles={["admin"]}>
-                      <AdminDashboardPage />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/admin/forum"
-                  element={
-                    <PrivateRoute roles={["admin"]}>
-                      <AdminForumManager />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/admin/users"
-                  element={
-                    <PrivateRoute roles={["admin"]}>
-                      <AdminUserList />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/admin/events"
-                  element={
-                    <PrivateRoute roles={["admin"]}>
-                      <AdminEventList />
-                    </PrivateRoute>
-                  }
-                />
-                <Route
-                  path="/admin/events/:id"
-                  element={
-                    <PrivateRoute roles={["admin"]}>
-                      <AdminEventDetail />
-                    </PrivateRoute>
-                  }
-                />
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-            </main>
-            <Footer />
-            <Chatbot />
-          </div>
-        </Router>
+        <SocketProvider>
+          <Router>
+            <div className="flex flex-col min-h-screen">
+              <Navbar />
+              <main className="flex-grow">
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                  <Route
+                    path="/forgot-password"
+                    element={<ForgotPasswordPage />}
+                  />
+                  <Route path="/events" element={<EventsPage />} />
+                  <Route path="/events/:id" element={<EventDetailsPage />} />
+                  <Route path="/about" element={<AboutPage />} />
+                  <Route
+                    path="/network"
+                    element={
+                      <PrivateRoute>
+                        <NetworkPage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/messages"
+                    element={
+                      <PrivateRoute>
+                        <MessagesPage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/forum"
+                    element={
+                      <PrivateRoute roles={["student", "admin"]}>
+                        <ForumPage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/forum/:id"
+                    element={
+                      <PrivateRoute roles={["student", "admin"]}>
+                        <ForumPostPage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/posts"
+                    element={
+                      <PrivateRoute>
+                        <PostsPage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/profile"
+                    element={
+                      <PrivateRoute>
+                        <ProfilePage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/profile/:username"
+                    element={
+                      <PrivateRoute>
+                        <ProfilePage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/profile/id/:userId"
+                    element={
+                      <PrivateRoute>
+                        <ProfilePage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route path="/search" element={<SearchPage />} />
+                  <Route
+                    path="/admin"
+                    element={
+                      <PrivateRoute roles={["admin"]}>
+                        <AdminDashboardPage />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/forum"
+                    element={
+                      <PrivateRoute roles={["admin"]}>
+                        <AdminForumManager />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/users"
+                    element={
+                      <PrivateRoute roles={["admin"]}>
+                        <AdminUserList />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/events"
+                    element={
+                      <PrivateRoute roles={["admin"]}>
+                        <AdminEventList />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/events/:id"
+                    element={
+                      <PrivateRoute roles={["admin"]}>
+                        <AdminEventDetail />
+                      </PrivateRoute>
+                    }
+                  />
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </main>
+              <Footer />
+              <Chatbot />
+            </div>
+          </Router>
+        </SocketProvider>
       </NotificationProvider>
     </AuthProvider>
   );

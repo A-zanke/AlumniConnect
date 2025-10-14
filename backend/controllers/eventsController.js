@@ -205,14 +205,23 @@ const createEvent = async (req, res) => {
       await Notification.insertMany(notifications);
     }
 
-    // 🔥 Emit real-time notification via Socket.io to targeted users' personal rooms
-    if (req.io && targetedUsers.length > 0) {
-      targetedUsers.forEach(u => {
-        req.io.to(u._id.toString()).emit("newEvent", {
+    // 🔥 Emit real-time events via Socket.io to audience rooms
+    if (req.io && payload.audience && payload.audience.length > 0) {
+      payload.audience.forEach(role => {
+        req.io.to(role).emit("newEvent", {
           eventId: event._id,
           title: event.title,
           message: `New event: ${event.title}`,
-          relatedId: event._id
+          relatedId: event._id,
+          audience: payload.audience
+        });
+        req.io.to(role).emit("newNotification", {
+          type: 'event',
+          content: `Prof. ${req.user.name} created a new event: ${event.title}`,
+          relatedId: event._id,
+          onModel: 'Event',
+          sender: req.user._id,
+          eventId: event._id
         });
       });
     }
@@ -255,7 +264,7 @@ const getEventsForUser = async (req, res) => {
   }
 };
 
-// Strict audience filtering for "All Events"
+// Strict audience filtering for "All Events" using new targeting fields
 const listEvents = async (req, res) => {
 	try {
 		const user = await User.findById(req.user._id).select('role department year graduationYear name');
@@ -269,8 +278,64 @@ const listEvents = async (req, res) => {
 			// Admin sees everything
 			filter = { status: { $in: ['active', 'pending'] } };
 		} else {
-			// Filter by audience for non-admin users
-			filter.audience = { $in: [role] };
+			// Build targeting filter for non-admin users
+			const targetingFilters = [];
+
+			// Check if user matches student targeting
+			if (role === 'student') {
+				// Events targeted at all students
+				targetingFilters.push({ target_roles: 'student' });
+				// Events with specific student combinations matching user
+				if (user.department && user.year) {
+					targetingFilters.push({
+						target_roles: 'student',
+						target_student_combinations: {
+							$elemMatch: {
+								department: user.department,
+								year: user.year
+							}
+						}
+					});
+				}
+			}
+
+			// Check if user matches teacher targeting
+			if (role === 'teacher') {
+				// Events targeted at all teachers
+				targetingFilters.push({ target_roles: 'teacher' });
+				// Events with specific teacher departments matching user
+				if (user.department) {
+					targetingFilters.push({
+						target_roles: 'teacher',
+						target_teacher_departments: user.department
+					});
+				}
+			}
+
+			// Check if user matches alumni targeting
+			if (role === 'alumni') {
+				// Events targeted at all alumni
+				targetingFilters.push({ target_roles: 'alumni' });
+				// Events with specific alumni combinations matching user
+				if (user.department && user.graduationYear) {
+					targetingFilters.push({
+						target_roles: 'alumni',
+						target_alumni_combinations: {
+							$elemMatch: {
+								department: user.department,
+								graduation_year: user.graduationYear
+							}
+						}
+					});
+				}
+			}
+
+			if (targetingFilters.length > 0) {
+				filter.$or = targetingFilters;
+			} else {
+				// If no targeting matches, return no events
+				filter._id = null;
+			}
 		}
 
 		// Filter for upcoming events if requested
