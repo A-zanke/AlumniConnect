@@ -45,6 +45,9 @@ const customScrollbarStyles = `
     word-wrap: break-word;
     word-break: break-word;
   }
+  .custom-scrollbar {
+    scroll-behavior: smooth;
+  }
 `;
 
 const MessagesPage = () => {
@@ -88,6 +91,8 @@ const MessagesPage = () => {
   const headerMenuRef = useRef(null);
   const reactionMenuRef = useRef(null);
   const emojiAreaRef = useRef(null);
+  const [forwardSource, setForwardSource] = useState(null); // message to forward
+  const [showForwardDialog, setShowForwardDialog] = useState(false);
 
   // Load conversations + merge with connections (for names/avatars/presence)
   useEffect(() => {
@@ -436,6 +441,32 @@ const MessagesPage = () => {
     }
   };
 
+  const handleForwardTo = async (targetUserId) => {
+    try {
+      if (!forwardSource || !targetUserId) return;
+      const formData = new FormData();
+      formData.append("content", forwardSource.content || "");
+      const token = localStorage.getItem("token");
+      const resp = await axios.post(`${baseURL}/api/messages/${targetUserId}`, formData, {
+        headers: { "Content-Type": "multipart/form-data", Authorization: `Bearer ${token}` },
+      });
+      const dto = resp?.data;
+      if (selectedUser?._id && String(targetUserId) === String(selectedUser._id)) {
+        const idStr = dto?.id ? String(dto.id) : null;
+        if (!idStr || !seenIdsRef.current.has(idStr)) {
+          if (idStr) seenIdsRef.current.add(idStr);
+          setMessages((prev) => [...prev, dto]);
+        }
+      }
+      toast.success("Message forwarded");
+    } catch (e) {
+      toast.error("Failed to forward message");
+    } finally {
+      setShowForwardDialog(false);
+      setForwardSource(null);
+    }
+  };
+
   const handleReport = async () => {
     try {
       const reason = prompt("Report reason?") || "";
@@ -546,23 +577,10 @@ const MessagesPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       <style>{customScrollbarStyles}</style>
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 className="text-4xl font-bold gradient-text-animated">
-            Messages
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Connect and chat with your network in real-time
-          </p>
-        </motion.div>
-
+      <div className="container mx-auto px-4 py-0">
         <div className="bg-white rounded-none shadow-none overflow-hidden border-0">
-          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-8rem)] lg:h-[calc(100vh-6rem)]">
+          {/* Full-height grid directly under navbar */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)]">
             {/* Contacts Sidebar */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -776,7 +794,6 @@ const MessagesPage = () => {
                   <div
                     ref={messageContainerRef}
                     className="flex-1 p-6 overflow-y-auto bg-gradient-to-b from-white to-gray-50 custom-scrollbar min-h-0"
-                    style={{ maxHeight: "calc(100vh - 20rem)" }}
                   >
                     {messages.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-gray-500">
@@ -923,27 +940,21 @@ const MessagesPage = () => {
                                             ···
                                           </button>
                                           {openMessageMenuFor === message.id && (
-                                            <div className={`absolute ${message.senderId === user._id ? 'right-0' : 'left-0'} mt-2 w-40 bg-white dark:bg-[#1e1e1e] border shadow-xl rounded-xl z-20`}
+                                            <motion.div
+                                              initial={{ opacity: 0, scale: 0.98, y: 6 }}
+                                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                                              exit={{ opacity: 0, scale: 0.98, y: 6 }}
+                                              className={`absolute ${message.senderId === user._id ? 'right-0' : 'left-0'} mt-2 w-48 bg-white dark:bg-[#1e1e1e] border shadow-xl rounded-xl z-20 overflow-hidden`}
                                             >
-                                              <button
-                                                onClick={() => { setReplyTo({ id: message.id }); setOpenMessageMenuFor(null); }}
-                                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
-                                              >
-                                                Reply
-                                              </button>
-                                              <button
-                                                onClick={() => { navigator.clipboard.writeText(message.content || ''); setOpenMessageMenuFor(null); }}
-                                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
-                                              >
-                                                Copy
-                                              </button>
-                                              <button
-                                                onClick={() => { handleDeleteSingle(message.id, 'me'); setOpenMessageMenuFor(null); }}
-                                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-600"
-                                              >
-                                                Delete for me
-                                              </button>
-                                            </div>
+                                              <button onClick={() => { setActiveReactionFor(message.id); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">React</button>
+                                              <button onClick={() => { setReplyTo({ id: message.id }); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Reply</button>
+                                              <button onClick={() => { navigator.clipboard.writeText(message.content || ''); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Copy</button>
+                                              <button onClick={() => { setForwardSource(message); setShowForwardDialog(true); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Forward</button>
+                                              <button onClick={() => { handleDeleteSingle(message.id, 'me'); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Delete for me</button>
+                                              {message.senderId === user._id && (
+                                                <button onClick={() => { handleDeleteSingle(message.id, 'everyone'); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-600">Delete for everyone</button>
+                                              )}
+                                            </motion.div>
                                           )}
                                         </div>
                                       </div>
@@ -1161,6 +1172,32 @@ const MessagesPage = () => {
           <img src={lightboxSrc} alt="media" className="max-h-[90vh] max-w-[90vw] rounded-2xl shadow-2xl" />
         </div>
       )}
+  {/* Forward dialog */}
+  {showForwardDialog && (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40" onClick={() => setShowForwardDialog(false)}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="text-lg font-semibold mb-3">Forward message</div>
+        <div className="max-h-72 overflow-y-auto custom-scrollbar divide-y">
+          {connections.map((c) => (
+            <button key={c._id} onClick={() => handleForwardTo(c.user?._id)} className="w-full text-left p-3 hover:bg-gray-50 flex items-center gap-3">
+              <img
+                src={c.user?.avatarUrl ? getAvatarUrl(c.user.avatarUrl) : "/default-avatar.png"}
+                alt="avatar"
+                className="h-8 w-8 rounded-full"
+              />
+              <div className="flex-1">
+                <div className="font-medium">{c.user?.name}</div>
+                <div className="text-xs text-gray-500">@{c.user?.username}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 text-right">
+          <button onClick={() => setShowForwardDialog(false)} className="px-4 py-2 rounded-xl border hover:bg-gray-50">Close</button>
+        </div>
+      </div>
+    </div>
+  )}
     </div>
   );
 };
