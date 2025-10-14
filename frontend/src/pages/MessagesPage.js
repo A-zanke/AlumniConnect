@@ -338,9 +338,13 @@ const MessagesPage = () => {
       });
       const messageData = resp.data;
 
-      // Push optimistically; no socket emit to avoid duplicates (server emits)
-      if (messageData?.id) seenIdsRef.current.add(String(messageData.id));
-      setMessages((prev) => [...prev, messageData]);
+      // De-duplication: if the socket event already added this message,
+      // skip adding it again from the HTTP response.
+      const idStr = messageData?.id ? String(messageData.id) : null;
+      if (!idStr || !seenIdsRef.current.has(idStr)) {
+        if (idStr) seenIdsRef.current.add(idStr);
+        setMessages((prev) => [...prev, messageData]);
+      }
 
       // Clear input and image
       setNewMessage("");
@@ -522,12 +526,7 @@ const MessagesPage = () => {
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage(e);
-    }
-  };
+  // Submit is handled by the form's onSubmit; avoid key handlers to prevent duplicates
 
   if (loading && connections.length === 0) {
     return (
@@ -1077,7 +1076,6 @@ const MessagesPage = () => {
                           type="text"
                           value={newMessage}
                           onChange={handleTyping}
-                          onKeyPress={handleKeyPress}
                           placeholder="Type a message... (Press Enter to send)"
                           className="w-full px-6 py-4 pr-12 bg-gray-50 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
                         />
