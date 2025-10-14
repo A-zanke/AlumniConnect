@@ -87,6 +87,7 @@ const MessagesPage = () => {
   const messageMenuRef = useRef(null);
   const headerMenuRef = useRef(null);
   const reactionMenuRef = useRef(null);
+  const emojiAreaRef = useRef(null);
 
   // Load conversations + merge with connections (for names/avatars/presence)
   useEffect(() => {
@@ -314,7 +315,9 @@ const MessagesPage = () => {
       if (reactionMenuRef.current && !reactionMenuRef.current.contains(e.target)) {
         setActiveReactionFor(null);
       }
-      if (showEmojiPicker) setShowEmojiPicker(false);
+      // Close emoji picker only when clicking outside the emoji area
+      const clickedInsideEmojiArea = emojiAreaRef.current && emojiAreaRef.current.contains(e.target);
+      if (!clickedInsideEmojiArea && showEmojiPicker) setShowEmojiPicker(false);
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
@@ -1097,12 +1100,12 @@ const MessagesPage = () => {
                         </div>
                         <input ref={fileInputRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx" onChange={handleImageSelect} className="hidden" />
                         {showEmojiPicker && (
-                          <div className="absolute bottom-full right-0 mb-2 z-20">
+                          <div className="absolute bottom-full right-0 mb-2 z-20" ref={emojiAreaRef}>
                             <Picker
                               onEmojiClick={(emojiData) => {
                                 const emoji = emojiData?.emoji || "";
                                 setNewMessage((prev) => prev + emoji);
-                                setShowEmojiPicker(false);
+                                // keep picker open so multiple emojis can be selected quickly
                               }}
                               skinTonesDisabled
                               searchDisabled
