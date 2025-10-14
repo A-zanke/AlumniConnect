@@ -1099,9 +1099,10 @@ const MessagesPage = () => {
                         {showEmojiPicker && (
                           <div className="absolute bottom-full right-0 mb-2 z-20">
                             <Picker
-                              onEmojiClick={(e, data) => {
-                                const emoji = data?.emoji || data?.native || "";
+                              onEmojiClick={(emojiData) => {
+                                const emoji = emojiData?.emoji || "";
                                 setNewMessage((prev) => prev + emoji);
+                                setShowEmojiPicker(false);
                               }}
                               skinTonesDisabled
                               searchDisabled
