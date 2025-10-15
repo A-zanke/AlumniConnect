@@ -266,7 +266,10 @@ const MessagesPage = () => {
               window.focus();
               // navigate by selecting sender in list
               const match = connections.find((c) => String(c.user?._id) === String(senderId));
-              if (match) setSelectedUser(match.user);
+              if (match) {
+                setSelectedUser(match.user);
+                if (match.threadId && s) s.emit('messages:markRead', { conversationId });
+              }
             };
           } else {
             toast.info(`New message: ${body?.slice(0, 80) || ''}`);
