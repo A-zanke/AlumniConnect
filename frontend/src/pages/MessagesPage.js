@@ -115,6 +115,7 @@ const MessagesPage = () => {
 
   // Accessible full menu portal state
   const [menuPortal, setMenuPortal] = useState({ open: false, x: 0, y: 0, items: [], messageId: null, focusIndex: 0 });
+  const menuPortalRef = useRef(null);
 
   // Hover quick menu state (per-bubble)
   const [hoverQuickFor, setHoverQuickFor] = useState(null);
@@ -1021,7 +1022,7 @@ const MessagesPage = () => {
 
       {/* Full menu portal */}
       {menuPortal.open && createPortal(
-        <div className="full-menu z-popover" role="menu" aria-label="Message actions" style={{ left: menuPortal.x, top: menuPortal.y }}>
+        <div ref={menuPortalRef} className="full-menu z-popover" role="menu" aria-label="Message actions" style={{ left: menuPortal.x, top: menuPortal.y }}>
           {menuPortal.items.map((it, idx) => (
             <button key={it.label} className="menu-item" role="menuitem" aria-selected={menuPortal.focusIndex === idx} onMouseEnter={() => setMenuPortal((s) => ({ ...s, focusIndex: idx }))} onClick={() => { it.onSelect(); setMenuPortal((s) => ({ ...s, open: false })); }}>
               <span className="opacity-90">{it.icon}</span>

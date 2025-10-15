@@ -157,7 +157,8 @@ function App() {
             </main>
             {/* Render Footer on all routes except /messages */}
             {window.location.pathname !== "/messages" && <Footer />}
-            <Chatbot />
+            {/* Hide Chatbot on /messages route without touching the component itself */}
+            {window.location.pathname !== "/messages" && <Chatbot />}
           </div>
         </Router>
       </NotificationProvider>
