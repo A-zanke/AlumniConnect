@@ -51,11 +51,11 @@ const customScrollbarStyles = `
   .emoji-char { display: inline-block; font-variant-emoji: emoji; transform-origin: center; font-size: 1.35em; line-height: 1; }
   .emoji-char:hover { transform: scale(1.1); transition: transform 150ms cubic-bezier(.2,.7,.3,1.0); }
   .caret-trigger { opacity: 0; transition: opacity 140ms cubic-bezier(.2,.7,.3,1.0), transform 140ms cubic-bezier(.2,.7,.3,1.0); transform: translateY(-2px); }
-  .bubble:hover + .caret-trigger, .caret-trigger:focus-visible, .bubble:focus-within + .caret-trigger { opacity: 1; transform: translateY(0); }
-  .caret-button { width: 32px; height: 32px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #e6e8ee; }
+  .group:hover .caret-trigger, .group:focus-within .caret-trigger, .caret-trigger:focus-visible { opacity: 1; transform: translateY(0); }
+  .caret-button { width: 40px; height: 40px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #e6e8ee; }
   .caret-button:hover { background: rgba(255,255,255,0.14); }
   .quick-menu { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
-  .quick-item { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: #e6e8ee; }
+  .quick-item { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #e6e8ee; }
   .quick-item:hover { background: rgba(255,255,255,0.08); }
   .full-menu { position: fixed; min-width: 220px; background: rgba(24,25,29,0.98); color: #e6e8ee; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
   .menu-item { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; }
@@ -122,6 +122,7 @@ const MessagesPage = () => {
 
   // Hover quick menu state (per-bubble)
   const [hoverQuickFor, setHoverQuickFor] = useState(null);
+  const lastFocusRef = useRef(null);
 
   // Load conversations + merge with connections (for names/avatars/presence)
   useEffect(() => {
@@ -695,14 +696,14 @@ const MessagesPage = () => {
 
   if (loading && connections.length === 0) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
+      <div className="flex justify-center items-center min-h-screen bg-[#0b0f15]">
         <Spinner size="lg" />
       </div>
     );
   }
 
   if (error) {
-    return <div className="text-red-500 text-center mt-8">{error}</div>;
+    return <div className="text-red-400 text-center mt-8">{error}</div>;
   }
 
   return (
@@ -908,6 +909,7 @@ const MessagesPage = () => {
                                     aria-expanded={menuPortal.open && menuPortal.messageId === message.id}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      lastFocusRef.current = e.currentTarget;
                                       const rect = e.currentTarget.getBoundingClientRect();
                                       const baseItems = [
                                         { label: 'Reply', icon: <FiCornerUpLeft />, onSelect: () => setReplyTo({ id: message.id }) },
@@ -1034,9 +1036,14 @@ const MessagesPage = () => {
 
       {/* Full menu portal */}
       {menuPortal.open && createPortal(
-        <div ref={menuPortalRef} className="full-menu z-popover" role="menu" aria-label="Message actions" style={{ left: menuPortal.x, top: menuPortal.y }}>
+        <div ref={menuPortalRef} className="full-menu z-popover" role="menu" aria-label="Message actions" style={{ left: menuPortal.x, top: menuPortal.y }} onKeyDown={(e)=>{
+          if(e.key==='Tab'){
+            e.preventDefault();
+            setMenuPortal(s=>({ ...s, focusIndex: (s.focusIndex + (e.shiftKey?-1:1) + s.items.length) % s.items.length }));
+          }
+        }}>
           {menuPortal.items.map((it, idx) => (
-            <button key={it.label} className="menu-item" role="menuitem" aria-selected={menuPortal.focusIndex === idx} onMouseEnter={() => setMenuPortal((s) => ({ ...s, focusIndex: idx }))} onClick={() => { it.onSelect(); setMenuPortal((s) => ({ ...s, open: false })); }}>
+            <button key={it.label} className="menu-item" role="menuitem" aria-selected={menuPortal.focusIndex === idx} autoFocus={menuPortal.focusIndex === idx} onMouseEnter={() => setMenuPortal((s) => ({ ...s, focusIndex: idx }))} onClick={() => { it.onSelect(); setMenuPortal((s) => ({ ...s, open: false })); setTimeout(()=> lastFocusRef.current?.focus(), 0); }}>
               <span className="opacity-90">{it.icon}</span>
               <span className="text-sm">{it.label}</span>
             </button>

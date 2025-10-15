@@ -1,40 +1,28 @@
-# Messages route redesign
+# Messages Route Redesign
 
-This folder summarizes route-scoped variables, z-index layers, and how to extend the new caret-driven menus.
+Variables and layers
+- CSS var `--navbar-height`: set by `Navbar` at runtime; the chat shell uses `calc(100vh - var(--navbar-height))`.
+- Z-index layers: navbar (>=50) > popovers (40) > headers/composer (20) > scroll areas.
 
-## Variables
-- `--navbar-height` (CSS variable, set by `Navbar`): used to size the chat shell to `calc(100vh - var(--navbar-height))`.
+Shell and panes
+- The route renders a `.chat-shell` under the fixed navbar, full-width, full-remaining-height with `overflow:hidden`.
+- Left pane width: `clamp(280px, 28vw, 380px)`, sticky search.
+- Right pane: sticky header, scrollable body, sticky composer with safe-area insets.
 
-## Layout shell
-- Route container uses class `chat-shell`: full width, height under fixed navbar, `overflow: hidden`. Internal panes scroll themselves.
-- Two panes:
-  - Left: `pane-left` width `clamp(280px, 28vw, 380px)` with sticky search.
-  - Right: `pane-right` with sticky header, scrollable messages body, and sticky composer with safe-area padding on mobile.
+Bubbles and media
+- Sent: gradient blue→violet, white text, subtle elevation.
+- Received: frosted glass (backdrop-blur), light border, high-contrast text.
+- Media capped to `min(60vw, 420px)` with rounded corners and soft border.
 
-## Z-index layers
-- Navbar: 50 (`z-navbar`)
-- Menus/Popovers: 40 (`z-popover`)
-- Headers/Composer: 20 (sticky)
-- Scroll areas: default
+Actions
+- In-bubble icons removed. A hover/focus caret sits beside each bubble (left for received, right for sent).
+- Hover shows a compact quick menu; click opens the full actions menu (Reply, Copy, Forward, Star/Pin, Delete-for-me, Select, Report, Info).
+- Menu is keyboard accessible (Arrow keys/Tab, Enter, Esc) and returns focus to the caret.
 
-## Menus
-- Hover caret beside each bubble reveals a compact quick menu (Reply, Copy, Forward).
-- Click opens the full menu in a portal with keyboard navigation, outside click and Esc to close.
-- Add new actions by pushing into the `baseItems` array in `MessagesPage` where the caret button `onClick` builds the menu.
+Extending menus
+- Add or remove items in the `baseItems` array near the caret button click handler.
+- Each item has `{ label, icon, onSelect }` shape.
 
-## Styling
-- Elegant dark theme with premium gradients for sent messages and frosted glass for received messages.
-- Emojis render larger (`1.35em`) inside bubbles and scale on hover.
-- Media capped at `min(60vw, 420px)` with rounded corners.
-
-## Notes
-- Footer is hidden on `/messages` only via conditional rendering in `App`.
-- The old in-bubble smile/forward/ellipsis icons are removed and replaced with the caret trigger adjacent to bubbles.
-
-## Realtime events and unread (1:1)
-- Outgoing (client→server): `messages:markRead` with `{ conversationId, upToMessageId?, timestamp? }`.
-- Server→recipient only: `message:new` with `{ conversationId, messageId, senderId, body, createdAt }`.
-- Server→specific user: `unread:snapshot` as `[{ conversationId, count }]` and `unread:update` with `{ conversationId, newCount }`.
-- Server→participants: `messages:readReceipt` with `{ conversationId, readerId, readUpTo }`.
-
-Data model: `Thread` stores `unreadCount` and `lastReadAt` as per-user maps keyed by `userId`. Extend participants arrays and events for group chats.
+Accessibility and performance
+- Focus-visible rings on interactive controls, emoji sized larger and crisp.
+- Transitions use transform/opacity only to stay GPU-friendly.
