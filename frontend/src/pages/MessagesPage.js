@@ -112,6 +112,7 @@ const MessagesPage = () => {
   const emojiAreaRef = useRef(null);
   const [forwardSource, setForwardSource] = useState(null); // message to forward
   const [showForwardDialog, setShowForwardDialog] = useState(false);
+  const [forwardSelected, setForwardSelected] = useState(new Set());
 
   // Accessible full menu portal state
   const [menuPortal, setMenuPortal] = useState({ open: false, x: 0, y: 0, items: [], messageId: null, focusIndex: 0 });
@@ -1004,17 +1005,26 @@ const MessagesPage = () => {
             <div className="text-lg font-semibold mb-3">Forward message</div>
             <div className="max-h-72 overflow-y-auto custom-scrollbar divide-y divide-white/10">
               {connections.map((c) => (
-                <button key={c._id} onClick={() => handleForwardTo(c.user?._id)} className="w-full text-left p-3 hover:bg-white/5 flex items-center gap-3">
+                <label key={c._id} className="w-full p-3 hover:bg-white/5 flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" className="mr-2" checked={forwardSelected.has(c._id)} onChange={(e) => {
+                    setForwardSelected((prev)=>{ const next = new Set(prev); if(e.target.checked) next.add(c._id); else next.delete(c._id); return next; });
+                  }} />
                   <img src={c.user?.avatarUrl ? getAvatarUrl(c.user.avatarUrl) : "/default-avatar.png"} alt="avatar" className="h-8 w-8 rounded-full" />
                   <div className="flex-1">
                     <div className="font-medium">{c.user?.name}</div>
                     <div className="text-xs text-slate-400">@{c.user?.username}</div>
                   </div>
-                </button>
+                </label>
               ))}
             </div>
-            <div className="mt-3 text-right">
-              <button onClick={() => setShowForwardDialog(false)} className="px-4 py-2 rounded-xl border border-white/10 hover:bg-white/5">Close</button>
+            <div className="mt-3 flex justify-between">
+              <button onClick={() => { setForwardSelected(new Set()); setShowForwardDialog(false); }} className="px-4 py-2 rounded-xl border border-white/10 hover:bg-white/5">Cancel</button>
+              <button onClick={async () => {
+                const ids = Array.from(forwardSelected);
+                for (const id of ids) { await handleForwardTo(id); }
+                setForwardSelected(new Set());
+                setShowForwardDialog(false);
+              }} disabled={forwardSelected.size===0} className="px-4 py-2 rounded-xl bg-indigo-600 disabled:opacity-50">Forward</button>
             </div>
           </div>
         </div>
