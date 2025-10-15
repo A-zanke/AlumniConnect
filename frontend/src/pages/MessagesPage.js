@@ -73,6 +73,7 @@ const MessagesPage = () => {
   const [loading, setLoading] = useState(true);
   const [connections, setConnections] = useState([]);
   const [unreadByConversationId, setUnreadByConversationId] = useState({});
+  const [unreadByConversationId, setUnreadByConversationId] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -116,6 +117,7 @@ const MessagesPage = () => {
 
   // Accessible full menu portal state
   const [menuPortal, setMenuPortal] = useState({ open: false, x: 0, y: 0, items: [], messageId: null, focusIndex: 0 });
+  const menuPortalRef = useRef(null);
   const menuPortalRef = useRef(null);
 
   // Hover quick menu state (per-bubble)
