@@ -186,6 +186,7 @@ http.listen(PORT, "0.0.0.0", () => {
 const jwt = require("jsonwebtoken");
 const User = require("./models/User");
 const Message = require("./models/Message");
+const Thread = require("./models/Thread");
 const Block = require("./models/Block");
 
 io.use(async (socket, next) => {
@@ -281,18 +282,26 @@ io.on("connection", (socket) => {
       } else {
         msg = await Message.create(messageData);
       }
+      // Update per-user unread in Thread (upsert)
+      const participants = [String(from), String(to)].sort();
+      const thread = await Thread.findOneAndUpdate(
+        { participants: { $all: participants, $size: 2 } },
+        { $setOnInsert: { participants }, $set: { lastMessageAt: new Date(), lastMessage: msg._id }, $inc: { [`unreadCount.${to}`]: 1 } },
+        { upsert: true, new: true }
+      );
       const messagePayload = {
-        _id: msg._id,
-        threadId,
-        from,
-        to,
-        content: msg.content,
-        attachments: msg.attachments || [],
+        conversationId: String(thread._id),
+        messageId: String(msg._id),
+        senderId: String(from),
+        body: msg.content,
         createdAt: msg.createdAt,
       };
       socket.emit("message:ack", { id: msg._id, status: "sent" });
-      io.to(to).emit("chat:receive", messagePayload);
-      io.to(to).emit("receiveMessage", messagePayload);
+      // Targeted delivery only to recipient
+      io.to(to).emit("message:new", messagePayload);
+      // Unread update to recipient
+      const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
+      io.to(to).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
       io.to(from).emit("message:delivered", { id: msg._id });
     } catch (e) {
       console.error("Socket chat error:", e);
@@ -303,13 +312,41 @@ io.on("connection", (socket) => {
   // Alias to meet API contract
   socket.on("sendMessage", handleSend);
 
-  socket.on("thread:read", async ({ threadId }) => {
+  // Messages markRead API via socket
+  socket.on("messages:markRead", async ({ conversationId, upToMessageId, timestamp }) => {
     try {
-      if (!threadId) return;
-      await Message.updateMany({ threadId, to: socket.userId, status: { $ne: 'read' } }, { $set: { status: 'read', readAt: new Date() } });
-      io.emit("message:read", { threadId, userId: socket.userId, at: Date.now() });
-    } catch (e) {}
+      const me = socket.userId;
+      if (!conversationId) return;
+      const thread = await Thread.findById(conversationId);
+      if (!thread) return;
+      const now = new Date();
+      thread.lastReadAt.set(String(me), now);
+      // recompute unread based on messages addressed to me after lastReadAt
+      const others = (thread.participants || []).map((p) => String(p)).filter((p) => p !== String(me));
+      if (others.length === 1) {
+        const other = others[0];
+        const unread = await Message.countDocuments({ from: other, to: me, createdAt: { $gt: now } });
+        thread.unreadCount.set(String(me), unread);
+      } else {
+        thread.unreadCount.set(String(me), 0);
+      }
+      await thread.save();
+      io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: thread.unreadCount.get(String(me)) || 0 });
+      // broadcast readReceipt to participants
+      for (const p of thread.participants) {
+        io.to(String(p)).emit("messages:readReceipt", { conversationId: String(thread._id), readerId: String(me), readUpTo: now });
+      }
+    } catch (e) { }
   });
+
+  // On connect or refresh: send unread snapshot
+  (async () => {
+    try {
+      const threads = await Thread.find({ participants: { $all: [socket.userId] } }).select("unreadCount").lean();
+      const snapshot = threads.map((t) => ({ conversationId: String(t._id), count: (t.unreadCount && (t.unreadCount[socket.userId] || (t.unreadCount.get && t.unreadCount.get(socket.userId)) || 0)) }));
+      io.to(socket.id).emit("unread:snapshot", snapshot);
+    } catch (e) {}
+  })();
 
   socket.join(socket.userId);
 

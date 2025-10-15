@@ -215,6 +215,18 @@ export const sendMessage = async (userId, content, image = null) => {
   }
 };
 
+export const unreadAPI = {
+  getSnapshotFromConversations: async () => {
+    try {
+      const resp = await apiClient.get('/api/messages');
+      const rows = Array.isArray(resp?.data?.data) ? resp.data.data : [];
+      return rows.map((c) => ({ conversationId: c._id, count: c.unreadCount || 0 }));
+    } catch (e) {
+      return [];
+    }
+  },
+};
+
 export const followAPI = {
   getFollowing: (userId) => apiClient.get(`/api/users/${userId}/following`),
   getMutualConnections: (userId) => apiClient.get(`/api/users/${userId}/mutual`),

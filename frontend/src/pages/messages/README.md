@@ -30,3 +30,11 @@ This folder summarizes route-scoped variables, z-index layers, and how to extend
 ## Notes
 - Footer is hidden on `/messages` only via conditional rendering in `App`.
 - The old in-bubble smile/forward/ellipsis icons are removed and replaced with the caret trigger adjacent to bubbles.
+
+## Realtime events and unread (1:1)
+- Outgoing (client→server): `messages:markRead` with `{ conversationId, upToMessageId?, timestamp? }`.
+- Server→recipient only: `message:new` with `{ conversationId, messageId, senderId, body, createdAt }`.
+- Server→specific user: `unread:snapshot` as `[{ conversationId, count }]` and `unread:update` with `{ conversationId, newCount }`.
+- Server→participants: `messages:readReceipt` with `{ conversationId, readerId, readUpTo }`.
+
+Data model: `Thread` stores `unreadCount` and `lastReadAt` as per-user maps keyed by `userId`. Extend participants arrays and events for group chats.

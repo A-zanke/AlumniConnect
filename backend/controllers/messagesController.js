@@ -1,6 +1,7 @@
 const path = require("path");
 const User = require("../models/User");
 const Message = require("../models/Message");
+const Thread = require("../models/Thread");
 const Block = require("../models/Block");
 const NotificationService = require("../services/notificationService");
 
@@ -55,6 +56,7 @@ function parseMessage(doc, viewerId) {
 exports.getConversations = async (req, res) => {
   try {
     const me = req.user._id;
+    // Build conversations from latest messages and include unread from Thread
     const msgs = await Message.find({ $or: [{ from: me }, { to: me }] })
       .sort({ createdAt: -1 })
       .lean();
@@ -72,17 +74,37 @@ exports.getConversations = async (req, res) => {
       }
     }
     const ids = Array.from(convMap.keys());
-    const users = await User.find({ _id: { $in: ids } })
-      .select("name username avatarUrl isOnline lastSeen")
-      .lean();
+    const [users, threads] = await Promise.all([
+      User.find({ _id: { $in: ids } })
+        .select("name username avatarUrl isOnline lastSeen")
+        .lean(),
+      Thread.find({ participants: { $all: [me] } })
+        .select("participants unreadCount lastMessageAt")
+        .lean(),
+    ]);
     const userMap = new Map(users.map((u) => [String(u._id), u]));
+    const threadMap = new Map();
+    for (const th of threads) {
+      if ((th.participants || []).length === 2) {
+        const other = th.participants
+          .map((p) => String(p))
+          .find((p) => p !== String(me));
+        if (other) threadMap.set(other, th);
+      }
+    }
     const conversations = ids
-      .map((id) => ({
-        _id: id,
-        user: userMap.get(id) || { _id: id },
-        lastMessage: convMap.get(id).lastMessage,
-        lastMessageTime: convMap.get(id).lastMessageTime,
-      }))
+      .map((id) => {
+        const th = threadMap.get(id);
+        const unread = th?.unreadCount?.get?.(String(me)) || th?.unreadCount?.[String(me)] || 0;
+        return {
+          _id: id,
+          user: userMap.get(id) || { _id: id },
+          lastMessage: convMap.get(id).lastMessage,
+          lastMessageTime: convMap.get(id).lastMessageTime,
+          unreadCount: unread,
+          threadId: th ? String(th._id) : null,
+        };
+      })
       .sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
     return res.json({ data: conversations });
   } catch (error) {
@@ -115,6 +137,21 @@ exports.getMessages = async (req, res) => {
     for (const d of docs) {
       const dto = parseMessage(d, me);
       if (dto) out.push(dto);
+    }
+    // Mark as read server-side on fetch
+    const participants = [String(me), String(other)].sort();
+    const thread = await Thread.findOne({ participants: { $all: participants, $size: 2 } });
+    if (thread) {
+      const now = new Date();
+      thread.lastReadAt.set(String(me), now);
+      // recompute unread = messages to me after lastReadAt
+      const unread = await Message.countDocuments({ from: other, to: me, createdAt: { $gt: now } });
+      thread.unreadCount.set(String(me), unread);
+      await thread.save();
+      if (req.io) {
+        req.io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: unread });
+        req.io.to(String(other)).emit("messages:readReceipt", { conversationId: String(thread._id), readerId: String(me), readUpTo: now });
+      }
     }
     return res.json(out);
   } catch (error) {
@@ -150,19 +187,31 @@ exports.sendMessage = async (req, res) => {
     const msg = await Message.create({ from: me, to, content, attachments });
     const dto = parseMessage(msg.toObject(), me);
 
+    // Upsert thread and increment unread for recipient (server authority)
+    const participants = [String(me), String(to)].sort();
+    const thread = await Thread.findOneAndUpdate(
+      { participants: { $all: participants, $size: 2 } },
+      {
+        $setOnInsert: { participants },
+        $set: { lastMessageAt: new Date(), lastMessage: msg._id },
+        $inc: { [`unreadCount.${to}`]: 1 },
+      },
+      { upsert: true, new: true }
+    );
+
     if (req.io) {
       const payload = {
-        _id: dto.id,
-        from: dto.senderId,
-        to: dto.recipientId,
-        content: dto.content,
-        attachments: dto.attachments,
+        conversationId: String(thread._id),
+        messageId: String(dto.id),
+        senderId: String(dto.senderId),
+        body: dto.content,
         createdAt: dto.timestamp,
       };
-      req.io.to(String(to)).emit("chat:receive", payload);
-      req.io.to(String(me)).emit("chat:receive", payload);
-      req.io.to(String(to)).emit("receiveMessage", payload);
-      req.io.to(String(me)).emit("receiveMessage", payload);
+      // New event contract: deliver only to recipient
+      req.io.to(String(to)).emit("message:new", payload);
+      // Notify unread update to recipient only
+      const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
+      req.io.to(String(to)).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
     }
 
     return res.status(201).json(dto);

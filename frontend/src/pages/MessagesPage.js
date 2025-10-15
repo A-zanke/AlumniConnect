@@ -72,6 +72,7 @@ const MessagesPage = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [connections, setConnections] = useState([]);
+  const [unreadByConversationId, setUnreadByConversationId] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -141,6 +142,8 @@ const MessagesPage = () => {
             user: item.user,
             lastMessage: item.lastMessage || "",
             lastMessageTime: item.lastMessageTime || null,
+            threadId: item.threadId || null,
+            unreadCount: item.unreadCount || 0,
           });
         });
         rawConnections.forEach((u) => {
@@ -178,6 +181,9 @@ const MessagesPage = () => {
           return bt - at;
         });
         setConnections(merged);
+        const initUnread = {};
+        merged.forEach((row) => { if (row.threadId) initUnread[row.threadId] = row.unreadCount || 0; });
+        setUnreadByConversationId(initUnread);
         if (merged.length > 0 && !selectedUser) {
           setSelectedUser(merged[0].user);
         }
@@ -233,8 +239,54 @@ const MessagesPage = () => {
           setTimeout(scrollToBottom, 100);
         }
       };
-      s.on("chat:receive", handleIncoming);
-      s.on("receiveMessage", handleIncoming);
+      // New message event contract
+      s.on("message:new", ({ conversationId, messageId, senderId, body, createdAt }) => {
+        const isCurrent = selectedUser && String(senderId) === String(selectedUser._id);
+        // if current thread open and focused in this tab
+        const tabFocused = document.visibilityState === 'visible';
+        if (isCurrent && tabFocused) {
+          // append live, mark read later via debounce
+          setMessages((prev) => [...prev, { id: messageId, senderId, recipientId: user._id, content: body, attachments: [], timestamp: createdAt }]);
+          // do not increment unread locally
+          // issue markRead signal
+          if (s) s.emit('messages:markRead', { conversationId });
+          return;
+        }
+        // else, increment unread for that conversation
+        setUnreadByConversationId((prev) => {
+          const next = { ...prev };
+          next[conversationId] = Math.min(1000, (prev[conversationId] || 0) + 1);
+          return next;
+        });
+        // toast or native notification
+        try {
+          if (document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted') {
+            const n = new Notification('New message', { body: body?.slice(0, 80) || 'New message', icon: '/default-avatar.png' });
+            n.onclick = () => {
+              window.focus();
+              // navigate by selecting sender in list
+              const match = connections.find((c) => String(c.user?._id) === String(senderId));
+              if (match) setSelectedUser(match.user);
+            };
+          } else {
+            toast.info(`New message: ${body?.slice(0, 80) || ''}`);
+          }
+        } catch {}
+      });
+
+      s.on('unread:snapshot', (rows) => {
+        const map = {};
+        (rows || []).forEach((r) => { map[r.conversationId] = r.count || 0; });
+        setUnreadByConversationId(map);
+      });
+
+      s.on('unread:update', ({ conversationId, newCount }) => {
+        setUnreadByConversationId((prev) => ({ ...prev, [conversationId]: newCount }));
+      });
+
+      s.on('messages:readReceipt', ({ conversationId, readerId, readUpTo }) => {
+        // optionally update UI indicators in future
+      });
 
       // reactions
       s.on("messageReacted", ({ messageId, reactions }) => {
@@ -279,7 +331,7 @@ const MessagesPage = () => {
         }
       };
     }
-  }, [user, selectedUser, isTypingTimeout]);
+  }, [user, selectedUser, isTypingTimeout, connections]);
 
   // Auto-scroll to the bottom of messages
   useEffect(() => {
@@ -693,7 +745,7 @@ const MessagesPage = () => {
                         initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: Math.min(index * 0.03, 0.3) }}
-                        onClick={() => { setSelectedUser(connection.user); setShowSidebar(false); }}
+                        onClick={() => { setSelectedUser(connection.user); setShowSidebar(false); if (connection.threadId && socket) { socket.emit('messages:markRead', { conversationId: connection.threadId }); } }}
                         className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors ${selectedUser?._id === connection.user?._id ? 'bg-indigo-600/20' : ''}`}
                       >
                         <div className="relative shrink-0">
@@ -712,6 +764,20 @@ const MessagesPage = () => {
                           <p className="text-xs text-slate-400 truncate">@{connection.user?.username}</p>
                           <p className="text-xs text-slate-400/80 truncate">{connection.lastMessage || ''}</p>
                         </div>
+                        {/* Unread badge */}
+                        {(() => {
+                          // Derive conversationId as synthetic by participants order is not readily available client-side; server sends snapshot by real thread _id.
+                          // Here we fallback to per-user mapping from snapshot when available by scanning unreadByConversationId changes upon snapshot/update.
+                          // We can't map user directly to conversationId without server mapping, so we display badge using connection._id if present in snapshot keys.
+                          const candidates = Object.entries(unreadByConversationId || {}).filter(([cid]) => cid.includes(connection._id));
+                          const count = candidates.length ? candidates[0][1] : 0;
+                          const hide = selectedUser?._id === connection.user?._id;
+                          return !hide && count > 0 ? (
+                            <span className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold" aria-label={`${count}+ unread messages`} title={`${count} unread`}>
+                              {count > 999 ? '999+' : count}
+                            </span>
+                          ) : null;
+                        })()}
                       </motion.button>
                     ))}
                 </div>
