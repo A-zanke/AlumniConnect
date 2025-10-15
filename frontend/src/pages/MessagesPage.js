@@ -766,14 +766,12 @@ const MessagesPage = () => {
                         </div>
                         {/* Unread badge */}
                         {(() => {
-                          // Derive conversationId as synthetic by participants order is not readily available client-side; server sends snapshot by real thread _id.
-                          // Here we fallback to per-user mapping from snapshot when available by scanning unreadByConversationId changes upon snapshot/update.
-                          // We can't map user directly to conversationId without server mapping, so we display badge using connection._id if present in snapshot keys.
-                          const candidates = Object.entries(unreadByConversationId || {}).filter(([cid]) => cid.includes(connection._id));
-                          const count = candidates.length ? candidates[0][1] : 0;
+                          const threadId = connection.threadId;
+                          const base = typeof connection.unreadCount === 'number' ? connection.unreadCount : 0;
+                          const count = threadId ? (unreadByConversationId[threadId] ?? base) : base;
                           const hide = selectedUser?._id === connection.user?._id;
                           return !hide && count > 0 ? (
-                            <span className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold" aria-label={`${count}+ unread messages`} title={`${count} unread`}>
+                            <span className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold" aria-label={`${count} unread messages`} title={`${count} unread`}>
                               {count > 999 ? '999+' : count}
                             </span>
                           ) : null;
