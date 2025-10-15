@@ -5,281 +5,317 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WhatsApp-Style Chat (Dark)</title>
   <style>
-    :root {
-      --bg: #0b0b0b;
-      --text: #e5e7eb;
-      --text-dim: #9aa0a6;
-      --sent-grad-a: #3b82f6; /* blue-500 */
-      --sent-grad-b: #6366f1; /* indigo-500 */
-      --rcv-bg: rgba(255,255,255,0.06);
-      --rcv-border: rgba(255,255,255,0.12);
-      --pill-bg: rgba(255,255,255,0.08);
-      --accent: #22c55e; /* green-500 */
+    :root{
+      --bg:#0b0b0b;
+      --panel:#111214;
+      --panel-2:#0f1012;
+      --text:#e6e8ee;
+      --text-dim:#9aa0a6;
+      --brand:#62d6ff;
+      --accent:#22c55e;
+      --danger:#ef4444;
+      --ring:#4338ca;
+      --sent-a:#3b82f6; /* blue-500 */
+      --sent-b:#6366f1; /* indigo-500 */
+      --rcv-bg:rgba(255,255,255,0.06);
+      --rcv-bd:rgba(255,255,255,0.12);
+      --sep:rgba(255,255,255,0.08);
+      --shadow:0 10px 30px rgba(0,0,0,.35);
     }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font: 500 14.5px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      overflow: hidden;
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;background:var(--bg);color:var(--text);
+      font:500 15px/1.55 Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
     }
+    a{color:inherit}
 
-    .chat-wrap { height: 100vh; display: grid; grid-template-rows: 1fr; }
+    .app{height:100vh;display:grid;grid-template-rows:64px 1fr}
 
-    .chat {
-      overflow-y: auto;
-      padding: 20px 16px 28px;
-      scroll-behavior: smooth;
-    }
+    /* Navbar */
+    .nav{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:linear-gradient(180deg,#0d0f13,rgba(13,15,19,.7));backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06)}
+    .nav .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.2px}
+    .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,#5eead4,#818cf8);box-shadow:0 8px 24px rgba(99,102,241,.25)}
+    .brand span{background:linear-gradient(90deg,#a5b4fc,#60a5fa,#22d3ee);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .nav .actions{position:relative}
+    .icon-wrap{position:relative;display:inline-flex;padding:8px;border-radius:10px;transition:background .2s}
+    .icon-wrap:hover{background:rgba(255,255,255,.06)}
+    .icon{width:22px;height:22px;opacity:.9}
+    .badge{position:absolute;top:-2px;right:-2px;background:var(--danger);color:#fff;border-radius:9999px;padding:2px 6px;font-size:11px;font-weight:700;box-shadow:var(--shadow)}
 
-    /* Smooth dark scrollbar */
-    .chat::-webkit-scrollbar { width: 10px; }
-    .chat::-webkit-scrollbar-track { background: #101010; }
-    .chat::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 8px; }
-    .chat::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
-    /* Firefox */
-    .chat { scrollbar-width: thin; scrollbar-color: #2a2a2a #101010; }
+    /* Main layout */
+    .main{display:grid;grid-template-columns:clamp(280px,28vw,380px) 1fr;height:calc(100vh - 64px)}
+    .sidebar{border-right:1px solid rgba(255,255,255,.06);background:var(--panel)}
+    .search{padding:10px;border-bottom:1px solid rgba(255,255,255,.06);position:sticky;top:0;z-index:1;background:var(--panel)}
+    .search input{width:100%;background:#0f1216;border:1px solid rgba(255,255,255,.08);color:var(--text);padding:10px 12px;border-radius:10px;outline:none;transition:border .2s, box-shadow .2s}
+    .search input:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.25)}
 
-    .row { display: flex; margin: 6px 0; gap: 8px; align-items: flex-end; }
-    .row.sent { justify-content: flex-end; }
-    .row.received { justify-content: flex-start; }
+    .list{height:100%;overflow:auto}
+    .list::-webkit-scrollbar{width:10px}
+    .list::-webkit-scrollbar-track{background:#0e0f10}
+    .list::-webkit-scrollbar-thumb{background:#232427;border-radius:8px}
+    .list::-webkit-scrollbar-thumb:hover{background:#2e3034}
 
-    .bubble {
-      max-width: min(75vw, 720px);
-      padding: 10px 12px;
-      border-radius: 16px;
-      word-wrap: break-word;
-      word-break: break-word;
-      white-space: pre-wrap;
-      transform: translateY(0);
-      transition: transform 160ms cubic-bezier(.2,.7,.3,1), box-shadow 160ms cubic-bezier(.2,.7,.3,1), opacity 160ms;
-    }
-    .row.sent .bubble {
-      background: linear-gradient(140deg, var(--sent-grad-a), var(--sent-grad-b));
-      color: #fff;
-      box-shadow: 0 6px 22px rgba(59,130,246,0.18);
-      border-top-right-radius: 18px; /* outer corner slightly larger */
-    }
-    .row.received .bubble {
-      background: var(--rcv-bg);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid var(--rcv-border);
-      color: #e8eaed;
-      box-shadow: 0 8px 26px rgba(0,0,0,0.22);
-      border-top-left-radius: 18px;
-    }
-    .row:hover .bubble { transform: translateY(-1px); }
+    .item{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .18s}
+    .item:hover{background:rgba(255,255,255,.04)}
+    .avatar{width:40px;height:40px;border-radius:999px;object-fit:cover;border:2px solid rgba(255,255,255,.08)}
+    .meta{min-width:0}
+    .name{font-weight:600}
+    .preview{font-size:12.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .count{min-width:22px;height:22px;border-radius:9999px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;padding:0 6px}
 
-    .time {
-      margin-top: 6px;
-      font-size: 11px;
-      line-height: 1;
-      color: var(--text-dim);
-      text-align: right;
-      user-select: none;
-    }
-    .row.received .time { text-align: left; }
+    /* Chat window */
+    .chat{display:grid;grid-template-rows:56px 1fr 68px;background:var(--panel-2)}
+    .chat-head{display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.06);background:linear-gradient(180deg,rgba(17,18,20,.9),rgba(17,18,20,.7));backdrop-filter:blur(8px)}
+    .chat-head .title{font-weight:700}
+    .chat-body{position:relative;overflow:auto;padding:16px 16px 20px}
+    .chat-body::-webkit-scrollbar{width:10px}
+    .chat-body::-webkit-scrollbar-track{background:#0e0f10}
+    .chat-body::-webkit-scrollbar-thumb{background:#232427;border-radius:8px}
+    .chat-body::-webkit-scrollbar-thumb:hover{background:#2e3034}
+
+    .day{display:flex;justify-content:center;margin:14px 0}
+    .day span{font-size:12px;color:#cbd5e1;background:var(--sep);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:9999px}
+
+    .row{display:flex;align-items:flex-end;margin:8px 0;gap:8px;position:relative}
+    .row.sent{justify-content:flex-end}
+    .row.rcv{justify-content:flex-start}
+
+    .bubble{max-width:min(60vw,560px);padding:10px 12px;border-radius:16px;word-wrap:break-word;white-space:pre-wrap;transform:translateY(0);transition:transform .16s cubic-bezier(.2,.7,.3,1), box-shadow .16s}
+    .row.sent .bubble{background:linear-gradient(140deg,var(--sent-a),var(--sent-b));color:#fff;box-shadow:0 6px 22px rgba(59,130,246,.18);border-top-right-radius:18px}
+    .row.rcv .bubble{background:var(--rcv-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--rcv-bd);color:#e8eaed;box-shadow:0 8px 26px rgba(0,0,0,.22);border-top-left-radius:18px}
+    .row:hover .bubble{transform:translateY(-1px)}
+
+    /* Timestamp BELOW bubble */
+    .time{font-size:11px;color:var(--text-dim);margin-top:4px;user-select:none}
+    .row.sent .time{text-align:right}
+    .row.rcv .time{text-align:left}
 
     /* Emoji-only messages: bigger, no bubble */
-    .row.emoji-only .bubble {
-      background: transparent !important;
-      border: 0 !important;
-      box-shadow: none !important;
-      padding: 0 !important;
-      font-size: 2.1rem; /* tasteful large */
-      line-height: 1.1;
+    .emoji-only .bubble{background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important}
+    .emoji-only .bubble .txt{font-size:2.2rem;line-height:1.1}
+
+    /* Inline emoji boost */
+    .emoji{display:inline-block;font-variant-emoji:emoji;transform-origin:center;font-size:1.35em;line-height:1;transition:transform .14s cubic-bezier(.2,.7,.3,1)}
+    .emoji:hover{transform:scale(1.1)}
+
+    /* Reaction trigger & dropdown OUTSIDE bubble */
+    .react-trig{opacity:0;width:30px;height:30px;border-radius:999px;display:grid;place-items:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#e6e8ee;cursor:pointer;transition:opacity .15s, background .15s}
+    .react-trig:hover{background:rgba(255,255,255,.14)}
+    .row.sent .react-trig{margin-left:8px}
+    .row.rcv .react-trig{margin-right:8px}
+    .row:hover .react-trig,.react-trig:focus-visible{opacity:1}
+
+    .react-menu{position:absolute;z-index:40;bottom:100%;transform:translateY(-6px);display:none;gap:6px;background:rgba(22,24,27,.98);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:6px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+    .react-menu button{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#e6e8ee;background:transparent;border:0;cursor:pointer;transition:background .15s, transform .15s}
+    .react-menu button:hover{background:rgba(255,255,255,.08);transform:translateY(-1px)}
+
+    /* Composer (optional, for completeness) */
+    .chat-input{display:flex;align-items:center;gap:8px;padding:12px;border-top:1px solid rgba(255,255,255,.06);background:linear-gradient(180deg,rgba(17,18,20,.9),rgba(17,18,20,.7));backdrop-filter:blur(8px)}
+    .chat-input input{flex:1;background:#0f1216;border:1px solid rgba(255,255,255,.08);color:var(--text);padding:12px;border-radius:12px;outline:none}
+    .chat-input button{background:linear-gradient(90deg,#6366f1,#22d3ee);border:0;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer}
+
+    /* Responsive */
+    @media (max-width: 880px){
+      .main{grid-template-columns:100%}
+      .sidebar{display:none}
     }
-
-    /* Inline emoji treatment */
-    .emoji-char {
-      display: inline-block;
-      font-variant-emoji: emoji;
-      transform-origin: center;
-      font-size: 1.35em; /* emojis slightly larger than text */
-      line-height: 1;
-      transition: transform 140ms cubic-bezier(.2,.7,.3,1);
-    }
-    .emoji-char:hover { transform: scale(1.1); }
-
-    /* Reaction button shown on hover */
-    .react-btn {
-      opacity: 0;
-      position: relative;
-      z-index: 2;
-      width: 28px; height: 28px;
-      min-width: 28px;
-      border-radius: 9999px;
-      display: grid; place-items: center;
-      cursor: pointer;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
-      color: #e8eaed;
-      transition: opacity 150ms cubic-bezier(.2,.7,.3,1), transform 150ms cubic-bezier(.2,.7,.3,1), background 150ms;
-    }
-    .react-btn:hover { background: rgba(255,255,255,0.14); }
-
-    .row.sent .react-btn { margin-left: 8px; }
-    .row.received .react-btn { margin-right: 8px; }
-
-    .row:hover .react-btn,
-    .react-btn:focus-visible { opacity: 1; }
-
-    /* Day separator */
-    .day-sep {
-      display: flex; justify-content: center; margin: 14px 0; user-select: none;
-    }
-    .day-sep span {
-      font-size: 12px; color: #c9cdd1;
-      background: var(--pill-bg);
-      border: 1px solid rgba(255,255,255,0.08);
-      padding: 6px 10px; border-radius: 9999px;
-      letter-spacing: .02em;
-    }
-
-    /* Container widths */
-    .row-inner { display: flex; align-items: flex-end; gap: 8px; max-width: 100%; }
-
-    /* Prevent horizontal scroll */
-    .chat { overflow-x: hidden; }
   </style>
 </head>
 <body>
-  <div class="chat-wrap">
-    <div id="chat" class="chat" aria-label="Chat messages" role="list">
-      <!-- Messages will be rendered by JS -->
+  <div class="app" role="application">
+    <!-- Navbar -->
+    <header class="nav" aria-label="Top navigation">
+      <div class="brand">
+        <div class="logo">💬</div>
+        <span>ChatBoard</span>
+      </div>
+      <div class="actions">
+        <div class="icon-wrap" aria-label="Messages" role="button" tabindex="0">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a4 4 0 0 1-4 4H7l-4 4V5a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>
+          </svg>
+          <span id="navBadge" class="badge">0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main -->
+    <div class="main">
+      <!-- Sidebar -->
+      <aside class="sidebar" aria-label="Chat sidebar">
+        <div class="search"><input id="search" placeholder="Search or start new chat" /></div>
+        <div id="userList" class="list" role="list"></div>
+      </aside>
+
+      <!-- Chat Window -->
+      <section class="chat" aria-label="Chat window">
+        <div class="chat-head">
+          <img id="headAvatar" class="avatar" alt="avatar" />
+          <div>
+            <div id="headName" class="title">Select a chat</div>
+            <div class="preview" id="headSub">Messages appear here</div>
+          </div>
+        </div>
+        <div id="chatBody" class="chat-body" role="list"></div>
+        <div class="chat-input">
+          <input id="msgInput" placeholder="Type a message" />
+          <button id="sendBtn">Send</button>
+        </div>
+      </section>
     </div>
   </div>
 
   <script>
-    // --- Utilities ---
-    const EMOJI_REGEX = /\p{Extended_Pictographic}/u; // modern emoji class
-    function wrapEmoji(text) {
-      const out = [];
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (EMOJI_REGEX.test(ch)) {
-          out.push(`<span class="emoji-char" aria-hidden="false">${ch}</span>`);
-        } else {
-          out.push(ch);
-        }
-      }
-      return out.join("");
-    }
-
-    function isEmojiOnly(text) {
-      const stripped = text.trim();
-      if (!stripped) return false;
-      // If every char is emoji or whitespace
-      for (let i = 0; i < stripped.length; i++) {
-        const ch = stripped[i];
-        if (!EMOJI_REGEX.test(ch)) return false;
-      }
-      return true;
-    }
-
-    function pad2(n){ return n < 10 ? '0' + n : '' + n; }
-    function fmtTime(date){ return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`; }
-
-    function dayLabelFor(date){
-      const today = new Date(); today.setHours(0,0,0,0);
-      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const diffDays = Math.round((today - d) / 86400000);
-      if (diffDays === 0) return 'Today';
-      if (diffDays === 1) return 'Yesterday';
-      return date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-    }
-
-    // --- Sample messages (Yesterday + Today) ---
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 86400000);
-
-    const messages = [
-      { id: 'm1', text: 'Hey! 👋', sent: false, ts: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 18, 40).toISOString() },
-      { id: 'm2', text: '😄🎉', sent: false, ts: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 18, 41).toISOString() },
-      { id: 'm3', text: 'Hello! This looks amazing already.', sent: true, ts: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 18, 42).toISOString() },
-
-      { id: 'm4', text: 'Working on the dark UI redesign now.', sent: false, ts: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 2).toISOString() },
-      { id: 'm5', text: 'Perfect — subtle gradients and frosted glass, right?', sent: true, ts: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 3).toISOString() },
-      { id: 'm6', text: 'Exactly. Also hover micro-interactions ✨', sent: false, ts: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 4).toISOString() },
-      { id: 'm7', text: '👍', sent: true, ts: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 5).toISOString() },
+    // Data setup
+    const users = [
+      { id:'u1', name:'Alex', avatar:'https://i.pravatar.cc/80?img=12' },
+      { id:'u2', name:'Priya', avatar:'https://i.pravatar.cc/80?img=32' },
+      { id:'u3', name:'Ravi', avatar:'https://i.pravatar.cc/80?img=56' },
     ];
 
-    // --- Render ---
-    const chatEl = document.getElementById('chat');
+    const chats = {
+      u1:[
+        { id:'m1', text:'Hey! 👋', ts: Date.now()-86400000+1000*60*60*18+1000*60*40, sent:false },
+        { id:'m2', text:'😄🎉', ts: Date.now()-86400000+1000*60*60*18+1000*60*41, sent:false },
+        { id:'m3', text:'Hello Alex! How are you today?', ts: Date.now()-86400000+1000*60*60*18+1000*60*42, sent:true },
+        { id:'m4', text:'Doing great! Working on the dark UI redesign now.', ts: Date.now()-1000*60*60*3, sent:false },
+      ],
+      u2:[ { id:'p1', text:'Morning ☕', ts: Date.now()-1000*60*60*1, sent:false } ],
+      u3:[ { id:'r1', text:'👍', ts: Date.now()-1000*60*30, sent:true } ],
+    };
 
-    function render() {
-      chatEl.innerHTML = '';
-      let lastDay = '';
-      messages
-        .slice()
-        .sort((a, b) => new Date(a.ts) - new Date(b.ts))
-        .forEach((msg) => {
-          const d = new Date(msg.ts);
-          const label = dayLabelFor(d);
-          if (label !== lastDay) {
-            const sep = document.createElement('div');
-            sep.className = 'day-sep';
-            sep.innerHTML = `<span>${label}</span>`;
-            chatEl.appendChild(sep);
-            lastDay = label;
-          }
+    const unread = { u1: 2, u2: 1, u3: 0 };
 
-          const row = document.createElement('div');
-          const emojiOnly = isEmojiOnly(msg.text);
-          row.className = `row ${msg.sent ? 'sent' : 'received'}${emojiOnly ? ' emoji-only' : ''}`;
-          row.setAttribute('role', 'listitem');
+    // DOM refs
+    const userList = document.getElementById('userList');
+    const chatBody = document.getElementById('chatBody');
+    const headName = document.getElementById('headName');
+    const headSub = document.getElementById('headSub');
+    const headAvatar = document.getElementById('headAvatar');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const navBadge = document.getElementById('navBadge');
 
-          const inner = document.createElement('div');
-          inner.className = 'row-inner';
+    let activeId = null;
 
-          // For received, reaction button goes before bubble; for sent, after
-          if (!msg.sent) inner.appendChild(makeReactButton(msg.id));
+    // Utils
+    const EMOJI = /\p{Extended_Pictographic}/u;
+    function fmtTime(ms){ const d=new Date(ms);const p=n=>n<10?'0'+n:''+n;return `${p(d.getHours())}:${p(d.getMinutes())}`; }
+    function dayLabel(ms){ const d=new Date(ms); const t=new Date(); t.setHours(0,0,0,0); const only=new Date(d.getFullYear(),d.getMonth(),d.getDate()); const diff=Math.round((t-only)/86400000); if(diff===0)return 'Today'; if(diff===1)return 'Yesterday'; return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'}); }
+    function emojiWrap(text){ let out=''; for(let i=0;i<text.length;i++){ const ch=text[i]; out += EMOJI.test(ch)?`<span class="emoji">${ch}</span>`:ch; } return out; }
+    function isEmojiOnly(t){ const s=t.trim(); if(!s) return false; for(let i=0;i<s.length;i++){ if(!EMOJI.test(s[i])) return false; } return true; }
 
-          const bubble = document.createElement('div');
-          bubble.className = 'bubble';
-          const safe = document.createElement('div');
-          safe.className = 'txt';
-          safe.innerHTML = wrapEmoji(msg.text);
-          bubble.appendChild(safe);
+    function totalUnread(){ return Object.values(unread).reduce((a,b)=>a+b,0); }
 
-          // Timestamp
-          const time = document.createElement('div');
-          time.className = 'time';
-          time.textContent = fmtTime(d);
-          bubble.appendChild(time);
-
-          inner.appendChild(bubble);
-          if (msg.sent) inner.appendChild(makeReactButton(msg.id));
-
-          row.appendChild(inner);
-          chatEl.appendChild(row);
-        });
-
-      // Scroll to bottom
-      chatEl.scrollTop = chatEl.scrollHeight;
-    }
-
-    function makeReactButton(id) {
-      const btn = document.createElement('button');
-      btn.className = 'react-btn';
-      btn.type = 'button';
-      btn.title = 'React';
-      btn.setAttribute('aria-label', 'Add reaction');
-      btn.textContent = '😊';
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        console.log('reaction clicked', { messageId: id });
+    // Render sidebar
+    function renderUsers(filter=''){
+      userList.innerHTML='';
+      const q = filter.trim().toLowerCase();
+      users.filter(u=>!q || u.name.toLowerCase().includes(q)).forEach(u=>{
+        const li=document.createElement('div'); li.className='item'; li.setAttribute('role','listitem');
+        const img=document.createElement('img'); img.className='avatar'; img.src=u.avatar; img.alt=u.name;
+        const meta=document.createElement('div'); meta.className='meta';
+        const name=document.createElement('div'); name.className='name'; name.textContent=u.name;
+        const prev=document.createElement('div'); prev.className='preview';
+        const last=(chats[u.id]||[]).slice(-1)[0]; prev.textContent= last? (last.text.length>36? last.text.slice(0,36)+'…' : last.text): '';
+        meta.appendChild(name); meta.appendChild(prev);
+        const right=document.createElement('div');
+        const c=unread[u.id]||0; if(c>0){ const badge=document.createElement('div'); badge.className='count'; badge.textContent=c>999?'999+':c; right.appendChild(badge); }
+        li.appendChild(img); li.appendChild(meta); li.appendChild(right);
+        li.addEventListener('click',()=>openChat(u.id));
+        userList.appendChild(li);
       });
-      return btn;
+      navBadge.textContent=totalUnread();
     }
 
-    render();
+    // Open chat
+    function openChat(id){
+      activeId=id; unread[id]=0; navBadge.textContent=totalUnread();
+      const u=users.find(x=>x.id===id);
+      headName.textContent=u.name; headSub.textContent='online'; headAvatar.src=u.avatar; renderChat();
+    }
+
+    // Reaction dropdown controls map
+    let openMenuFor = null;
+
+    function renderChat(){
+      chatBody.innerHTML=''; if(!activeId){ return; }
+      const msgs=(chats[activeId]||[]).slice().sort((a,b)=>a.ts-b.ts);
+      let lastLabel='';
+      msgs.forEach(m=>{
+        const lbl=dayLabel(m.ts); if(lbl!==lastLabel){ const s=document.createElement('div'); s.className='day'; s.innerHTML=`<span>${lbl}</span>`; chatBody.appendChild(s); lastLabel=lbl; }
+        const row=document.createElement('div'); row.className=`row ${m.sent?'sent':'rcv'} ${isEmojiOnly(m.text)?'emoji-only':''}`; row.setAttribute('data-id',m.id);
+
+        if(!m.sent){ row.appendChild(makeReactTrig(m.id)); }
+
+        const bubble=document.createElement('div'); bubble.className='bubble';
+        const txt=document.createElement('div'); txt.className='txt'; txt.innerHTML=emojiWrap(m.text);
+        bubble.appendChild(txt);
+        row.appendChild(bubble);
+
+        if(m.sent){ row.appendChild(makeReactTrig(m.id)); }
+
+        // Reaction dropdown (outside bubble, in front)
+        const menu=document.createElement('div'); menu.className='react-menu'; menu.setAttribute('role','menu');
+        "👍 ❤️ 😂 😮 😢 😡".split(' ').forEach(em=>{ const b=document.createElement('button'); b.type='button'; b.setAttribute('role','menuitem'); b.textContent=em; b.addEventListener('click',()=>{ console.log('react', m.id, em); closeMenu(); }); menu.appendChild(b); });
+        row.appendChild(menu);
+
+        // Timestamp BELOW bubble
+        const t=document.createElement('div'); t.className='time'; t.textContent=fmtTime(m.ts); row.appendChild(t);
+
+        // Hover logic to position menu centrally near bubble
+        row.addEventListener('mouseenter', ()=>{ /* reveal handled by CSS for trigger */ });
+
+        chatBody.appendChild(row);
+      });
+      chatBody.scrollTop=chatBody.scrollHeight;
+    }
+
+    function makeReactTrig(mid){
+      const b=document.createElement('button'); b.className='react-trig'; b.type='button'; b.title='React'; b.textContent='😊';
+      b.addEventListener('click', (e)=>{ e.stopPropagation(); toggleMenu(mid, b); });
+      return b;
+    }
+
+    function toggleMenu(mid, anchor){
+      const row=anchor.closest('.row'); const menu=row.querySelector('.react-menu');
+      if(openMenuFor && openMenuFor!==menu){ openMenuFor.style.display='none'; }
+      if(menu.style.display==='flex'){ menu.style.display='none'; openMenuFor=null; return; }
+      // position menu toward the bubble side
+      const sent=row.classList.contains('sent');
+      menu.style.display='flex'; menu.style.bottom='100%'; menu.style.left= sent? 'auto' : '8px'; menu.style.right= sent? '8px' : 'auto';
+      openMenuFor=menu;
+      const onDoc=(ev)=>{ if(!menu.contains(ev.target) && ev.target!==anchor){ menu.style.display='none'; document.removeEventListener('click', onDoc); openMenuFor=null; } };
+      setTimeout(()=>document.addEventListener('click', onDoc),0);
+    }
+
+    function closeMenu(){ if(openMenuFor){ openMenuFor.style.display='none'; openMenuFor=null; } }
+
+    // Send message
+    sendBtn.addEventListener('click', ()=>{ const v=msgInput.value.trim(); if(!v || !activeId) return; chats[activeId]=chats[activeId]||[]; chats[activeId].push({ id:'s'+Date.now(), text:v, ts:Date.now(), sent:true }); msgInput.value=''; renderChat(); renderUsers(document.getElementById('search').value); });
+    msgInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ sendBtn.click(); } });
+
+    // Random incoming simulation (5–10s)
+    setInterval(()=>{
+      const targets = users.map(u=>u.id).filter(id=>id!==activeId);
+      const id = targets[Math.floor(Math.random()*targets.length)] || users[0].id;
+      const samples = ['New update available','How are you?','Meet at 5?','Check this out 😄','🎉','On my way','👍'];
+      const text = samples[Math.floor(Math.random()*samples.length)];
+      chats[id]=chats[id]||[]; chats[id].push({ id:'r'+Date.now(), text, ts:Date.now(), sent:false });
+      // Update unread if not active
+      if(id!==activeId || document.visibilityState==='hidden') unread[id]=(unread[id]||0)+1;
+      renderUsers(document.getElementById('search').value);
+      if(id===activeId && document.visibilityState==='visible'){ renderChat(); }
+    }, Math.floor(Math.random()*5000)+5000);
+
+    document.getElementById('search').addEventListener('input', (e)=> renderUsers(e.target.value));
+
+    // Initial paint
+    renderUsers();
+    // Open first chat by default
+    openChat(users[0].id);
   </script>
 </body>
 </html>
