@@ -155,7 +155,8 @@ function App() {
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </main>
-            <Footer />
+            {/* Render Footer on all routes except /messages */}
+            {window.location.pathname !== "/messages" && <Footer />}
             <Chatbot />
           </div>
         </Router>

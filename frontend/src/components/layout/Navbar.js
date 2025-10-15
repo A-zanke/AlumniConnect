@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -21,6 +21,8 @@ import NotificationBell from "../NotificationBell";
 import { getAvatarUrl } from "../utils/helpers";
 
 const Navbar = () => {
+  const navRef = useRef(null);
+  const [navHeight, setNavHeight] = useState(80);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,8 +34,20 @@ const Navbar = () => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
     };
+    const handleResize = () => {
+      if (navRef.current) {
+        const h = Math.max(1, Math.round(navRef.current.getBoundingClientRect().height));
+        setNavHeight(h);
+        document.documentElement.style.setProperty("--navbar-height", `${h}px`);
+      }
+    };
+    handleResize();
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   const toggleMenu = () => setIsOpen(!isOpen);
@@ -73,7 +87,9 @@ const Navbar = () => {
 
   return (
     <motion.nav
+      ref={navRef}
       className="relative z-50 transition-all duration-500 backdrop-blur-md bg-transparent"
+      style={{ ['--navbar-height']: `${navHeight}px` }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ type: "spring", stiffness: 200, damping: 20 }}

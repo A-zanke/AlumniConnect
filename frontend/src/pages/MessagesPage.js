@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../context/AuthContext";
 import Spinner from "../components/ui/Spinner";
 import { toast } from "react-toastify";
@@ -12,42 +13,59 @@ import {
   FiSmile,
   FiMoreVertical,
   FiSearch,
-  FiVideo,
-  FiPhone,
   FiArrowLeft,
   FiCornerUpLeft,
   FiTrash2,
   FiFlag,
-  FiUserX,
   FiX,
-  FiCheck,
+  FiChevronDown,
+  FiStar,
+  FiInfo,
+  FiCopy,
+  FiShare2,
+  FiCheckSquare,
 } from "react-icons/fi";
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Custom CSS for better scrolling
+// Custom CSS for route-scoped shell and dark theme visuals
 const customScrollbarStyles = `
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-  }
-  .message-bubble {
-    word-wrap: break-word;
-    word-break: break-word;
-  }
-  .custom-scrollbar {
-    scroll-behavior: smooth;
-  }
+  :root { --navbar-height: var(--navbar-height, 80px); }
+  .chat-shell { height: calc(100vh - var(--navbar-height)); width: 100vw; overflow: hidden; }
+  .no-h-scroll { overflow-x: hidden; }
+  .pane-left { width: clamp(280px, 28vw, 380px); }
+  .pane-right { min-width: 0; }
+  .sticky-head { position: sticky; top: 0; z-index: 20; }
+  .sticky-compose { position: sticky; bottom: 0; z-index: 20; }
+  .z-navbar { z-index: 50; }
+  .z-popover { z-index: 40; }
+  .z-over { z-index: 30; }
+  .z-under { z-index: 10; }
+  .bubble { position: relative; border-radius: 16px; padding: 10px 12px; }
+  .bubble-sent { background: linear-gradient(140deg, #2563eb 0%, #7c3aed 100%); color: white; box-shadow: 0 6px 24px rgba(37, 99, 235, 0.18); }
+  .bubble-received { background: rgba(255,255,255,0.06); color: #e6e8ee; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 24px rgba(0,0,0,0.2); }
+  .bubble:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
+  .bubble time { position: absolute; bottom: 6px; font-size: 11px; line-height: 1; opacity: 0.7; letter-spacing: 0.01em; }
+  .bubble .message-content { font-size: 15px; line-height: 1.5; font-weight: 500; }
+  .message-content { white-space: pre-wrap; word-break: break-word; }
+  .emoji-char { display: inline-block; font-variant-emoji: emoji; transform-origin: center; font-size: 1.35em; line-height: 1; }
+  .emoji-char:hover { transform: scale(1.1); transition: transform 150ms cubic-bezier(.2,.7,.3,1.0); }
+  .caret-trigger { opacity: 0; transition: opacity 140ms cubic-bezier(.2,.7,.3,1.0), transform 140ms cubic-bezier(.2,.7,.3,1.0); transform: translateY(-2px); }
+  .bubble:hover + .caret-trigger, .caret-trigger:focus-visible, .bubble:focus-within + .caret-trigger { opacity: 1; transform: translateY(0); }
+  .caret-button { width: 32px; height: 32px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #e6e8ee; }
+  .caret-button:hover { background: rgba(255,255,255,0.14); }
+  .quick-menu { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+  .quick-item { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: #e6e8ee; }
+  .quick-item:hover { background: rgba(255,255,255,0.08); }
+  .full-menu { position: fixed; min-width: 220px; background: rgba(24,25,29,0.98); color: #e6e8ee; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+  .menu-item { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; }
+  .menu-item:hover, .menu-item[aria-selected="true"] { background: rgba(255,255,255,0.08); }
+  .media-img { border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-width: min(60vw, 420px); height: auto; }
+  .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.06); border-radius: 3px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
+  .custom-scrollbar { scroll-behavior: smooth; }
 `;
 
 const MessagesPage = () => {
@@ -93,6 +111,12 @@ const MessagesPage = () => {
   const emojiAreaRef = useRef(null);
   const [forwardSource, setForwardSource] = useState(null); // message to forward
   const [showForwardDialog, setShowForwardDialog] = useState(false);
+
+  // Accessible full menu portal state
+  const [menuPortal, setMenuPortal] = useState({ open: false, x: 0, y: 0, items: [], messageId: null, focusIndex: 0 });
+
+  // Hover quick menu state (per-bubble)
+  const [hoverQuickFor, setHoverQuickFor] = useState(null);
 
   // Load conversations + merge with connections (for names/avatars/presence)
   useEffect(() => {
@@ -308,7 +332,7 @@ const MessagesPage = () => {
 
   // Remove theme toggle per request (keep class intact)
 
-  // Global click-outside listeners for menus
+  // Global click-outside & key listeners for menus
   useEffect(() => {
     const handler = (e) => {
       // Close message dropdown on any outside click; menu stops propagation
@@ -322,10 +346,37 @@ const MessagesPage = () => {
       // Close emoji picker only when clicking outside the emoji area
       const clickedInsideEmojiArea = emojiAreaRef.current && emojiAreaRef.current.contains(e.target);
       if (!clickedInsideEmojiArea && showEmojiPicker) setShowEmojiPicker(false);
+      if (menuPortal.open) setMenuPortal((s) => ({ ...s, open: false }));
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (menuPortal.open) setMenuPortal((s) => ({ ...s, open: false }));
+        setOpenHeaderMenu(false);
+        setActiveReactionFor(null);
+      }
+      if (menuPortal.open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        setMenuPortal((s) => {
+          const len = (s.items || []).length;
+          const next = e.key === "ArrowDown" ? (s.focusIndex + 1) % len : (s.focusIndex - 1 + len) % len;
+          return { ...s, focusIndex: next };
+        });
+      }
+      if (menuPortal.open && e.key === "Enter") {
+        const item = menuPortal.items[menuPortal.focusIndex];
+        if (item && typeof item.onSelect === 'function') {
+          item.onSelect();
+          setMenuPortal((s) => ({ ...s, open: false }));
+        }
+      }
     };
     document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [showEmojiPicker, openMessageMenuFor]);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", handler);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showEmojiPicker, openMessageMenuFor, menuPortal.open]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -513,19 +564,41 @@ const MessagesPage = () => {
   const findMessageById = (id) => messages.find((m) => String(m.id) === String(id));
 
   const renderHighlighted = (text) => {
-    if (!chatSearchQuery) return text;
+    if (!chatSearchQuery) return [text];
     try {
       const parts = text.split(new RegExp(`(${chatSearchQuery.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")})`, "ig"));
       return parts.map((part, i) =>
         part.toLowerCase() === chatSearchQuery.toLowerCase() ? (
-          <mark key={i} className="bg-yellow-200 rounded px-0.5">{part}</mark>
+          <mark key={`mk-${i}`} className="bg-yellow-300/20 text-yellow-200 rounded px-0.5">{part}</mark>
         ) : (
-          <span key={i}>{part}</span>
+          <span key={`tx-${i}`}>{part}</span>
         )
       );
     } catch {
-      return text;
+      return [text];
     }
+  };
+
+  const EMOJI_REGEX = /\p{Extended_Pictographic}/u;
+  const renderMessageContent = (text) => {
+    const highlighted = renderHighlighted(text);
+    const wrapEmoji = (node, idxBase) => {
+      if (typeof node !== "string") return node;
+      const out = [];
+      let buf = "";
+      for (let i = 0; i < node.length; i++) {
+        const ch = node[i];
+        if (EMOJI_REGEX.test(ch)) {
+          if (buf) { out.push(<span key={`t-${idxBase}-${i}`}>{buf}</span>); buf = ""; }
+          out.push(<span key={`e-${idxBase}-${i}`} className="emoji-char select-none" aria-hidden="false">{ch}</span>);
+        } else {
+          buf += ch;
+        }
+      }
+      if (buf) out.push(<span key={`t-end-${idxBase}`}>{buf}</span>);
+      return out;
+    };
+    return highlighted.flatMap((n, i) => wrapEmoji(n, i));
   };
 
   // Format last seen time
@@ -574,629 +647,322 @@ const MessagesPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="no-h-scroll bg-[#0b0f15] text-slate-100">
       <style>{customScrollbarStyles}</style>
-      <div className="container mx-auto px-4 py-0">
-        <div className="bg-white rounded-none shadow-none overflow-hidden border-0">
-          {/* Full-height grid directly under navbar, centered and constrained to viewport width */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)] max-w-screen-xl mx-auto">
-            {/* Contacts Sidebar */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className={`${showSidebar ? "flex" : "hidden"} lg:flex bg-gradient-to-b from-gray-50 to-gray-100 border-r border-gray-200 flex-col`}
-            >
-              {/* Search Header */}
-              <div className="p-6 border-b border-gray-200">
-                <div className="relative">
-                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search conversations..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  />
+      <div className="chat-shell">
+        <div className="w-screen h-full flex">
+          {/* Left Pane */}
+          <motion.aside
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            className={`${showSidebar ? "flex" : "hidden"} lg:flex pane-left flex-col border-r border-white/10 bg-[#0d1117]`}
+          >
+            {/* Sticky search */}
+            <div className="sticky-head px-4 py-3 bg-[#0d1117]/95 backdrop-blur border-b border-white/10">
+              <div className="relative">
+                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search conversations"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent outline-none"
+                />
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {connections.length === 0 ? (
+                <div className="p-6 text-center text-slate-400">
+                  <div className="text-6xl mb-3">💬</div>
+                  <p className="text-base font-medium">No connections yet</p>
+                  <p className="text-xs mt-1">Connect with people to start conversations</p>
                 </div>
-              </div>
-
-              {/* Connections List */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {connections.length === 0 ? (
-                  <div className="p-6 text-center text-gray-500">
-                    <div className="text-6xl mb-4">💬</div>
-                    <p className="text-lg font-medium">No connections yet</p>
-                    <p className="text-sm mt-2">
-                      Connect with people to start conversations
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-2">
-                    {connections
-                      .filter(
-                        (conn) =>
-                          (conn.user?.name || "")
-                            .toLowerCase()
-                            .includes(searchQuery.toLowerCase()) ||
-                          (conn.user?.username || "")
-                            .toLowerCase()
-                            .includes(searchQuery.toLowerCase())
-                      )
-                      .map((connection, index) => (
-                        <motion.div
-                          key={connection._id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.1 }}
-                          onClick={() => {
-                            setSelectedUser(connection.user);
-                            setShowSidebar(false);
-                          }}
-                          className={`cursor-pointer p-4 rounded-2xl m-2 transition-all.duration-200 ${
-                            selectedUser?._id === connection.user?._id
-                              ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105"
-                              : "hover:bg-white hover:shadow-md hover:scale-105"
-                          }`}
-                        >
-                          <div className="flex items-center">
-                            <div className="relative">
-                              <img
-                                src={connection.user?.avatarUrl ? getAvatarUrl(connection.user.avatarUrl) : "/default-avatar.png"}
-                                alt={connection.user?.name}
-                                className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
-                              />
-                              {connection.user?.isOnline && (
-                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
-                              )}
-                            </div>
-                            <div className="ml-4 flex-1 min-w-0">
-                              <p
-                                className={`text-sm font-semibold truncate ${
-                                  selectedUser?._id === connection.user?._id
-                                    ? "text-white"
-                                    : "text-gray-900"
-                                }`}
-                              >
-                                {connection.user?.name}
-                              </p>
-                              <p
-                                className={`text-xs truncate ${
-                                  selectedUser?._id === connection.user?._id
-                                    ? "text-blue-100"
-                                    : "text-gray-500"
-                                }`}
-                              >
-                                @{connection.user?.username}
-                              </p>
-                              <p className={`text-xs mt-1 truncate ${selectedUser?._id === connection.user?._id ? "text-blue-100" : "text-gray-500"}`}>
-                                {connection.lastMessage || ""}
-                              </p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-
-            {/* Chat Area */}
-            <div className={`${showSidebar ? "hidden" : "flex"} lg:flex lg:col-span-2 flex-col h-full`}
-                 style={{minHeight: 'calc(100vh - 6rem)'}}>
-              {selectedUser ? (
-                <>
-                  {/* Chat Header */}
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        {/* Mobile back */}
-                        <button
-                          className="mr-3 lg:hidden p-2 rounded-full hover:bg-white/60"
-                          onClick={() => setShowSidebar(true)}
-                        >
-                          <FiArrowLeft />
-                        </button>
-                        <div className="relative">
-                          {selectedUser.avatarUrl ? (
-                            <img
-                              src={
-                                selectedUser.avatarUrl
-                                  ? getAvatarUrl(selectedUser.avatarUrl)
-                                  : "/default-avatar.png"
-                              }
-                              alt={selectedUser.name}
-                              className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
-                            />
-                          ) : (
-                            <img
-                              src="/default-avatar.png"
-                              alt={selectedUser.name}
-                              className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-md"
-                            />
+              ) : (
+                <div className="py-2">
+                  {connections
+                    .filter(
+                      (conn) =>
+                        (conn.user?.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (conn.user?.username || "").toLowerCase().includes(searchQuery.toLowerCase())
+                    )
+                    .map((connection, index) => (
+                      <motion.button
+                        key={connection._id}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(index * 0.03, 0.3) }}
+                        onClick={() => { setSelectedUser(connection.user); setShowSidebar(false); }}
+                        className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors ${selectedUser?._id === connection.user?._id ? 'bg-indigo-600/20' : ''}`}
+                      >
+                        <div className="relative shrink-0">
+                          <img src={connection.user?.avatarUrl ? getAvatarUrl(connection.user.avatarUrl) : "/default-avatar.png"} alt={connection.user?.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10" />
+                          {connection.user?.isOnline && (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#0d1117] rounded-full" />
                           )}
                         </div>
-
-                        <div className="ml-4">
-                          <p className="text-lg font-semibold text-gray-900">
-                            {selectedUser.name}
-                          </p>
-                          <p className="text-sm text-gray-500">
-            {((presenceData[selectedUser._id]?.isOnline) ?? (selectedUser.isOnline))
-                              ? "Online"
-                              : `Last seen ${formatLastSeen(
-                                  (presenceData[selectedUser._id]?.lastSeen) ?? (selectedUser.lastSeen)
-                                )}`}
-                          </p>
-                          {isTyping && typingUser && (
-                            <div className="text-sm text-blue-500 italic flex items-center gap-1">
-                              <span className="inline-flex gap-1">
-                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></span>
-                              </span>
-                              typing
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {/* Right panel toggle removed per request */}
-                        {/* Chat search */}
-                        <div className="hidden md:flex items-center relative mr-2">
-                          <FiSearch className="absolute left-3 text-gray-400" />
-                          <input
-                            value={chatSearchQuery}
-                            onChange={(e) => setChatSearchQuery(e.target.value)}
-                            placeholder="Search in chat"
-                            className="pl-9 pr-3 py-2 rounded-xl border bg-white focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="relative" ref={headerMenuRef}>
-                          <button
-                            onClick={() => setOpenHeaderMenu((v) => !v)}
-                            className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
-                          >
-                            <FiMoreVertical className="text-gray-600" />
-                          </button>
-                          {openHeaderMenu && (
-                            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#1e1e1e] border shadow-xl rounded-xl z-20">
-                              <button
-                                onClick={() => setSelectionMode((v) => !v)}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
-                              >
-                                {selectionMode ? "Cancel selection" : "Select messages"}
-                              </button>
-                              <button
-                                onClick={() => handleBlockToggle(true)}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
-                              >
-                                Block user
-                              </button>
-                              <button
-                                onClick={handleReport}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50"
-                              >
-                                Report user
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-
-                  {/* Messages */}
-                  <div
-                    ref={messageContainerRef}
-                    className="flex-1 p-6 overflow-y-auto bg-gradient-to-b from-white to-gray-50 custom-scrollbar min-h-0"
-                  >
-                    {messages.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-gray-500">
-                        <div className="text-6xl mb-4">💭</div>
-                        <p className="text-xl font-medium">
-                          Start the conversation
-                        </p>
-                        <p className="text-sm mt-2">
-                          Send a message to begin chatting with{" "}
-                          {selectedUser.name}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <AnimatePresence>
-                          {messages.map((message, index) => (
-                            <motion.div
-                              key={message.id || index}
-                              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                              transition={{ duration: 0.3 }}
-                              className={`flex ${
-                                message.senderId === user._id
-                                  ? "justify-end"
-                                  : "justify-start"
-                              }`}
-                            >
-                              <div
-                                className={`max-w-[70%] ${
-                                  message.senderId === user._id
-                                    ? "order-2"
-                                    : "order-1"
-                                }`}
-                              >
-                                <div
-                                  className={`rounded-3xl px-6 py-4 shadow-lg message-bubble smooth-transition ${
-                                    message.senderId === user._id
-                                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white"
-                                      : "bg-white text-gray-800 border border-gray-200"
-                                  }`}
-                                >
-                                  {/* Selection checkbox */}
-                                  {selectionMode && (
-                                    <div className={`mb-2 ${message.senderId === user._id ? "text-blue-100" : "text-gray-400"}`}>
-                                      <label className="inline-flex items-center gap-2 text-xs">
-                                        <input
-                                          type="checkbox"
-                                          className="accent-blue-600"
-                                          checked={selectedMessageIds.has(message.id)}
-                                          onChange={() => toggleMessageSelection(message.id)}
-                                        />
-                                        Select
-                                      </label>
-                                    </div>
-                                  )}
-
-                                  {/* Reply preview within bubble */}
-                                  {message.replyTo?.id && (
-                                    <div className={`mb-2 p-2 rounded-xl ${message.senderId === user._id ? "bg-white/10" : "bg-gray-100"}`}>
-                                      <div className="text-xs opacity-70 mb-1">Replying to</div>
-                                      <div className="text-xs line-clamp-2">
-                                        {findMessageById(message.replyTo.id)?.content || "Media"}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {message.content && (
-                                    <p className="text-sm leading-relaxed">
-                                      {renderHighlighted(message.content)}
-                                    </p>
-                                  )}
-                                  {message.attachments &&
-                                    message.attachments.length > 0 && (
-                                      <div className="mt-2 space-y-2">
-                                        {message.attachments.map(
-                                          (attachment, idx) =>
-                                            attachment.startsWith("/forum/") ? (
-                                              <a
-                                                key={idx}
-                                                href={attachment}
-                                                onClick={(e) => {
-                                                  e.preventDefault();
-                                                  window.location.href =
-                                                    attachment;
-                                                }}
-                                                className="block p-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors"
-                                              >
-                                                <div className="text-sm font-semibold text-blue-800">
-                                                  Forum Post
-                                                </div>
-                                                <div className="text-xs text-blue-700 opacity-80">
-                                                  Tap to open the original post
-                                                </div>
-                                              </a>
-                                            ) : (
-                                              <img
-                                                key={idx}
-                                                src={attachment}
-                                                alt="Message attachment"
-                                                onClick={() => setLightboxSrc(attachment)}
-                                                className="max-w-full h-auto rounded-2xl shadow-md cursor-zoom-in hover:opacity-90 transition"
-                                              />
-                                            )
-                                        )}
-                                      </div>
-                                    )}
-                                  {/* Reactions (stick to bottom-right) */}
-                                  <div className={`mt-2 flex items-end ${message.senderId === user._id ? "justify-end" : "justify-start"}`}>
-                                    <div className="relative" ref={reactionMenuRef}>
-                                      <div className="flex items-center gap-2 text-xs opacity-80 ${message.senderId === user._id ? 'justify-end' : 'justify-start'}">
-                                        {message.reactions && message.reactions.length > 0 && (
-                                          <div className="inline-flex bg-black/5 dark:bg-white/10 rounded-full px-2 py-0.5">
-                                            {message.reactions.map((r, i) => (
-                                              <span key={i} className="mr-1 select-none">
-                                                {r.emoji}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                        <button
-                                          className="text-xs opacity-60 hover:opacity-100"
-                                          onClick={() => setActiveReactionFor((v) => (v === message.id ? null : message.id))}
-                                          title="Add reaction"
-                                        >
-                                          😀
-                                        </button>
-                                        <button
-                                          title="Reply"
-                                          onClick={() => setReplyTo({ id: message.id })}
-                                          className="text-xs opacity-60 hover:opacity-100"
-                                        >
-                                          <FiCornerUpLeft />
-                                        </button>
-                                        <div className="relative inline-block" ref={messageMenuRef}>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setOpenMessageMenuFor((id) => (id === message.id ? null : message.id));
-                                            }}
-                                            className="text-xs opacity-60 hover:opacity-100"
-                                            title="More"
-                                          >
-                                            ···
-                                          </button>
-                                          {openMessageMenuFor === message.id && (
-                                            <motion.div
-                                              initial={{ opacity: 0, scale: 0.98, y: 6 }}
-                                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                                              exit={{ opacity: 0, scale: 0.98, y: 6 }}
-                                              className={`absolute ${message.senderId === user._id ? 'right-0' : 'left-0'} mt-2 w-48 bg-white dark:bg-[#1e1e1e] border shadow-xl rounded-xl z-20 overflow-hidden`}
-                                            >
-                                              <button onClick={() => { setActiveReactionFor(message.id); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">React</button>
-                                              <button onClick={() => { setReplyTo({ id: message.id }); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Reply</button>
-                                              <button onClick={() => { navigator.clipboard.writeText(message.content || ''); toast.success('Message copied'); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Copy</button>
-                                              <button onClick={() => { setForwardSource(message); setShowForwardDialog(true); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Forward</button>
-                                              <button onClick={() => { handleDeleteSingle(message.id, 'me'); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50">Delete for me</button>
-                                              {message.senderId === user._id && (
-                                                <button onClick={() => { handleDeleteSingle(message.id, 'everyone'); setOpenMessageMenuFor(null); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-600">Delete for everyone</button>
-                                              )}
-                                            </motion.div>
-                                          )}
-                                        </div>
-                                      </div>
-                                      {activeReactionFor === message.id && (
-                                        <div className="absolute -top-12 right-0 bg-white dark:bg-[#1e1e1e] border rounded-xl shadow-lg px-2 py-1 flex gap-2 z-30">
-                                          {"👍❤️😂😮😢😡".split("").map((emo, i) => (
-                                            <button
-                                              key={i}
-                                              onClick={() => {
-                                                // toggle reaction: if already mine with same emoji, remove
-                                                const mine = (message.reactions || []).find((r) => String(r.userId) === String(user._id));
-                                                const emoji = mine && mine.emoji === emo ? "" : emo;
-                                                handleReact(message.id, emoji);
-                                                setActiveReactionFor(null);
-                                              }}
-                                              className="hover:scale-110 transition"
-                                            >
-                                              {emo}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <p
-                                    className={`text-xs mt-2 ${
-                                      message.senderId === user._id
-                                        ? "text-blue-100"
-                                        : "text-gray-500"
-                                    }`}
-                                  >
-                                    {new Date(
-                                      message.timestamp
-                                    ).toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </p>
-                                </div>
-                                {/* No extra under-bubble actions per prompt; managed via menu */}
-                              </div>
-                            </motion.div>
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right panel (Media/Links/Docs) - removed per request */}
-                  {false && (
-                    <div className="border-t border-gray-200 bg-white dark:bg-[#121212] p-3">
-                      <div className="flex items-center gap-3 mb-3">
-                        <button className={`px-3 py-1 rounded-xl ${rightPanelTab==='media'?'bg-blue-600 text-white':'bg-gray-100'}`} onClick={()=>setRightPanelTab('media')}>Media</button>
-                        <button className={`px-3 py-1 rounded-xl ${rightPanelTab==='links'?'bg-blue-600 text-white':'bg-gray-100'}`} onClick={()=>setRightPanelTab('links')}>Links</button>
-                        <button className={`px-3 py-1 rounded-xl ${rightPanelTab==='docs'?'bg-blue-600 text-white':'bg-gray-100'}`} onClick={()=>setRightPanelTab('docs')}>Docs</button>
-                      </div>
-                      <div className="max-h-56 overflow-y-auto custom-scrollbar">
-                        {rightPanelTab==='media' && (
-                          <div className="grid grid-cols-3 gap-2">
-                            {sharedMedia.length === 0 ? <div className="text-sm text-gray-500">No media yet</div> : sharedMedia.map((src, i)=> (
-                              <img key={i} src={src} alt="m" onClick={()=>setLightboxSrc(src)} className="w-full h-24 object-cover rounded-lg shadow" />
-                            ))}
-                          </div>
-                        )}
-                        {rightPanelTab==='links' && (
-                          <div className="space-y-2">
-                            {messages.filter(m=>/https?:\/\//i.test(m.content||'')).map((m,i)=>{
-                              const links = (m.content.match(/https?:[^\s]+/g)||[]);
-                              return links.map((lnk, idx)=> (
-                                <a key={`${i}-${idx}`} href={lnk} target="_blank" rel="noreferrer" className="block p-2 rounded-lg bg-gray-50 hover:bg-gray-100 truncate">{lnk}</a>
-                              ));
-                            })}
-                          </div>
-                        )}
-                        {rightPanelTab==='docs' && (
-                          <div className="space-y-2">
-                            {messages.flatMap(m=> (m.attachments||[]).filter(a=>/\.(pdf|docx?|pptx?)$/i.test(a)).map((doc)=>({id:m.id, doc}))).length===0 ? (
-                              <div className="text-sm text-gray-500">No documents</div>
-                            ) : (
-                              messages.flatMap(m=> (m.attachments||[]).filter(a=>/\.(pdf|docx?|pptx?)$/i.test(a)).map((doc)=>({id:m.id, doc}))).map((d,i)=> (
-                                <a key={i} href={d.doc} className="block p-2 rounded-lg bg-gray-50 hover:bg-gray-100 truncate" download>
-                                  {d.doc.split('/').pop()}
-                                </a>
-                              ))
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold truncate">{connection.user?.name}</p>
+                            {connection.lastMessageTime && (
+                              <span className="text-[11px] text-slate-400 whitespace-nowrap">{new Date(connection.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             )}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Message Input */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-6 border-t border-gray-200 bg-white flex-shrink-0"
-                  >
-                    {/* Image Preview */}
-                    {imagePreview && (
-                      <div className="mb-4 relative">
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          className="max-w-xs h-32 object-cover rounded-2xl shadow-md"
-                        />
-                        <button
-                          onClick={removeImage}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors duration-200"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Reply banner */}
-                    {replyTo?.id && (
-                      <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-100 flex items-start justify-between">
-                        <div>
-                          <div className="text-xs font-semibold text-blue-700 mb-1">Replying to</div>
-                          <div className="text-xs text-blue-800 line-clamp-2">
-                            {findMessageById(replyTo.id)?.content || "Media"}
-                          </div>
+                          <p className="text-xs text-slate-400 truncate">@{connection.user?.username}</p>
+                          <p className="text-xs text-slate-400/80 truncate">{connection.lastMessage || ''}</p>
                         </div>
-                        <button onClick={() => setReplyTo(null)} className="text-blue-600 hover:text-blue-800">
-                          <FiX />
-                        </button>
-                      </div>
-                    )}
-
-                    <form onSubmit={handleSendMessage} className="flex items-end gap-3 sticky bottom-0">
-                      <div className="flex-1 relative">
-                        <input
-                          type="text"
-                          value={newMessage}
-                          onChange={handleTyping}
-                          placeholder="Type a message... (Press Enter to send)"
-                          className="w-full px-6 py-4 pr-12 bg-gray-50 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
-                        />
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-2">
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors duration-200"
-                          >
-                            <FiImage className="text-lg" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowEmojiPicker((v) => !v);
-                            }}
-                            className="p-2 text-gray-400 hover:text-blue-500 transition-colors duration-200"
-                          >
-                            <FiSmile className="text-lg" />
-                          </button>
-                        </div>
-                        <input ref={fileInputRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx" onChange={handleImageSelect} className="hidden" />
-                        {showEmojiPicker && (
-                          <div className="absolute bottom-full right-0 mb-2 z-20" ref={emojiAreaRef}>
-                            <Picker
-                              onEmojiClick={(emojiData) => {
-                                const emoji = emojiData?.emoji || "";
-                                setNewMessage((prev) => prev + emoji);
-                                // keep picker open so multiple emojis can be selected quickly
-                              }}
-                              skinTonesDisabled
-                              searchDisabled
-                              previewConfig={{ showPreview: false }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={!newMessage.trim() && !selectedImage}
-                        className="px-6 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 shadow-lg"
-                      >
-                        <FiSend className="text-lg" />
-                      </button>
-                    </form>
-
-                    {selectionMode && (
-                      <div className="mt-3 flex items-center justify-between text-sm">
-                        <div>
-                          Selected: {selectedMessageIds.size}
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleBulkDelete("me")} className="px-3 py-2 rounded-xl border hover:bg-gray-50">Delete for me</button>
-                          <button onClick={() => handleBulkDelete("everyone")} className="px-3 py-2 rounded-xl border text-red-600 hover:bg-red-50">Delete for everyone</button>
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                </>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-gray-500 bg-gradient-to-b from-gray-50 to-white">
-                  <div className="text-8xl mb-6">💬</div>
-                  <p className="text-2xl font-semibold mb-2">
-                    Welcome to Messages
-                  </p>
-                  <p className="text-lg">
-                    Select a conversation to start chatting
-                  </p>
+                      </motion.button>
+                    ))}
                 </div>
               )}
             </div>
-          </div>
+          </motion.aside>
+
+          {/* Right Pane */}
+          <section className={`${showSidebar ? 'hidden' : 'flex'} lg:flex pane-right flex-col flex-1 min-w-0`}>
+            {selectedUser ? (
+              <>
+                {/* Header */}
+                <div className="sticky-head flex items-center justify-between px-4 py-3 bg-[#0b0f15]/95 backdrop-blur border-b border-white/10">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button className="lg:hidden p-2 rounded-full hover:bg-white/10" onClick={() => setShowSidebar(true)} aria-label="Back to conversations">
+                      <FiArrowLeft />
+                    </button>
+                    <img src={selectedUser.avatarUrl ? getAvatarUrl(selectedUser.avatarUrl) : "/default-avatar.png"} alt={selectedUser.name} className="h-10 w-10 rounded-full object-cover ring-2 ring-white/10" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{selectedUser.name}</p>
+                      <p className="text-xs text-slate-400 truncate">
+                        {((presenceData[selectedUser._id]?.isOnline) ?? (selectedUser.isOnline)) ? 'Online' : `Last seen ${formatLastSeen((presenceData[selectedUser._id]?.lastSeen) ?? (selectedUser.lastSeen))}`}
+                      </p>
+                      {isTyping && typingUser && (
+                        <div className="text-[11px] text-indigo-400 italic flex items-center gap-1">
+                          <span className="inline-flex gap-1">
+                            <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                            <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                            <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></span>
+                          </span>
+                          typing
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="hidden md:flex items-center relative">
+                      <FiSearch className="absolute left-3 text-slate-400" />
+                      <input value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} placeholder="Search in chat" className="pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 focus:ring-2 focus:ring-indigo-500/70" />
+                    </div>
+                    <div className="relative" ref={headerMenuRef}>
+                      <button onClick={() => setOpenHeaderMenu((v) => !v)} className="p-2 rounded-full hover:bg-white/10" aria-haspopup="menu" aria-expanded={openHeaderMenu} aria-label="Conversation options">
+                        <FiMoreVertical className="text-slate-300" />
+                      </button>
+                      {openHeaderMenu && (
+                        <div className="absolute right-0 mt-2 w-56 bg-[#151821] border border-white/10 shadow-2xl rounded-xl z-popover p-1">
+                          <button onClick={() => setSelectionMode((v) => !v)} className="menu-item">{selectionMode ? 'Cancel selection' : 'Select messages'}</button>
+                          <button onClick={() => handleBlockToggle(true)} className="menu-item">Block user</button>
+                          <button onClick={handleReport} className="menu-item">Report user</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Messages body */}
+                <div ref={messageContainerRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-5 bg-[#0b0f15]">
+                  {messages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                      <div className="text-7xl mb-4">💭</div>
+                      <p className="text-lg font-medium">Start the conversation</p>
+                      <p className="text-sm mt-1">Send a message to begin chatting with {selectedUser.name}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <AnimatePresence>
+                        {messages.map((message, index) => {
+                          const isMine = message.senderId === user._id;
+                          return (
+                            <motion.div key={message.id || index} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.16, ease: [0.2,0.7,0.3,1] }} className={`group relative flex ${isMine ? 'justify-end' : 'justify-start'}`} onMouseEnter={() => setHoverQuickFor(message.id)} onMouseLeave={() => setHoverQuickFor((v) => (v === message.id ? null : v))}>
+                              <div className={`max-w-[72%] ${isMine ? 'order-2' : 'order-1'}`}>
+                                <div className={`bubble ${isMine ? 'bubble-sent' : 'bubble-received'} smooth-transition`}>
+                                  {selectionMode && (
+                                    <div className={isMine ? 'text-indigo-100 mb-1' : 'text-slate-400 mb-1'}>
+                                      <label className="inline-flex items-center gap-2 text-xs">
+                                        <input type="checkbox" className="accent-indigo-500" checked={selectedMessageIds.has(message.id)} onChange={() => toggleMessageSelection(message.id)} /> Select
+                                      </label>
+                                    </div>
+                                  )}
+                                  {message.replyTo?.id && (
+                                    <div className={`${isMine ? 'bg-white/10' : 'bg-white/5'} rounded-xl mb-2 p-2 border border-white/10`}>
+                                      <div className="text-[11px] opacity-70 mb-1">Replying to</div>
+                                      <div className="text-xs line-clamp-2">{findMessageById(message.replyTo.id)?.content || 'Media'}</div>
+                                    </div>
+                                  )}
+                                  {message.content && (
+                                    <div className="message-content">{renderMessageContent(message.content)}</div>
+                                  )}
+                                  {message.attachments && message.attachments.length > 0 && (
+                                    <div className="mt-2 space-y-2">
+                                      {message.attachments.map((attachment, idx) => (
+                                        attachment.startsWith('/forum/') ? (
+                                          <a key={idx} href={attachment} onClick={(e) => { e.preventDefault(); window.location.href = attachment; }} className="block p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors">
+                                            <div className="text-sm font-semibold text-slate-100">Forum Post</div>
+                                            <div className="text-xs text-slate-300">Tap to open the original post</div>
+                                          </a>
+                                        ) : (
+                                          <img key={idx} src={attachment} alt="attachment" onClick={() => setLightboxSrc(attachment)} className="media-img cursor-zoom-in hover:opacity-90 transition" />
+                                        )
+                                      ))}
+                                    </div>
+                                  )}
+                                  <time className={`${isMine ? 'right-3 text-indigo-100/70' : 'left-3 text-slate-300/70'}`} dateTime={new Date(message.timestamp).toISOString()}>
+                                    {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </time>
+                                </div>
+                              </div>
+
+                              {/* Caret trigger beside bubble */}
+                              <div className={`caret-trigger absolute ${isMine ? 'right-0 -mr-10' : 'left-0 -ml-10'} top-1/2 -translate-y-1/2`}>
+                                <div className="relative">
+                                  {/* Quick hover menu */}
+                                  {hoverQuickFor === message.id && (
+                                    <div className={`quick-menu ${isMine ? 'right-0' : 'left-0'}`} role="menu" aria-label="Quick actions">
+                                      <button className="quick-item" title="Reply" onClick={() => setReplyTo({ id: message.id })}><FiCornerUpLeft /></button>
+                                      <button className="quick-item" title="Copy" onClick={() => { navigator.clipboard.writeText(message.content || ''); toast.success('Copied'); }}><FiCopy /></button>
+                                      <button className="quick-item" title="Forward" onClick={() => { setForwardSource(message); setShowForwardDialog(true); }}><FiShare2 /></button>
+                                    </div>
+                                  )}
+                                  <button
+                                    className="caret-button focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    aria-haspopup="menu"
+                                    aria-expanded={menuPortal.open && menuPortal.messageId === message.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const baseItems = [
+                                        { label: 'Reply', icon: <FiCornerUpLeft />, onSelect: () => setReplyTo({ id: message.id }) },
+                                        { label: 'Copy', icon: <FiCopy />, onSelect: () => navigator.clipboard.writeText(message.content || '') },
+                                        { label: 'Forward', icon: <FiShare2 />, onSelect: () => { setForwardSource(message); setShowForwardDialog(true); } },
+                                        { label: 'Star / Pin', icon: <FiStar />, onSelect: () => toast.success('Starred') },
+                                        { label: 'Delete for me', icon: <FiTrash2 />, onSelect: () => handleDeleteSingle(message.id, 'me') },
+                                        { label: selectionMode ? 'Cancel select' : 'Select', icon: <FiCheckSquare />, onSelect: () => setSelectionMode((v) => !v) },
+                                        { label: 'Report', icon: <FiFlag />, onSelect: () => handleReport() },
+                                        { label: 'Info', icon: <FiInfo />, onSelect: () => toast.info('Info coming soon') },
+                                      ];
+                                      const x = Math.min(window.innerWidth - 260, Math.max(8, rect.left - 200 + rect.width / 2));
+                                      const y = Math.min(window.innerHeight - 12, Math.max(12, rect.bottom + 8));
+                                      setMenuPortal({ open: true, x, y, items: baseItems, messageId: message.id, focusIndex: 0 });
+                                    }}
+                                  >
+                                    <FiChevronDown />
+                                  </button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                      <div style={{ height: '72px' }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Composer */}
+                <div className="sticky-compose px-4 py-3 bg-[#0b0f15]/95 backdrop-blur border-t border-white/10" style={{ paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 12px)` }}>
+                  {imagePreview && (
+                    <div className="mb-3 relative">
+                      <img src={imagePreview} alt="Preview" className="h-28 object-cover rounded-xl ring-1 ring-white/15" style={{ maxWidth: 'min(60vw, 420px)' }} />
+                      <button onClick={removeImage} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 grid place-items-center text-xs">×</button>
+                    </div>
+                  )}
+                  {replyTo?.id && (
+                    <div className="mb-2 p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-start justify-between">
+                      <div>
+                        <div className="text-[11px] font-semibold text-indigo-300 mb-1">Replying to</div>
+                        <div className="text-xs text-indigo-200/90 line-clamp-2">{findMessageById(replyTo.id)?.content || 'Media'}</div>
+                      </div>
+                      <button onClick={() => setReplyTo(null)} className="text-indigo-300 hover:text-indigo-200"><FiX /></button>
+                    </div>
+                  )}
+                  <form onSubmit={handleSendMessage} className="flex items-end gap-3">
+                    <div className="flex-1 relative">
+                      <input type="text" value={newMessage} onChange={handleTyping} placeholder="Type a message" className="w-full px-4 py-3 pr-12 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent" />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg hover:bg-white/10 text-slate-300"><FiImage /></button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setShowEmojiPicker((v) => !v); }} className="p-2 rounded-lg hover:bg-white/10 text-slate-300"><FiSmile /></button>
+                      </div>
+                      <input ref={fileInputRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx" onChange={handleImageSelect} className="hidden" />
+                      {showEmojiPicker && (
+                        <div className="absolute bottom-full right-0 mb-2 z-popover" ref={emojiAreaRef}>
+                          <Picker onEmojiClick={(emojiData) => { const emoji = emojiData?.emoji || ''; setNewMessage((prev) => prev + emoji); }} skinTonesDisabled searchDisabled previewConfig={{ showPreview: false }} />
+                        </div>
+                      )}
+                    </div>
+                    <button type="submit" disabled={!newMessage.trim() && !selectedImage} className="px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500 focus-visible:ring-2 focus-visible:ring-indigo-500/70 disabled:opacity-50">
+                      <FiSend />
+                    </button>
+                  </form>
+                  {selectionMode && (
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
+                      <div>Selected: {selectedMessageIds.size}</div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleBulkDelete('me')} className="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10">Delete for me</button>
+                        <button onClick={() => handleBulkDelete('everyone')} className="px-3 py-2 rounded-lg border border-white/10 text-red-400 hover:bg-red-500/10">Delete for everyone</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                <div className="text-7xl mb-4">💬</div>
+                <p className="text-lg font-semibold mb-1">Welcome to Messages</p>
+                <p className="text-sm">Select a conversation to start chatting</p>
+              </div>
+            )}
+          </section>
         </div>
       </div>
 
-      {/* Lightbox for media */}
+      {/* Lightbox */}
       {lightboxSrc && (
-        <div className="fixed inset-0 bg-black/80 z-30 flex items-center justify-center" onClick={() => setLightboxSrc(null)}>
+        <div className="fixed inset-0 bg-black/80 z-popover flex items-center justify-center" onClick={() => setLightboxSrc(null)}>
           <img src={lightboxSrc} alt="media" className="max-h-[90vh] max-w-[90vw] rounded-2xl shadow-2xl" />
         </div>
       )}
-  {/* Forward dialog */}
-  {showForwardDialog && (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40" onClick={() => setShowForwardDialog(false)}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-        <div className="text-lg font-semibold mb-3">Forward message</div>
-        <div className="max-h-72 overflow-y-auto custom-scrollbar divide-y">
-          {connections.map((c) => (
-            <button key={c._id} onClick={() => handleForwardTo(c.user?._id)} className="w-full text-left p-3 hover:bg-gray-50 flex items-center gap-3">
-              <img
-                src={c.user?.avatarUrl ? getAvatarUrl(c.user.avatarUrl) : "/default-avatar.png"}
-                alt="avatar"
-                className="h-8 w-8 rounded-full"
-              />
-              <div className="flex-1">
-                <div className="font-medium">{c.user?.name}</div>
-                <div className="text-xs text-gray-500">@{c.user?.username}</div>
-              </div>
+      {/* Forward dialog */}
+      {showForwardDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-popover" onClick={() => setShowForwardDialog(false)}>
+          <div className="bg-[#0f1320] text-slate-100 rounded-2xl shadow-2xl w-full max-w-md p-4 border border-white/10" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-semibold mb-3">Forward message</div>
+            <div className="max-h-72 overflow-y-auto custom-scrollbar divide-y divide-white/10">
+              {connections.map((c) => (
+                <button key={c._id} onClick={() => handleForwardTo(c.user?._id)} className="w-full text-left p-3 hover:bg-white/5 flex items-center gap-3">
+                  <img src={c.user?.avatarUrl ? getAvatarUrl(c.user.avatarUrl) : "/default-avatar.png"} alt="avatar" className="h-8 w-8 rounded-full" />
+                  <div className="flex-1">
+                    <div className="font-medium">{c.user?.name}</div>
+                    <div className="text-xs text-slate-400">@{c.user?.username}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 text-right">
+              <button onClick={() => setShowForwardDialog(false)} className="px-4 py-2 rounded-xl border border-white/10 hover:bg-white/5">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full menu portal */}
+      {menuPortal.open && createPortal(
+        <div className="full-menu z-popover" role="menu" aria-label="Message actions" style={{ left: menuPortal.x, top: menuPortal.y }}>
+          {menuPortal.items.map((it, idx) => (
+            <button key={it.label} className="menu-item" role="menuitem" aria-selected={menuPortal.focusIndex === idx} onMouseEnter={() => setMenuPortal((s) => ({ ...s, focusIndex: idx }))} onClick={() => { it.onSelect(); setMenuPortal((s) => ({ ...s, open: false })); }}>
+              <span className="opacity-90">{it.icon}</span>
+              <span className="text-sm">{it.label}</span>
             </button>
           ))}
-        </div>
-        <div className="mt-3 text-right">
-          <button onClick={() => setShowForwardDialog(false)} className="px-4 py-2 rounded-xl border hover:bg-gray-50">Close</button>
-        </div>
-      </div>
-    </div>
-  )}
+        </div>, document.body)
+      }
     </div>
   );
 };
