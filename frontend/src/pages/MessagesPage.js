@@ -962,7 +962,6 @@ const MessagesPage = () => {
                                       </button>
                                     </div>
                                   </div>
-                                </div>
                               </motion.div>
                             </div>
                           );
