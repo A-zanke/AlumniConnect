@@ -45,7 +45,6 @@ const customScrollbarStyles = `
   .bubble-sent { background: linear-gradient(140deg, #2563eb 0%, #7c3aed 100%); color: white; box-shadow: 0 6px 24px rgba(37, 99, 235, 0.18); }
   .bubble-received { background: rgba(255,255,255,0.06); color: #e6e8ee; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 24px rgba(0,0,0,0.2); }
   .bubble:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
-  .bubble time { position: absolute; bottom: 6px; font-size: 11px; line-height: 1; opacity: 0.7; letter-spacing: 0.01em; }
   .bubble .message-content { font-size: 15px; line-height: 1.5; font-weight: 500; }
   .message-content { white-space: pre-wrap; word-break: break-word; }
   .emoji-char { display: inline-block; font-variant-emoji: emoji; transform-origin: center; font-size: 1.35em; line-height: 1; }
@@ -54,6 +53,8 @@ const customScrollbarStyles = `
   .group:hover .caret-trigger, .group:focus-within .caret-trigger, .caret-trigger:focus-visible { opacity: 1; transform: translateY(0); }
   .caret-button { width: 40px; height: 40px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #e6e8ee; }
   .caret-button:hover { background: rgba(255,255,255,0.14); }
+  .emoji-trigger { width: 40px; height: 40px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #ffd166; }
+  .emoji-trigger:hover { background: rgba(255,255,255,0.14); }
   .quick-menu { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
   .quick-item { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #e6e8ee; }
   .quick-item:hover { background: rgba(255,255,255,0.08); }
@@ -66,13 +67,17 @@ const customScrollbarStyles = `
   .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
   .custom-scrollbar { scroll-behavior: smooth; }
+  .timestamp-below { display: block; font-size: 11px; line-height: 1; opacity: 0.8; letter-spacing: 0.01em; margin-top: 6px; }
+  .reaction-popover { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); z-index: 60; }
+  .reaction-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; }
+  .reaction-btn:hover { background: rgba(255,255,255,0.08); }
+  .date-separator { position: sticky; top: 12px; z-index: 5; display: inline-block; margin: 12px auto; padding: 6px 12px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; letter-spacing: .02em; backdrop-filter: blur(6px); }
 `;
 
 const MessagesPage = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [connections, setConnections] = useState([]);
-  const [unreadByConversationId, setUnreadByConversationId] = useState({});
   const [unreadByConversationId, setUnreadByConversationId] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -117,7 +122,6 @@ const MessagesPage = () => {
 
   // Accessible full menu portal state
   const [menuPortal, setMenuPortal] = useState({ open: false, x: 0, y: 0, items: [], messageId: null, focusIndex: 0 });
-  const menuPortalRef = useRef(null);
   const menuPortalRef = useRef(null);
 
   // Hover quick menu state (per-bubble)
@@ -852,10 +856,29 @@ const MessagesPage = () => {
                       <AnimatePresence>
                         {messages.map((message, index) => {
                           const isMine = message.senderId === user._id;
+                          // Date separators
+                          const currentDate = new Date(message.timestamp);
+                          const prev = messages[index - 1];
+                          const showDateSeparator = !prev || (new Date(prev.timestamp)).toDateString() !== currentDate.toDateString();
                           return (
-                            <motion.div key={message.id || index} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.16, ease: [0.2,0.7,0.3,1] }} className={`group relative flex ${isMine ? 'justify-end' : 'justify-start'}`} onMouseEnter={() => setHoverQuickFor(message.id)} onMouseLeave={() => setHoverQuickFor((v) => (v === message.id ? null : v))}>
-                              <div className={`max-w-[72%] ${isMine ? 'order-2' : 'order-1'}`}>
-                                <div className={`bubble ${isMine ? 'bubble-sent' : 'bubble-received'} smooth-transition`}>
+                            <div key={message.id || index}>
+                              {showDateSeparator && (
+                                <div className="w-full flex justify-center my-2">
+                                  <span className="date-separator">
+                                    {(() => {
+                                      const today = new Date();
+                                      const yest = new Date();
+                                      yest.setDate(today.getDate() - 1);
+                                      if (currentDate.toDateString() === today.toDateString()) return 'Today';
+                                      if (currentDate.toDateString() === yest.toDateString()) return 'Yesterday';
+                                      return currentDate.toLocaleDateString();
+                                    })()}
+                                  </span>
+                                </div>
+                              )}
+                              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.16, ease: [0.2,0.7,0.3,1] }} className={`group relative flex ${isMine ? 'justify-end' : 'justify-start'}`} onMouseEnter={() => setHoverQuickFor(message.id)} onMouseLeave={() => setHoverQuickFor((v) => (v === message.id ? null : v))}>
+                                <div className={`max-w-[72%] ${isMine ? 'order-2' : 'order-1'}`}>
+                                  <div className={`bubble ${isMine ? 'bubble-sent' : 'bubble-received'} smooth-transition`}>
                                   {selectionMode && (
                                     <div className={isMine ? 'text-indigo-100 mb-1' : 'text-slate-400 mb-1'}>
                                       <label className="inline-flex items-center gap-2 text-xs">
@@ -886,51 +909,62 @@ const MessagesPage = () => {
                                       ))}
                                     </div>
                                   )}
-                                  <time className={`${isMine ? 'right-3 text-indigo-100/70' : 'left-3 text-slate-300/70'}`} dateTime={new Date(message.timestamp).toISOString()}>
-                                    {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </time>
-                                </div>
-                              </div>
+                                      {/* Timestamp below bubble */}
+                                      <div className={`timestamp-below ${isMine ? 'text-indigo-100/70 text-right' : 'text-slate-300/70 text-left'}`}>
+                                        {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      </div>
+                                    </div>
+                                  </div>
 
-                              {/* Caret trigger beside bubble */}
-                              <div className={`caret-trigger absolute ${isMine ? 'right-0 -mr-10' : 'left-0 -ml-10'} top-1/2 -translate-y-1/2`}>
-                                <div className="relative">
-                                  {/* Quick hover menu */}
+                                  {/* Hover emoji trigger outside bubble */}
                                   {hoverQuickFor === message.id && (
-                                    <div className={`quick-menu ${isMine ? 'right-0' : 'left-0'}`} role="menu" aria-label="Quick actions">
-                                      <button className="quick-item" title="Reply" onClick={() => setReplyTo({ id: message.id })}><FiCornerUpLeft /></button>
-                                      <button className="quick-item" title="Copy" onClick={() => { navigator.clipboard.writeText(message.content || ''); toast.success('Copied'); }}><FiCopy /></button>
-                                      <button className="quick-item" title="Forward" onClick={() => { setForwardSource(message); setShowForwardDialog(true); }}><FiShare2 /></button>
+                                    <div className={`absolute ${isMine ? 'right-0 -mr-10' : 'left-0 -ml-10'} top-1/2 -translate-y-1/2`}>
+                                      <button className="emoji-trigger" title="React" onClick={(e)=>{e.stopPropagation(); setActiveReactionFor(activeReactionFor===message.id?null:message.id);}} aria-haspopup="true" aria-expanded={activeReactionFor===message.id}>😊</button>
+                                      {activeReactionFor===message.id && (
+                                        <div className={`reaction-popover ${isMine ? 'right-0' : 'left-0'}`} role="menu" aria-label="Reactions">
+                                          {['👍','❤️','😂','😮','😢','👏'].map((emo)=> (
+                                            <button key={emo} className="reaction-btn" onClick={()=>{ handleReact(message.id, emo); setActiveReactionFor(null); }}>
+                                              {emo}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
-                                  <button
-                                    className="caret-button focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                                    aria-haspopup="menu"
-                                    aria-expanded={menuPortal.open && menuPortal.messageId === message.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      lastFocusRef.current = e.currentTarget;
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      const baseItems = [
-                                        { label: 'Reply', icon: <FiCornerUpLeft />, onSelect: () => setReplyTo({ id: message.id }) },
-                                        { label: 'Copy', icon: <FiCopy />, onSelect: () => navigator.clipboard.writeText(message.content || '') },
-                                        { label: 'Forward', icon: <FiShare2 />, onSelect: () => { setForwardSource(message); setShowForwardDialog(true); } },
-                                        { label: 'Star / Pin', icon: <FiStar />, onSelect: () => toast.success('Starred') },
-                                        { label: 'Delete for me', icon: <FiTrash2 />, onSelect: () => handleDeleteSingle(message.id, 'me') },
-                                        { label: selectionMode ? 'Cancel select' : 'Select', icon: <FiCheckSquare />, onSelect: () => setSelectionMode((v) => !v) },
-                                        { label: 'Report', icon: <FiFlag />, onSelect: () => handleReport() },
-                                        { label: 'Info', icon: <FiInfo />, onSelect: () => toast.info('Info coming soon') },
-                                      ];
-                                      const x = Math.min(window.innerWidth - 260, Math.max(8, rect.left - 200 + rect.width / 2));
-                                      const y = Math.min(window.innerHeight - 12, Math.max(12, rect.bottom + 8));
-                                      setMenuPortal({ open: true, x, y, items: baseItems, messageId: message.id, focusIndex: 0 });
-                                    }}
-                                  >
-                                    <FiChevronDown />
-                                  </button>
+
+                                  {/* Caret trigger beside bubble - dropdown in front of message */}
+                                  <div className={`caret-trigger absolute ${isMine ? 'right-0 -mr-10' : 'left-0 -ml-10'} top-[calc(50%+46px)]`}> 
+                                    <div className="relative">
+                                      <button
+                                        className="caret-button focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                        aria-haspopup="menu"
+                                        aria-expanded={menuPortal.open && menuPortal.messageId === message.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          lastFocusRef.current = e.currentTarget;
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const baseItems = [
+                                            { label: 'Reply', icon: <FiCornerUpLeft />, onSelect: () => setReplyTo({ id: message.id }) },
+                                            { label: 'Copy', icon: <FiCopy />, onSelect: () => navigator.clipboard.writeText(message.content || '') },
+                                            { label: 'Forward', icon: <FiShare2 />, onSelect: () => { setForwardSource(message); setShowForwardDialog(true); } },
+                                            { label: 'Star / Pin', icon: <FiStar />, onSelect: () => toast.success('Starred') },
+                                            { label: 'Delete for me', icon: <FiTrash2 />, onSelect: () => handleDeleteSingle(message.id, 'me') },
+                                            { label: selectionMode ? 'Cancel select' : 'Select', icon: <FiCheckSquare />, onSelect: () => setSelectionMode((v) => !v) },
+                                            { label: 'Report', icon: <FiFlag />, onSelect: () => handleReport() },
+                                            { label: 'Info', icon: <FiInfo />, onSelect: () => toast.info('Info coming soon') },
+                                          ];
+                                          const x = Math.min(window.innerWidth - 260, Math.max(8, rect.left - 200 + rect.width / 2));
+                                          const y = Math.min(window.innerHeight - 12, Math.max(12, rect.bottom + 8));
+                                          setMenuPortal({ open: true, x, y, items: baseItems, messageId: message.id, focusIndex: 0 });
+                                        }}
+                                      >
+                                        <FiChevronDown />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            </motion.div>
+                              </motion.div>
+                            </div>
                           );
                         })}
                       </AnimatePresence>

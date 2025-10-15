@@ -19,6 +19,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "../NotificationBell";
 import { getAvatarUrl } from "../utils/helpers";
+import { unreadAPI } from "../utils/api";
 
 const Navbar = () => {
   const navRef = useRef(null);
@@ -29,6 +30,7 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showEventsDropdown, setShowEventsDropdown] = useState(false);
+  const [msgUnreadTotal, setMsgUnreadTotal] = useState(0);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -49,6 +51,26 @@ const Navbar = () => {
       window.removeEventListener("resize", handleResize);
     };
   }, []);
+
+  // Fetch total unread messages for navbar badge
+  useEffect(() => {
+    if (!user) { setMsgUnreadTotal(0); return; }
+    let mounted = true;
+    const refreshUnread = async () => {
+      try {
+        const rows = await unreadAPI.getSnapshotFromConversations();
+        const total = (rows || []).reduce((sum, r) => sum + (r.count || 0), 0);
+        if (mounted) setMsgUnreadTotal(total);
+      } catch {
+        if (mounted) setMsgUnreadTotal(0);
+      }
+    };
+    refreshUnread();
+    const interval = setInterval(refreshUnread, 15000);
+    const onFocus = () => refreshUnread();
+    window.addEventListener('focus', onFocus);
+    return () => { mounted = false; clearInterval(interval); window.removeEventListener('focus', onFocus); };
+  }, [user]);
 
   const toggleMenu = () => setIsOpen(!isOpen);
 
@@ -282,7 +304,15 @@ const Navbar = () => {
                     className="p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 transition-all duration-300 relative group"
                   >
                     <FiMessageSquare size={20} />
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    {msgUnreadTotal > 0 && (
+                      <span
+                        style={{ position: 'absolute', top: '-5px', right: '-5px', background: '#ef4444', color: '#fff', borderRadius: '9999px', padding: '2px 6px', fontSize: '11px', fontWeight: 600 }}
+                        aria-label={`${msgUnreadTotal} unread messages`}
+                        className="shadow"
+                      >
+                        {msgUnreadTotal > 999 ? '999+' : msgUnreadTotal}
+                      </span>
+                    )}
                   </Link>
                 </motion.div>
 
