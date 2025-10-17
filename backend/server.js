@@ -283,10 +283,10 @@ io.on("connection", (socket) => {
         msg = await Message.create(messageData);
       }
       // Update per-user unread in Thread (upsert)
-      const participants = [String(from), String(to)].sort();
+      const sortedParticipants = [String(from), String(to)].sort();
       const thread = await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
-        { $setOnInsert: { participants }, $set: { lastMessageAt: new Date(), lastMessage: msg._id }, $inc: { [`unreadCount.${to}`]: 1 } },
+        { participants: { $all: sortedParticipants, $size: 2 } },
+        { $setOnInsert: { participants: sortedParticipants }, $set: { lastMessageAt: new Date(), lastMessage: msg._id }, $inc: { [`unreadCount.${to}`]: 1 } },
         { upsert: true, new: true }
       );
       const messagePayload = {
