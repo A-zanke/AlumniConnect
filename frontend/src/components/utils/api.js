@@ -137,7 +137,7 @@ export const connectionAPI = {
 };
 
 export const recommendationsAPI = {
-  getAlumni: (studentId) => apiClient.get(`/api/ai/recommendations/${studentId}`),
+  getAlumni: (studentId) => apiClient.get(`/api/recommendations/alumni`),
 };
 
 export const userAPI = {
@@ -213,6 +213,18 @@ export const sendMessage = async (userId, content, image = null) => {
     console.error('Error sending message:', error);
     throw error;
   }
+};
+
+export const unreadAPI = {
+  getSnapshotFromConversations: async () => {
+    try {
+      const resp = await apiClient.get('/api/messages');
+      const rows = Array.isArray(resp?.data?.data) ? resp.data.data : [];
+      return rows.map((c) => ({ conversationId: c._id, count: c.unreadCount || 0 }));
+    } catch (e) {
+      return [];
+    }
+  },
 };
 
 export const followAPI = {

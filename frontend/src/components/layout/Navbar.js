@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -19,22 +19,58 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "../NotificationBell";
 import { getAvatarUrl } from "../utils/helpers";
+import { unreadAPI } from "../utils/api";
 
 const Navbar = () => {
+  const navRef = useRef(null);
+  const [navHeight, setNavHeight] = useState(80);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showEventsDropdown, setShowEventsDropdown] = useState(false);
+  const [msgUnreadTotal, setMsgUnreadTotal] = useState(0);
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
     };
+    const handleResize = () => {
+      if (navRef.current) {
+        const h = Math.max(1, Math.round(navRef.current.getBoundingClientRect().height));
+        setNavHeight(h);
+        document.documentElement.style.setProperty("--navbar-height", `${h}px`);
+      }
+    };
+    handleResize();
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
+
+  // Fetch total unread messages for navbar badge
+  useEffect(() => {
+    if (!user) { setMsgUnreadTotal(0); return; }
+    let mounted = true;
+    const refreshUnread = async () => {
+      try {
+        const rows = await unreadAPI.getSnapshotFromConversations();
+        const total = (rows || []).reduce((sum, r) => sum + (r.count || 0), 0);
+        if (mounted) setMsgUnreadTotal(total);
+      } catch {
+        if (mounted) setMsgUnreadTotal(0);
+      }
+    };
+    refreshUnread();
+    const interval = setInterval(refreshUnread, 15000);
+    const onFocus = () => refreshUnread();
+    window.addEventListener('focus', onFocus);
+    return () => { mounted = false; clearInterval(interval); window.removeEventListener('focus', onFocus); };
+  }, [user]);
 
   const toggleMenu = () => setIsOpen(!isOpen);
 
@@ -62,20 +98,20 @@ const Navbar = () => {
     ...baseItems,
     // Non-students get direct Events link
     ...(!isStudent ? [{ to: "/events", label: "Events", icon: FiCalendar }] : []),
-    ...postsItem,
+    // For students, Posts is in the Events dropdown, so exclude it here to avoid duplication
+    ...(!isStudent ? postsItem : []),
     ...forumItem,
     ...netItem,
     ...adminItem,
   ];
 
-  // Hide global navbar on admin routes to avoid double nav
-  if (location.pathname.startsWith('/admin')) {
-    return null;
-  }
+  // Keep global navbar visible on admin pages; admin has its own side nav
 
   return (
     <motion.nav
+      ref={navRef}
       className="relative z-50 transition-all duration-500 backdrop-blur-md bg-transparent"
+      style={{ ['--navbar-height']: `${navHeight}px` }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ type: "spring", stiffness: 200, damping: 20 }}
@@ -268,7 +304,15 @@ const Navbar = () => {
                     className="p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 transition-all duration-300 relative group"
                   >
                     <FiMessageSquare size={20} />
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    {msgUnreadTotal > 0 && (
+                      <span
+                        style={{ position: 'absolute', top: '-5px', right: '-5px', background: '#ef4444', color: '#fff', borderRadius: '9999px', padding: '2px 6px', fontSize: '11px', fontWeight: 600 }}
+                        aria-label={`${msgUnreadTotal} unread messages`}
+                        className="shadow"
+                      >
+                        {msgUnreadTotal > 999 ? '999+' : msgUnreadTotal}
+                      </span>
+                    )}
                   </Link>
                 </motion.div>
 

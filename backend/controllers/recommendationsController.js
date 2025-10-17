@@ -61,34 +61,19 @@ exports.getAlumniRecommendations = async (req, res) => {
   try {
     const me = await User.findById(req.user._id).lean();
     if (!me) return res.status(404).json({ message: "User not found" });
-    
+
     // Only students get recommendations
     if (String(me.role).toLowerCase() !== "student") {
       return res.json([]);
     }
 
+    // Show all alumni profiles from the database
     const alumniList = await User.find({ role: "alumni" })
-      .select("name username avatarUrl department graduationYear industry skills careerInterests")
+      .select("name username avatarUrl department graduationYear industry skills careerInterests company")
       .lean();
 
-    // Calculate similarity scores for all alumni
-    const scored = alumniList
-      .map((a) => {
-        const { score, matchDetails } = computeSimilarity(me, a);
-        return {
-          ...a,
-          _id: String(a._id),
-          similarityScore: score,
-          matchDetails
-        };
-      })
-      .filter((x) => x.similarityScore >= 5) // **THRESHOLD: Only show if score >= 5 (at least one meaningful match)**
-      .sort((a, b) => b.similarityScore - a.similarityScore);
-
-    // Return only matched alumni (max 15 to avoid overwhelming UI)
-    const recommendations = scored.slice(0, 15);
-
-    res.json(recommendations);
+    // Return all alumni profiles without filtering or scoring
+    res.json(alumniList);
   } catch (e) {
     console.error("getAlumniRecommendations error:", e);
     res.status(500).json({ message: "Failed to fetch recommendations" });

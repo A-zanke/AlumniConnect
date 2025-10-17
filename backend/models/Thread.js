@@ -7,7 +7,10 @@ const ThreadSchema = new mongoose.Schema(
     ],
     lastMessage: { type: mongoose.Schema.Types.ObjectId, ref: "Message" },
     lastMessageAt: { type: Date, default: Date.now },
+    // Per-user unread counts keyed by userId string
     unreadCount: { type: Map, of: Number, default: {} },
+    // Per-user lastReadAt keyed by userId string
+    lastReadAt: { type: Map, of: Date, default: {} },
     isStarred: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     typing: { type: Map, of: Date, default: {} },
   },

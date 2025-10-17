@@ -5,7 +5,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import PrivateRoute from "./components/PrivateRoute";
 import Navbar from "./components/layout/Navbar";
-
+import MessagesPage from "./pages/MessagesPage";
 import Footer from "./components/layout/Footer";
 import HomePage from "./pages/HomePage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
@@ -16,7 +16,7 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import EventsPage from "./pages/EventsPage";
 import EventDetailsPage from "./pages/EventDetailsPage";
 import NetworkPage from "./pages/NetworkPage";
-import MessagesPage from "./pages/MessagesPage";
+// import MessagesPage from "./pages/MessagesPage";
 import ForumPage from "./pages/ForumPage";
 import ForumPostPage from "./pages/ForumPostPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -155,8 +155,10 @@ function App() {
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </main>
-            <Footer />
-            <Chatbot />
+            {/* Render Footer on all routes except /messages */}
+            {window.location.pathname !== "/messages" && <Footer />}
+            {/* Hide Chatbot on /messages route without touching the component itself */}
+            {window.location.pathname !== "/messages" && <Chatbot />}
           </div>
         </Router>
       </NotificationProvider>
