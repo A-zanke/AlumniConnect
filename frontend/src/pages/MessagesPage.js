@@ -601,6 +601,9 @@ const MessagesPage = () => {
             clientKey,
           });
         }
+        // Clear input immediately for text-only messages
+        setNewMessage("");
+        setReplyTo(null);
       }
 
       // Always send via HTTP to persist and handle attachments
@@ -623,13 +626,16 @@ const MessagesPage = () => {
           if (idStr) seenIdsRef.current.add(idStr);
           setMessages((prev) => [...prev, { ...messageData, status: "sent" }]);
         }
+        // Clear input and image after successful send for non-text messages
+        setNewMessage("");
+        setSelectedImage(null);
+        setImagePreview(null);
+        setReplyTo(null);
+      } else {
+        // For text-only, clear image if any (though unlikely)
+        setSelectedImage(null);
+        setImagePreview(null);
       }
-
-      // Clear input and image immediately for better UX
-      setNewMessage("");
-      setSelectedImage(null);
-      setImagePreview(null);
-      setReplyTo(null);
 
       // Scroll to bottom after sending
       setTimeout(scrollToBottom, 100);
@@ -920,127 +926,139 @@ const MessagesPage = () => {
               showSidebar ? "flex" : "hidden"
             } lg:flex pane-left flex-col border-r border-white/10 bg-[#0d1117]`}
           >
-            {/* Sticky search */}
-            <div className="sticky-head px-4 py-3 bg-[#0d1117]/95 backdrop-blur border-b border-white/10">
-              <div className="relative">
-                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search conversations"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent outline-none"
-                />
-              </div>
-            </div>
+            {selectedUser ? (
+              <>
+                {/* Sticky search */}
+                <div className="sticky-head px-4 py-3 bg-[#0d1117]/95 backdrop-blur border-b border-white/10">
+                  <div className="relative">
+                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search conversations"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
 
-            {/* List */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {connections.length === 0 ? (
-                <div className="p-6 text-center text-slate-400">
-                  <div className="text-6xl mb-3">💬</div>
-                  <p className="text-base font-medium">No connections yet</p>
-                  <p className="text-xs mt-1">
-                    Connect with people to start conversations
-                  </p>
+                {/* List */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  {connections.length === 0 ? (
+                    <div className="p-6 text-center text-slate-400">
+                      <div className="text-6xl mb-3">💬</div>
+                      <p className="text-base font-medium">No connections yet</p>
+                      <p className="text-xs mt-1">
+                        Connect with people to start conversations
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="py-2">
+                      {connections
+                        .filter(
+                          (conn) =>
+                            (conn.user?.name || "")
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase()) ||
+                            (conn.user?.username || "")
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase())
+                        )
+                        .map((connection, index) => (
+                          <motion.button
+                            key={connection._id}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: Math.min(index * 0.03, 0.3) }}
+                            onClick={() => {
+                              setSelectedUser(connection.user);
+                              setShowSidebar(false);
+                              if (connection.threadId && socket) {
+                                socket.emit("messages:markRead", {
+                                  conversationId: connection.threadId,
+                                });
+                              }
+                            }}
+                            className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors ${
+                              selectedUser?._id === connection.user?._id
+                                ? "bg-indigo-600/20"
+                                : ""
+                            }`}
+                          >
+                            <div className="relative shrink-0">
+                              <img
+                                src={
+                                  connection.user?.avatarUrl
+                                    ? getAvatarUrl(connection.user.avatarUrl)
+                                    : "/default-avatar.png"
+                                }
+                                alt={connection.user?.name}
+                                className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10"
+                              />
+                              {connection.user?.isOnline && (
+                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#0d1117] rounded-full" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold truncate">
+                                  {connection.user?.name}
+                                </p>
+                                {connection.lastMessageTime && (
+                                  <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                                    {new Date(
+                                      connection.lastMessageTime
+                                    ).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-400 truncate">
+                                @{connection.user?.username}
+                              </p>
+                              <p className="text-xs text-slate-400/80 truncate">
+                                {connection.lastMessage || ""}
+                              </p>
+                            </div>
+                            {/* Unread badge */}
+                            {(() => {
+                              const threadId = connection.threadId;
+                              const base =
+                                typeof connection.unreadCount === "number"
+                                  ? connection.unreadCount
+                                  : 0;
+                              const count = threadId
+                                ? unreadByConversationId[threadId] ?? base
+                                : base;
+                              const hide =
+                                selectedUser?._id === connection.user?._id;
+                              return !hide && count > 0 ? (
+                                <span
+                                  className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow-lg"
+                                  aria-label={`${count} unread messages`}
+                                  title={`${count} unread`}
+                                >
+                                  {count > 999 ? "999+" : count}
+                                </span>
+                              ) : null;
+                            })()}
+                          </motion.button>
+                        ))}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="py-2">
-                  {connections
-                    .filter(
-                      (conn) =>
-                        (conn.user?.name || "")
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase()) ||
-                        (conn.user?.username || "")
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase())
-                    )
-                    .map((connection, index) => (
-                      <motion.button
-                        key={connection._id}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: Math.min(index * 0.03, 0.3) }}
-                        onClick={() => {
-                          setSelectedUser(connection.user);
-                          setShowSidebar(false);
-                          if (connection.threadId && socket) {
-                            socket.emit("messages:markRead", {
-                              conversationId: connection.threadId,
-                            });
-                          }
-                        }}
-                        className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors ${
-                          selectedUser?._id === connection.user?._id
-                            ? "bg-indigo-600/20"
-                            : ""
-                        }`}
-                      >
-                        <div className="relative shrink-0">
-                          <img
-                            src={
-                              connection.user?.avatarUrl
-                                ? getAvatarUrl(connection.user.avatarUrl)
-                                : "/default-avatar.png"
-                            }
-                            alt={connection.user?.name}
-                            className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10"
-                          />
-                          {connection.user?.isOnline && (
-                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#0d1117] rounded-full" />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold truncate">
-                              {connection.user?.name}
-                            </p>
-                            {connection.lastMessageTime && (
-                              <span className="text-[11px] text-slate-400 whitespace-nowrap">
-                                {new Date(
-                                  connection.lastMessageTime
-                                ).toLocaleTimeString([], {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-400 truncate">
-                            @{connection.user?.username}
-                          </p>
-                          <p className="text-xs text-slate-400/80 truncate">
-                            {connection.lastMessage || ""}
-                          </p>
-                        </div>
-                        {/* Unread badge */}
-                        {(() => {
-                          const threadId = connection.threadId;
-                          const base =
-                            typeof connection.unreadCount === "number"
-                              ? connection.unreadCount
-                              : 0;
-                          const count = threadId
-                            ? unreadByConversationId[threadId] ?? base
-                            : base;
-                          const hide =
-                            selectedUser?._id === connection.user?._id;
-                          return !hide && count > 0 ? (
-                            <span
-                              className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold"
-                              aria-label={`${count} unread messages`}
-                              title={`${count} unread`}
-                            >
-                              {count > 999 ? "999+" : count}
-                            </span>
-                          ) : null;
-                        })()}
-                      </motion.button>
-                    ))}
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-6" style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #f3e5f5 100%)' }}>
+                <div className="text-center max-w-md">
+                  <div className="text-6xl mb-6 animate-pulse">📚🤝💬</div>
+                  <h2 className="text-3xl font-bold text-blue-800 mb-4" style={{ fontFamily: 'Inter, sans-serif' }}>Welcome to MIT’s AlumniConnect!</h2>
+                  <p className="text-xl text-blue-600 leading-relaxed">Let’s stay connected. Enjoy real-time conversations and networking.</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </motion.aside>
 
           {/* Right Pane */}
@@ -1116,7 +1134,7 @@ const MessagesPage = () => {
                         <FiMoreVertical className="text-slate-300" />
                       </button>
                       {openHeaderMenu && (
-                        <div className="absolute right-0 mt-2 w-64 bg-[#1f1f1f] border border-white/10 shadow-2xl rounded-xl z-[1000] p-1">
+                        <div className="absolute left-50 mt-5 w-64 bg-[#1f1f1f] border border-white/10 shadow-2xl rounded-xl z-[200] p-1">
                           <button
                             onClick={() => setSelectionMode((v) => !v)}
                             className="menu-item"
