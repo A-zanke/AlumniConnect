@@ -200,6 +200,24 @@ const customScrollbarStyles = `
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     overflow: hidden;
+    cursor: default;
+  }
+
+  /* Bubble wrapper for anchoring actions */
+  .bubble-wrap {
+    position: relative;
+    display: inline-block;
+  }
+
+  /* Actions aligned next to bubble edge */
+  .bubble-actions {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 250;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .bubble::before {
@@ -344,18 +362,22 @@ const customScrollbarStyles = `
     border-radius: 50%; 
     display: grid; 
     place-items: center; 
-    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.2));
+    background: rgba(255, 255, 255, 0.12);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2); 
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); 
-    color: #fde68a;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(255, 255, 255, 0.18); 
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); 
+    color: #e2e8f0;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
+                background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
   }
 
   .emoji-trigger:hover { 
-    background: linear-gradient(135deg, rgba(251, 191, 36, 0.4), rgba(245, 158, 11, 0.4));
-    transform: scale(1.1) rotate(10deg);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    background: linear-gradient(135deg, #e5e7eb 0%, #10b981 100%);
+    color: #064e3b;
+    transform: scale(1.1);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   }
 
   /* Quick menu */
@@ -363,16 +385,16 @@ const customScrollbarStyles = `
     position: absolute; 
     inset: auto auto 100% 0; 
     transform: translateY(-8px); 
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.3); 
     border-radius: 16px; 
     padding: 8px; 
     display: flex; 
     gap: 6px; 
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2),
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24),
                 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-    z-index: 1200;
+    z-index: 2200;
     animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
@@ -423,7 +445,7 @@ const customScrollbarStyles = `
     padding: 8px; 
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25),
                 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-    z-index: 2000;
+    z-index: 2400;
     animation: slide-in-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -554,16 +576,16 @@ const customScrollbarStyles = `
     position: absolute; 
     inset: auto auto 100% 0; 
     transform: translateY(-8px); 
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.3); 
     border-radius: 16px; 
     padding: 8px; 
     display: flex; 
     gap: 8px; 
-    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.25),
+    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.28),
                 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-    z-index: 1500;
+    z-index: 2300;
     animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
@@ -2221,7 +2243,7 @@ const MessagesPage = () => {
                                 }
                               >
                                 <div
-                                  className={`relative z-[100] max-w-[85%] min-w-[50%] ${
+                                  className={`bubble-wrap relative z-[100] max-w-[85%] min-w-[50%] ${
                                     isMine ? "order-2" : "order-1"
                                   }`}
                                 >
@@ -2385,6 +2407,156 @@ const MessagesPage = () => {
                                           )}
                                         </span>
                                       )}
+                                    </div>
+                                  </div>
+                                  {/* Bubble actions anchored to this bubble */}
+                                  {hoverQuickFor === message.id && (
+                                    <div
+                                      className={`bubble-actions ${
+                                        isMine ? "right-[-36px]" : "left-[-36px]"
+                                      }`}
+                                    >
+                                      <button
+                                        className="emoji-trigger"
+                                        title="React"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveReactionFor(
+                                            activeReactionFor === message.id
+                                              ? null
+                                              : message.id
+                                          );
+                                        }}
+                                        aria-haspopup="true"
+                                        aria-expanded={activeReactionFor === message.id}
+                                      >
+                                        😊
+                                      </button>
+                                      {activeReactionFor === message.id && (
+                                        <div
+                                          className={`reaction-popover ${
+                                            isMine ? "right-0" : "left-0"
+                                          }`}
+                                          role="menu"
+                                          aria-label="Reactions"
+                                        >
+                                          {["👍", "❤️", "😂", "😮", "😢", "👏"].map(
+                                            (emo) => (
+                                              <button
+                                                key={emo}
+                                                className="reaction-btn"
+                                                onClick={() => {
+                                                  handleReact(message.id, emo);
+                                                  setActiveReactionFor(null);
+                                                }}
+                                              >
+                                                {emo}
+                                              </button>
+                                            )
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div
+                                    className={`caret-trigger bubble-actions ${
+                                      isMine ? "right-[-36px]" : "left-[-36px]"
+                                    }`}
+                                  >
+                                    <div className="relative z-[1200]">
+                                      <button
+                                        className="caret-button focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                        aria-haspopup="menu"
+                                        aria-expanded={
+                                          menuPortal.open &&
+                                          menuPortal.messageId === message.id
+                                        }
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          lastFocusRef.current = e.currentTarget;
+                                          const rect =
+                                            e.currentTarget.getBoundingClientRect();
+                                          const baseItems = [
+                                            {
+                                              label: "Reply",
+                                              icon: <FiCornerUpLeft />,
+                                              onSelect: () =>
+                                                setReplyTo({ id: message.id }),
+                                            },
+                                            {
+                                              label: "Copy",
+                                              icon: <FiCopy />,
+                                              onSelect: () =>
+                                                navigator.clipboard.writeText(
+                                                  message.content || ""
+                                                ),
+                                            },
+                                            {
+                                              label: "Forward",
+                                              icon: <FiShare2 />,
+                                              onSelect: () => {
+                                                setForwardSource(message);
+                                                setShowForwardDialog(true);
+                                              },
+                                            },
+                                            {
+                                              label: "Star / Pin",
+                                              icon: <FiStar />,
+                                              onSelect: () =>
+                                                toast.success("Starred"),
+                                            },
+                                            {
+                                              label: "Delete for me",
+                                              icon: <FiTrash2 />,
+                                              onSelect: () =>
+                                                handleDeleteSingle(
+                                                  message.id,
+                                                  "me"
+                                                ),
+                                            },
+                                            {
+                                              label: selectionMode
+                                                ? "Cancel select"
+                                                : "Select",
+                                              icon: <FiCheckSquare />,
+                                              onSelect: () =>
+                                                setSelectionMode((v) => !v),
+                                            },
+                                            {
+                                              label: "Report",
+                                              icon: <FiFlag />,
+                                              onSelect: () => handleReport(),
+                                            },
+                                            {
+                                              label: "Info",
+                                              icon: <FiInfo />,
+                                              onSelect: () =>
+                                                toast.info("Info coming soon"),
+                                            },
+                                          ];
+                                          const x = Math.min(
+                                            window.innerWidth - 260,
+                                            Math.max(
+                                              8,
+                                              rect.left - 200 + rect.width / 2
+                                            )
+                                          );
+                                          const y = Math.min(
+                                            window.innerHeight - 12,
+                                            Math.max(12, rect.bottom + 8)
+                                          );
+                                          setMenuPortal({
+                                            open: true,
+                                            x,
+                                            y,
+                                            items: baseItems,
+                                            messageId: message.id,
+                                            focusIndex: 0,
+                                          });
+                                        }}
+                                      >
+                                        <FiChevronDown />
+                                      </button>
                                     </div>
                                   </div>
                                 </div>
