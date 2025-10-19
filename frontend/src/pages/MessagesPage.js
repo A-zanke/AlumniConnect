@@ -78,6 +78,11 @@ const customScrollbarStyles = `
   .reaction-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; }
   .reaction-btn:hover { background: rgba(255,255,255,0.08); }
   .date-separator { position: sticky; top: 12px; z-index: 5; display: inline-block; margin: 12px auto; padding: 6px 12px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; letter-spacing: .02em; backdrop-filter: blur(6px); }
+  /* Welcome panel visuals */
+  .welcome-bg { background: linear-gradient(135deg, #e0f7fa 0%, #e8f0fe 35%, #f3e5f5 100%); }
+  .welcome-card { background: rgba(255,255,255,0.72); border: 1px solid rgba(0,0,0,0.06); }
+  @keyframes floaty { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+  .floaty { animation: floaty 6s ease-in-out infinite; }
 `;
 
 const MessagesPage = () => {
@@ -235,9 +240,6 @@ const MessagesPage = () => {
           if (row.threadId) initUnread[row.threadId] = row.unreadCount || 0;
         });
         setUnreadByConversationId(initUnread);
-        if (merged.length > 0 && !selectedUser) {
-          setSelectedUser(merged[0].user);
-        }
       } catch (error) {
         console.error("Error fetching conversations:", error);
         toast.error("Failed to load conversations");
@@ -926,8 +928,8 @@ const MessagesPage = () => {
               showSidebar ? "flex" : "hidden"
             } lg:flex pane-left flex-col border-r border-white/10 bg-[#0d1117]`}
           >
-            {selectedUser ? (
-              <>
+            {/* Always show the chat list; welcome will appear on right until a chat is clicked */}
+            <>
                 {/* Sticky search */}
                 <div className="sticky-head px-4 py-3 bg-[#0d1117]/95 backdrop-blur border-b border-white/10">
                   <div className="relative">
@@ -1050,15 +1052,6 @@ const MessagesPage = () => {
                   )}
                 </div>
               </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-6" style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #f3e5f5 100%)' }}>
-                <div className="text-center max-w-md">
-                  <div className="text-6xl mb-6 animate-pulse">📚🤝💬</div>
-                  <h2 className="text-3xl font-bold text-blue-800 mb-4" style={{ fontFamily: 'Inter, sans-serif' }}>Welcome to MIT’s AlumniConnect!</h2>
-                  <p className="text-xl text-blue-600 leading-relaxed">Let’s stay connected. Enjoy real-time conversations and networking.</p>
-                </div>
-              </div>
-            )}
           </motion.aside>
 
           {/* Right Pane */}
@@ -1682,14 +1675,32 @@ const MessagesPage = () => {
                 </div>
               </>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                <div className="text-7xl mb-4">💬</div>
-                <p className="text-lg font-semibold mb-1">
-                  Welcome to Messages
-                </p>
-                <p className="text-sm">
-                  Select a conversation to start chatting
-                </p>
+              <div className="h-full w-full welcome-bg flex items-center justify-center">
+                <div className="welcome-card rounded-3xl shadow-2xl p-8 md:p-10 max-w-2xl w-[92%] text-center" style={{ fontFamily: 'Inter, Poppins, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji' }}>
+                  <div className="mx-auto mb-6 floaty" aria-hidden="true">
+                    {/* Simple alumni-themed vector: open book + chat bubbles + handshake */}
+                    <svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto">
+                      {/* Book */}
+                      <rect x="24" y="40" width="52" height="72" rx="8" fill="#BBDEFB" stroke="#90CAF9"/>
+                      <rect x="84" y="40" width="52" height="72" rx="8" fill="#E1BEE7" stroke="#CE93D8"/>
+                      <line x1="80" y1="40" x2="80" y2="112" stroke="#9CA3AF" strokeWidth="2"/>
+                      {/* Pages */}
+                      <path d="M28 48C40 44 60 44 72 48" stroke="#64B5F6" strokeWidth="2"/>
+                      <path d="M88 48C100 44 120 44 132 48" stroke="#BA68C8" strokeWidth="2"/>
+                      {/* Chat bubbles */}
+                      <rect x="18" y="18" width="38" height="22" rx="8" fill="#A7F3D0" stroke="#34D399"/>
+                      <path d="M30 40 L28 46 L36 41" fill="#A7F3D0"/>
+                      <rect x="104" y="14" width="38" height="22" rx="8" fill="#BFDBFE" stroke="#60A5FA"/>
+                      <path d="M122 36 L120 42 L128 37" fill="#BFDBFE"/>
+                      {/* Handshake */}
+                      <path d="M58 112 C68 100 92 100 102 112" stroke="#F59E0B" strokeWidth="6" strokeLinecap="round"/>
+                      <circle cx="60" cy="114" r="6" fill="#FDE68A" stroke="#F59E0B"/>
+                      <circle cx="100" cy="114" r="6" fill="#FDE68A" stroke="#F59E0B"/>
+                    </svg>
+                  </div>
+                  <h2 className="text-3xl md:text-4xl font-extrabold mb-3 text-blue-800">Welcome to MIT’s AlumniConnect!</h2>
+                  <p className="text-lg md:text-xl text-slate-700">Let’s stay connected. Enjoy real-time conversations and networking.</p>
+                </div>
               </div>
             )}
           </section>
