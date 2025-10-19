@@ -195,7 +195,8 @@ const customScrollbarStyles = `
     position: relative; 
     border-radius: 24px; 
     padding: 14px 18px; 
-    max-width: 70%;
+    min-width: 240px;
+    max-width: 85%;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     overflow: hidden;
@@ -2220,7 +2221,7 @@ const MessagesPage = () => {
                                 }
                               >
                                 <div
-                                  className={`relative z-[100] max-w-[72%] ${
+                                  className={`relative z-[100] max-w-[85%] min-w-[50%] ${
                                     isMine ? "order-2" : "order-1"
                                   }`}
                                 >
@@ -2391,10 +2392,8 @@ const MessagesPage = () => {
                                 {/* Hover emoji trigger outside bubble */}
                                 {hoverQuickFor === message.id && (
                                   <div
-                                    className={`absolute ${
-                                      isMine
-                                        ? "right-0 -mr-10"
-                                        : "left-0 -ml-10"
+                                    className={`absolute z-[250] ${
+                                      isMine ? "right-[-36px]" : "left-[-36px]"
                                     } top-1/2 -translate-y-1/2`}
                                   >
                                     <button
@@ -2449,9 +2448,9 @@ const MessagesPage = () => {
 
                                 {/* Caret trigger beside bubble - dropdown in front of message */}
                                 <div
-                                  className={`caret-trigger absolute ${
-                                    isMine ? "right-0 -mr-10" : "left-0 -ml-10"
-                                  } top-[calc(50%+46px)]`}
+                                  className={`caret-trigger absolute z-[250] ${
+                                    isMine ? "right-[-36px]" : "left-[-36px]"
+                                  } top-1/2 -translate-y-1/2`}
                                 >
                                   <div className="relative z-[1200]">
                                     <button
