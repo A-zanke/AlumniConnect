@@ -44,11 +44,11 @@ const customScrollbarStyles = `
   .z-over { z-index: 30; }
   .z-under { z-index: 10; }
   .bubble { position: relative; border-radius: 18px; padding: 10px 12px; max-width: 65%; }
-  .bubble-sent { background: linear-gradient(140deg, #2563eb, #9333ea); color: #ffffff; box-shadow: 0 6px 22px rgba(37, 99, 235, 0.22); }
-  .bubble-received { background: rgba(255,255,255,0.06); color: #e6e8ee; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 26px rgba(0,0,0,0.22); }
+  .bubble-sent { background: linear-gradient(140deg, #3b82f6, #9333ea); color: #ffffff; box-shadow: 0 6px 18px rgba(59, 130, 246, 0.18); }
+  .bubble-received { background: linear-gradient(135deg, #ffffff, #f5f7fa); color: #111827; border: 1px solid #e5e7eb; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
   .bubble:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
   .bubble .message-content { font-size: 15px; line-height: 1.5; font-weight: 500; }
-  .message-content { white-space: pre-wrap; word-break: break-word; }
+  .message-content { white-space: pre-wrap; word-break: break-word; font-size: 15.5px; line-height: 1.5; }
   .emoji-char { display: inline-block; font-variant-emoji: emoji; transform-origin: center; font-size: 1.35em; line-height: 1; }
   .emoji-char:hover { transform: scale(1.1); transition: transform 150ms cubic-bezier(.2,.7,.3,1.0); }
   .caret-trigger { opacity: 0; transition: opacity 140ms cubic-bezier(.2,.7,.3,1.0), transform 140ms cubic-bezier(.2,.7,.3,1.0); transform: translateY(-2px); }
@@ -72,8 +72,11 @@ const customScrollbarStyles = `
   .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
   .custom-scrollbar { scroll-behavior: smooth; }
-  .chat-body { position: relative; z-index: 999; overflow-y: auto; overflow-x: hidden; background: #0b0b0b; }
-  .timestamp-below { display: block; font-size: 11px; line-height: 1; opacity: 0.8; letter-spacing: 0.01em; margin-top: 6px; }
+  .chat-body { position: relative; z-index: 999; overflow-y: auto; overflow-x: hidden; background: #f3f6f9; }
+  .timestamp-below { display: block; font-size: 11px; line-height: 1; opacity: 0.85; letter-spacing: 0.01em; margin-top: 6px; color: #94a3b8; }
+  /* Emoji-only amplification */
+  .emoji-only { text-align: center; }
+  .emoji-only .emoji-char { font-size: 2.4em; }
   .reaction-popover { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); z-index: 60; }
   .reaction-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; }
   .reaction-btn:hover { background: rgba(255,255,255,0.08); }
@@ -844,6 +847,16 @@ const MessagesPage = () => {
   };
 
   const EMOJI_REGEX = /\p{Extended_Pictographic}/u;
+  const isEmojiOnly = (text) => {
+    if (!text) return false;
+    const stripped = text.replace(/\s+/g, "");
+    if (!stripped) return false;
+    // Consider string emoji-only if every char matches emoji regex
+    for (let i = 0; i < stripped.length; i++) {
+      if (!EMOJI_REGEX.test(stripped[i])) return false;
+    }
+    return true;
+  };
   const renderMessageContent = (text) => {
     const highlighted = renderHighlighted(text);
     const wrapEmoji = (node, idxBase) => {
@@ -1069,7 +1082,7 @@ const MessagesPage = () => {
             {selectedUser ? (
               <>
                 {/* Header */}
-                <div className="sticky-head flex items-center justify-between px-4 py-3 bg-[#0b0f15]/95 backdrop-blur border-b border-white/10">
+                <div className="sticky-head flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur border-b border-slate-200">
                   <div className="flex items-center gap-3 min-w-0">
                     <button
                       className="lg:hidden p-2 rounded-full hover:bg-white/10"
@@ -1294,7 +1307,7 @@ const MessagesPage = () => {
                                       </div>
                                     )}
                                     {message.content && (
-                                      <div className="message-content">
+                                      <div className={`message-content ${isEmojiOnly(message.content) ? "emoji-only" : ""}`}>
                                         {renderMessageContent(message.content)}
                                       </div>
                                     )}
