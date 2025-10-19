@@ -354,10 +354,21 @@ const Navbar = () => {
                     />
                     {msgUnreadTotal > 0 && (
                       <span
-                        className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow"
+                        className="absolute rounded-full text-white font-bold"
+                        style={{
+                          top: '-4px',
+                          right: '-4px',
+                          width: '16px',
+                          height: '16px',
+                          lineHeight: '16px',
+                          background: '#F44336',
+                          fontSize: '10px',
+                          textAlign: 'center',
+                          zIndex: 5,
+                        }}
                         aria-label={`${msgUnreadTotal} unread messages`}
                       >
-                        {msgUnreadTotal > 999 ? "999+" : msgUnreadTotal}
+                        {msgUnreadTotal > 99 ? '99+' : msgUnreadTotal}
                       </span>
                     )}
                   </Link>

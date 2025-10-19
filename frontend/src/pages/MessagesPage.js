@@ -945,7 +945,7 @@ const MessagesPage = () => {
             animate={{ opacity: 1, x: 0 }}
             className={`${
               showSidebar ? "flex" : "hidden"
-            } lg:flex pane-left flex-col border-r border-white/10 bg-[#0d1117]`}
+            } lg:flex pane-left flex-col border-r border-slate-200 bg-[#f7f8fa]`}
           >
             {/* Always show the chat list; welcome will appear on right until a chat is clicked */}
             <>
@@ -1000,11 +1000,11 @@ const MessagesPage = () => {
                                 });
                               }
                             }}
-                            className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors ${
-                              selectedUser?._id === connection.user?._id
-                                ? "bg-indigo-600/20"
-                                : ""
-                            }`}
+                        className={`w-full text-left px-3 py-2.5 flex items-center gap-3 rounded-lg transition-colors ${
+                          selectedUser?._id === connection.user?._id
+                            ? "bg-white border border-indigo-200/70 shadow-sm"
+                            : "hover:bg-white/70"
+                        }`}
                           >
                             <div className="relative shrink-0">
                               <img
@@ -1016,9 +1016,9 @@ const MessagesPage = () => {
                                 alt={connection.user?.name}
                                 className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10"
                               />
-                              {connection.user?.isOnline && (
-                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#0d1117] rounded-full" />
-                              )}
+                          {connection.user?.isOnline && (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#f7f8fa] rounded-full" />
+                          )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
@@ -1026,7 +1026,7 @@ const MessagesPage = () => {
                                   {connection.user?.name}
                                 </p>
                                 {connection.lastMessageTime && (
-                                  <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                              <span className="text-[11px] text-slate-500 whitespace-nowrap">
                                     {new Date(
                                       connection.lastMessageTime
                                     ).toLocaleTimeString([], {
@@ -1036,10 +1036,10 @@ const MessagesPage = () => {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-slate-400 truncate">
+                          <p className="text-xs text-slate-600 truncate">
                                 @{connection.user?.username}
                               </p>
-                              <p className="text-xs text-slate-400/80 truncate">
+                          <p className="text-xs text-slate-600/80 truncate">
                                 {connection.lastMessage || ""}
                               </p>
                             </div>
@@ -1057,7 +1057,7 @@ const MessagesPage = () => {
                                 selectedUser?._id === connection.user?._id;
                               return !hide && count > 0 ? (
                                 <span
-                                  className="ml-2 inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow"
+                                  className="ml-auto inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow"
                                   aria-label={`${count} unread messages`}
                                   title={`${count} unread`}
                                 >
