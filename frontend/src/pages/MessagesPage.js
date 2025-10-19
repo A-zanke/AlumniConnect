@@ -33,19 +33,19 @@ import { motion, AnimatePresence } from "framer-motion";
 // Custom CSS for route-scoped shell and dark theme visuals
 const customScrollbarStyles = `
   :root { --navbar-height: var(--navbar-height, 80px); }
-  .chat-shell { height: calc(100vh - var(--navbar-height)); width: 100vw; overflow: hidden; }
+  .chat-shell { height: calc(100vh - var(--navbar-height)); width: 100vw; overflow-y: hidden; overflow-x: hidden; }
   .no-h-scroll { overflow-x: hidden; }
-  .pane-left { width: clamp(280px, 28vw, 380px); }
-  .pane-right { min-width: 0; }
+  .pane-left { width: clamp(280px, 28vw, 380px); overflow-x: hidden; }
+  .pane-right { min-width: 0; position: relative; overflow-x: hidden; }
   .sticky-head { position: sticky; top: 0; z-index: 20; }
   .sticky-compose { position: sticky; bottom: 0; z-index: 20; }
   .z-navbar { z-index: 50; }
   .z-popover { z-index: 40; }
   .z-over { z-index: 30; }
   .z-under { z-index: 10; }
-  .bubble { position: relative; border-radius: 16px; padding: 10px 12px; }
-  .bubble-sent { background: linear-gradient(140deg, #2563eb 0%, #7c3aed 100%); color: white; box-shadow: 0 6px 24px rgba(37, 99, 235, 0.18); }
-  .bubble-received { background: rgba(255,255,255,0.06); color: #e6e8ee; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 24px rgba(0,0,0,0.2); }
+  .bubble { position: relative; border-radius: 18px; padding: 10px 12px; max-width: 65%; }
+  .bubble-sent { background: #005C4B; color: #eafaf6; box-shadow: 0 6px 22px rgba(0, 92, 75, 0.22); }
+  .bubble-received { background: #202C33; color: #e6e8ee; box-shadow: 0 8px 26px rgba(0,0,0,0.22); }
   .bubble:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
   .bubble .message-content { font-size: 15px; line-height: 1.5; font-weight: 500; }
   .message-content { white-space: pre-wrap; word-break: break-word; }
@@ -60,15 +60,19 @@ const customScrollbarStyles = `
   .quick-menu { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
   .quick-item { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #e6e8ee; }
   .quick-item:hover { background: rgba(255,255,255,0.08); }
-  .full-menu { position: fixed; min-width: 220px; background: rgba(24,25,29,0.98); color: #e6e8ee; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+  .full-menu { position: absolute; min-width: 240px; background: #1f1f1f; color: #e6e8ee; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
   .menu-item { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; }
   .menu-item:hover, .menu-item[aria-selected="true"] { background: rgba(255,255,255,0.08); }
+  .menu-reactions { display: flex; gap: 8px; padding: 8px; border-top: 1px solid rgba(255,255,255,0.1); }
+  .menu-reactions button { width: 34px; height: 34px; border-radius: 10px; background: transparent; color: #e6e8ee; border: 0; display: grid; place-items: center; }
+  .menu-reactions button:hover { background: rgba(255,255,255,0.08); }
   .media-img { border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-width: min(60vw, 420px); height: auto; }
   .custom-scrollbar::-webkit-scrollbar { width: 6px; }
   .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.06); border-radius: 3px; }
   .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
   .custom-scrollbar { scroll-behavior: smooth; }
+  .chat-body { position: relative; z-index: 999; overflow-y: auto; overflow-x: hidden; background: #0b0b0b; }
   .timestamp-below { display: block; font-size: 11px; line-height: 1; opacity: 0.8; letter-spacing: 0.01em; margin-top: 6px; }
   .reaction-popover { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); z-index: 60; }
   .reaction-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; }
@@ -533,7 +537,7 @@ const MessagesPage = () => {
         }
       }
 
-      // Clear input and image
+      // Clear input and image immediately for better UX
       setNewMessage("");
       setSelectedImage(null);
       setImagePreview(null);
@@ -1061,9 +1065,9 @@ const MessagesPage = () => {
                       <button onClick={() => setReplyTo(null)} className="text-indigo-300 hover:text-indigo-200"><FiX /></button>
                     </div>
                   )}
-                  <form onSubmit={handleSendMessage} className="flex items-end gap-3">
+                  <form onSubmit={(e)=>{ handleSendMessage(e); }} className="flex items-end gap-3">
                     <div className="flex-1 relative">
-                      <input type="text" value={newMessage} onChange={handleTyping} placeholder="Type a message" className="w-full px-4 py-3 pr-12 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent" />
+                      <input type="text" value={newMessage} onChange={handleTyping} onKeyDown={(e)=>{ if(e.key==='Enter' && !e.shiftKey){ handleSendMessage(e); } }} placeholder="Type a message" className="w-full px-4 py-3 pr-12 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent" />
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                         <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg hover:bg-white/10 text-slate-300"><FiImage /></button>
                         <button type="button" onClick={(e) => { e.stopPropagation(); setShowEmojiPicker((v) => !v); }} className="p-2 rounded-lg hover:bg-white/10 text-slate-300"><FiSmile /></button>
