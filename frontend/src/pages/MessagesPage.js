@@ -31,62 +31,820 @@ import { BiCheckDouble } from "react-icons/bi";
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Custom CSS for route-scoped shell and dark theme visuals
+// ============================================
+// ENHANCED VISUALLY STUNNING CSS
+// ============================================
 const customScrollbarStyles = `
-  :root { --navbar-height: var(--navbar-height, 80px); }
-  .chat-shell { height: calc(100vh - var(--navbar-height)); width: 100vw; overflow-y: hidden; overflow-x: hidden; }
+  /* Custom animations */
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-12px); }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 25px rgba(99, 102, 241, 0.4); }
+    50% { box-shadow: 0 0 40px rgba(99, 102, 241, 0.7); }
+  }
+
+  @keyframes slide-in-right {
+    from { transform: translateX(100%) scale(0.95); opacity: 0; }
+    to { transform: translateX(0) scale(1); opacity: 1; }
+  }
+
+  @keyframes slide-in-left {
+    from { transform: translateX(-100%) scale(0.95); opacity: 0; }
+    to { transform: translateX(0) scale(1); opacity: 1; }
+  }
+
+  @keyframes bounce-in {
+    0% { transform: scale(0.3); opacity: 0; }
+    50% { transform: scale(1.08); }
+    70% { transform: scale(0.92); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes typing {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-12px); opacity: 1; }
+  }
+
+  @keyframes gradient-shift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.15); opacity: 0.8; }
+  }
+
+  @keyframes floaty {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(2deg); }
+  }
+
+  @keyframes ripple {
+    0% { transform: scale(0); opacity: 0.6; }
+    100% { transform: scale(2); opacity: 0; }
+  }
+
+  /* Root variables and main shell */
+  :root { 
+    --navbar-height: var(--navbar-height, 80px); 
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --chat-bg: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    --bubble-sent: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --bubble-received: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  }
+
+  .chat-shell { 
+    height: calc(100vh - var(--navbar-height)); 
+    width: 100vw; 
+    overflow-y: hidden; 
+    overflow-x: hidden;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    position: relative;
+  }
+
+  .chat-shell::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3), transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 177, 153, 0.3), transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
   .no-h-scroll { overflow-x: hidden; }
-  .pane-left { width: clamp(280px, 28vw, 380px); overflow-x: hidden; }
-  .pane-right { min-width: 0; position: relative; overflow-x: hidden; }
-  .sticky-head { position: sticky; top: 0; z-index: 20; }
-  .sticky-compose { position: sticky; bottom: 0; z-index: 20; }
+
+  /* Left pane - connections list */
+  .pane-left { 
+    width: clamp(300px, 30vw, 400px); 
+    overflow-x: hidden;
+    background: rgba(17, 24, 39, 0.85);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 10;
+  }
+
+  .pane-left::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    background: linear-gradient(180deg, rgba(102, 126, 234, 0.2) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .pane-right { 
+    min-width: 0; 
+    position: relative; 
+    overflow-x: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    z-index: 5;
+  }
+
+  /* Sticky positioning */
+  .sticky-head { 
+    position: sticky; 
+    top: 0; 
+    z-index: 20;
+    background: rgba(17, 24, 39, 0.95);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+
+  .sticky-compose { 
+    position: sticky; 
+    bottom: 0; 
+    z-index: 20;
+    background: rgba(17, 24, 39, 0.95);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Z-index layers */
   .z-navbar { z-index: 50; }
   .z-popover { z-index: 40; }
   .z-over { z-index: 30; }
   .z-under { z-index: 10; }
-  .bubble { position: relative; border-radius: 20px; padding: 10px 12px; max-width: 65%; }
-  .bubble-sent { background: linear-gradient(135deg, #FFA726 60%, #FFECB3 100%); color: #1f2937; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
-  .bubble-received { background: linear-gradient(135deg, #64B5F6 50%, #E3F2FD 100%); color: #ffffff; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
-  .bubble:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
-  .bubble .message-content { font-size: 15px; line-height: 1.5; font-weight: 500; }
-  .message-content { white-space: pre-wrap; word-break: break-word; font-size: 15.5px; line-height: 1.5; }
-  .emoji-char { display: inline-block; font-variant-emoji: emoji; transform-origin: center; font-size: 1.35em; line-height: 1; }
-  .emoji-char:hover { transform: scale(1.1); transition: transform 150ms cubic-bezier(.2,.7,.3,1.0); }
-  .caret-trigger { opacity: 0; transition: opacity 140ms cubic-bezier(.2,.7,.3,1.0), transform 140ms cubic-bezier(.2,.7,.3,1.0); transform: translateY(-2px); }
-  .group:hover .caret-trigger, .group:focus-within .caret-trigger, .caret-trigger:focus-visible { opacity: 1; transform: translateY(0); }
-  .caret-button { width: 40px; height: 40px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #e6e8ee; }
-  .caret-button:hover { background: rgba(255,255,255,0.14); }
-  .emoji-trigger { width: 40px; height: 40px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #ffd166; }
-  .emoji-trigger:hover { background: rgba(255,255,255,0.14); }
-  .quick-menu { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12); z-index: 1200; }
-  .quick-item { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #0f172a; }
-  .quick-item:hover { background: #f1f5f9; }
-  .full-menu { position: absolute; min-width: 260px; background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 12px; padding: 6px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18); z-index: 2000; }
-  .menu-item { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; }
-  .menu-item:hover, .menu-item[aria-selected="true"] { background: #f1f5f9; }
-  .menu-reactions { display: flex; gap: 8px; padding: 8px; border-top: 1px solid rgba(255,255,255,0.1); }
-  .menu-reactions button { width: 34px; height: 34px; border-radius: 10px; background: transparent; color: #e6e8ee; border: 0; display: grid; place-items: center; }
-  .menu-reactions button:hover { background: rgba(255,255,255,0.08); }
-  .media-img { border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-width: min(60vw, 420px); height: auto; }
-  .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-  .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.06); border-radius: 3px; }
-  .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
-  .custom-scrollbar { scroll-behavior: smooth; }
-  .chat-body { position: relative; z-index: 999; overflow-y: auto; overflow-x: hidden; background: #f3f6f9; }
-  .timestamp-below { display: block; font-size: 11px; line-height: 1; opacity: 0.9; letter-spacing: 0.01em; margin-top: 6px; color: #94a3b8; text-align: right; }
-  /* Emoji-only amplification */
-  .emoji-only { text-align: center; }
-  .emoji-only .emoji-char { font-size: 2.4em; }
-  .reaction-popover { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 6px; display: flex; gap: 6px; box-shadow: 0 16px 48px rgba(15, 23, 42, 0.15); z-index: 1500; }
-  .reaction-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; color: #0f172a; }
-  .reaction-btn:hover { background: #f1f5f9; }
-  .date-separator { position: sticky; top: 12px; z-index: 5; display: inline-block; margin: 12px auto; padding: 6px 12px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; letter-spacing: .02em; backdrop-filter: blur(6px); }
-  /* Welcome panel visuals */
-  .welcome-bg { background: linear-gradient(135deg, #e0f7fa 0%, #e8f0fe 35%, #f3e5f5 100%); }
-  .welcome-card { background: rgba(255,255,255,0.72); border: 1px solid rgba(0,0,0,0.06); }
-  @keyframes floaty { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
-  .floaty { animation: floaty 6s ease-in-out infinite; }
+
+  /* Message bubbles - STUNNING DESIGN */
+  .bubble { 
+    position: relative; 
+    border-radius: 24px; 
+    padding: 14px 18px; 
+    max-width: 70%;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+  }
+
+  .bubble::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.6s;
+  }
+
+  .bubble:hover::before {
+    left: 100%;
+  }
+
+  .bubble-sent { 
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    margin-left: auto;
+  }
+
+  .bubble-sent::after {
+    content: '';
+    position: absolute;
+    right: -8px;
+    bottom: 8px;
+    width: 20px;
+    height: 20px;
+    background: inherit;
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+  }
+
+  .bubble-received { 
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: #ffffff;
+    box-shadow: 0 10px 30px rgba(240, 147, 251, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  }
+
+  .bubble-received::after {
+    content: '';
+    position: absolute;
+    left: -8px;
+    bottom: 8px;
+    width: 20px;
+    height: 20px;
+    background: inherit;
+    clip-path: polygon(0 0, 0 100%, 100% 100%);
+  }
+
+  .bubble:hover { 
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  }
+
+  .bubble .message-content { 
+    font-size: 15.5px; 
+    line-height: 1.6; 
+    font-weight: 500;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Message content styling */
+  .message-content { 
+    white-space: pre-wrap; 
+    word-break: break-word; 
+    font-size: 15.5px; 
+    line-height: 1.6;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Emoji enhancements */
+  .emoji-char { 
+    display: inline-block; 
+    font-variant-emoji: emoji; 
+    transform-origin: center; 
+    font-size: 1.5em; 
+    line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .emoji-char:hover { 
+    transform: scale(1.25) rotate(5deg);
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+  }
+
+  /* Emoji-only messages */
+  .emoji-only { 
+    text-align: center; 
+    padding: 8px;
+  }
+
+  .emoji-only .emoji-char { 
+    font-size: 3em;
+    animation: bounce-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Hover quick menu trigger */
+  .caret-trigger { 
+    opacity: 0; 
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+                transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); 
+    transform: translateY(-4px);
+  }
+
+  .group:hover .caret-trigger, 
+  .group:focus-within .caret-trigger, 
+  .caret-trigger:focus-visible { 
+    opacity: 1; 
+    transform: translateY(0);
+  }
+
+  .caret-button { 
+    width: 44px; 
+    height: 44px; 
+    border-radius: 50%; 
+    display: grid; 
+    place-items: center; 
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2); 
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); 
+    color: #e0e7ff;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .caret-button:hover { 
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(139, 92, 246, 0.4));
+    transform: scale(1.1);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  .emoji-trigger { 
+    width: 44px; 
+    height: 44px; 
+    border-radius: 50%; 
+    display: grid; 
+    place-items: center; 
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.2));
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2); 
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); 
+    color: #fde68a;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .emoji-trigger:hover { 
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.4), rgba(245, 158, 11, 0.4));
+    transform: scale(1.1) rotate(10deg);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Quick menu */
+  .quick-menu { 
+    position: absolute; 
+    inset: auto auto 100% 0; 
+    transform: translateY(-8px); 
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3); 
+    border-radius: 16px; 
+    padding: 8px; 
+    display: flex; 
+    gap: 6px; 
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    z-index: 1200;
+    animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .quick-item { 
+    width: 44px; 
+    height: 44px; 
+    display: grid; 
+    place-items: center; 
+    border-radius: 12px; 
+    color: #1e293b;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .quick-item::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(99, 102, 241, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.3s, height 0.3s;
+  }
+
+  .quick-item:hover::before {
+    width: 100%;
+    height: 100%;
+  }
+
+  .quick-item:hover { 
+    background: linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%);
+    transform: scale(1.1);
+  }
+
+  /* Full dropdown menu */
+  .full-menu { 
+    position: absolute; 
+    min-width: 280px; 
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(20px);
+    color: #0f172a; 
+    border: 1px solid rgba(255, 255, 255, 0.3); 
+    border-radius: 16px; 
+    padding: 8px; 
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    z-index: 2000;
+    animation: slide-in-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .menu-item { 
+    width: 100%; 
+    text-align: left; 
+    display: flex; 
+    align-items: center; 
+    gap: 12px; 
+    padding: 12px 14px; 
+    border-radius: 12px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 500;
+  }
+
+  .menu-item:hover, 
+  .menu-item[aria-selected="true"] { 
+    background: linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%);
+    transform: translateX(4px);
+  }
+
+  .menu-reactions { 
+    display: flex; 
+    gap: 10px; 
+    padding: 12px; 
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    justify-content: center;
+  }
+
+  .menu-reactions button { 
+    width: 40px; 
+    height: 40px; 
+    border-radius: 12px; 
+    background: transparent; 
+    color: #475569; 
+    border: 0; 
+    display: grid; 
+    place-items: center;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 20px;
+  }
+
+  .menu-reactions button:hover { 
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    transform: scale(1.2) rotate(10deg);
+  }
+
+  /* Media images */
+  .media-img { 
+    border-radius: 16px; 
+    border: 1px solid rgba(255, 255, 255, 0.2); 
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); 
+    max-width: min(65vw, 480px); 
+    height: auto;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .media-img:hover {
+    transform: scale(1.05);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Custom scrollbar - BEAUTIFUL */
+  .custom-scrollbar::-webkit-scrollbar { 
+    width: 8px; 
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track { 
+    background: rgba(255, 255, 255, 0.05); 
+    border-radius: 4px;
+    margin: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb { 
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+    transition: background 0.3s;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { 
+    background: linear-gradient(180deg, #5568d3 0%, #6539a0 100%);
+  }
+
+  .custom-scrollbar { 
+    scroll-behavior: smooth; 
+  }
+
+  /* Chat body */
+  .chat-body { 
+    position: relative; 
+    z-index: 999; 
+    overflow-y: auto; 
+    overflow-x: hidden; 
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    flex: 1;
+    padding: 24px;
+  }
+
+  .chat-body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      radial-gradient(circle at 10% 20%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+      radial-gradient(circle at 90% 80%, rgba(240, 147, 251, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  /* Timestamp */
+  .timestamp-below { 
+    display: block; 
+    font-size: 11px; 
+    line-height: 1; 
+    opacity: 0.85; 
+    letter-spacing: 0.02em; 
+    margin-top: 8px; 
+    color: #cbd5e1; 
+    text-align: right;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Reaction popover */
+  .reaction-popover { 
+    position: absolute; 
+    inset: auto auto 100% 0; 
+    transform: translateY(-8px); 
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3); 
+    border-radius: 16px; 
+    padding: 8px; 
+    display: flex; 
+    gap: 8px; 
+    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.25),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    z-index: 1500;
+    animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .reaction-btn { 
+    width: 42px; 
+    height: 42px; 
+    display: grid; 
+    place-items: center; 
+    border-radius: 12px; 
+    font-size: 22px; 
+    color: #1e293b;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .reaction-btn:hover { 
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    transform: scale(1.25) rotate(10deg);
+  }
+
+  /* Date separator */
+  .date-separator { 
+    position: sticky; 
+    top: 16px; 
+    z-index: 5; 
+    display: inline-block; 
+    margin: 16px auto; 
+    padding: 8px 16px; 
+    border-radius: 9999px; 
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2); 
+    color: #e0e7ff; 
+    font-size: 12px; 
+    letter-spacing: 0.05em; 
+    font-weight: 600;
+    text-transform: uppercase;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Welcome panel */
+  .welcome-bg { 
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .welcome-bg::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: float 20s linear infinite;
+  }
+
+  .welcome-card { 
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 24px;
+    padding: 48px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  }
+
+  .floaty { 
+    animation: floaty 6s ease-in-out infinite; 
+  }
+
+  /* Animations for UI elements */
+  .float-animation {
+    animation: float 4s ease-in-out infinite;
+  }
+
+  .pulse-glow {
+    animation: pulse-glow 2.5s ease-in-out infinite;
+  }
+
+  .message-slide-in-right {
+    animation: slide-in-right 0.4s ease-out;
+  }
+
+  .message-slide-in-left {
+    animation: slide-in-left 0.4s ease-out;
+  }
+
+  .message-bounce-in {
+    animation: bounce-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .typing-indicator {
+    animation: typing 1.6s ease-in-out infinite;
+  }
+
+  /* Gradient text animation */
+  .gradient-text-animated {
+    background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #f5576c);
+    background-size: 400% 400%;
+    animation: gradient-shift 4s ease infinite;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700;
+  }
+
+  /* Hover effects */
+  .hover-lift {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Shimmer loading effect */
+  .shimmer {
+    background: linear-gradient(90deg, 
+      rgba(255, 255, 255, 0.05) 25%, 
+      rgba(255, 255, 255, 0.15) 50%, 
+      rgba(255, 255, 255, 0.05) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  /* Notification badge */
+  .notification-badge {
+    animation: pulse 2.5s infinite;
+    background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+    color: white;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.5);
+  }
+
+  /* Connection status */
+  .status-online {
+    animation: pulse 2.5s infinite;
+    background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.6);
+  }
+
+  /* Smooth transitions */
+  .smooth-transition {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  // /* Glass morphism effect */
+  // .glass-morphism {
+  //   background: rgba(255, 255, 255, 0.15);
+  //   backdrop-filter: blur(20px);
+  //   border: 1px solid rgba(255, 255, 255, 0.25);
+  //   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  // }
+
+  /* Gradient borders */
+  .gradient-border {
+    position: relative;
+    background: rgba(17, 24, 39, 0.9);
+    border-radius: 16px;
+    padding: 2px;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    background: linear-gradient(135deg, #667eea, #764ba2, #f093fb);
+    border-radius: inherit;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    animation: gradient-shift 3s ease infinite;
+    background-size: 200% 200%;
+  }
+
+  /* Message bubble effects with 3D depth */
+  .message-bubble {
+    position: relative;
+    overflow: hidden;
+    transform-style: preserve-3d;
+  }
+
+  .message-bubble::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+    transition: left 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .message-bubble:hover::before {
+    left: 100%;
+  }
+
+  /* Enhanced input areas */
+  input, textarea {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  input:focus, textarea:focus {
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3),
+                0 8px 24px rgba(0, 0, 0, 0.2);
+    transform: translateY(-1px);
+  }
+
+  /* Button enhancements */
+  button {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+  }
+
+  button:active::before {
+    width: 300px;
+    height: 300px;
+  }
+
+  /* Card hover effects */
+  .card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Avatar glow effects */
+  .avatar {
+    position: relative;
+    border-radius: 50%;
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .avatar:hover {
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.8);
+    transform: scale(1.1);
+  }
+
+  /* Selection mode styles */
+  .selection-mode {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    border: 2px solid rgba(99, 102, 241, 0.5);
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .pane-left {
+      width: 100%;
+      max-width: 100%;
+    }
+    
+    .bubble {
+      max-width: 85%;
+    }
+    
+    .chat-body {
+      padding: 16px;
+    }
+  }
 `;
 
 const MessagesPage = () => {
@@ -528,11 +1286,20 @@ const MessagesPage = () => {
   const getVisibleConnections = () =>
     connections.filter(
       (conn) =>
-        (conn.user?.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (conn.user?.username || "").toLowerCase().includes(searchQuery.toLowerCase())
+        (conn.user?.name || "")
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        (conn.user?.username || "")
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase())
     );
 
-  const toggleChatSelection = (userId, index, mode = "toggle", event = null) => {
+  const toggleChatSelection = (
+    userId,
+    index,
+    mode = "toggle",
+    event = null
+  ) => {
     setSelectedChatIds((prev) => {
       const next = new Set(prev);
       if (mode === "range" && lastSelectedChatIndex !== null) {
@@ -599,7 +1366,8 @@ const MessagesPage = () => {
       setUnreadByConversationId((prev) => {
         const next = { ...prev };
         connections.forEach((c) => {
-          if (ids.includes(String(c.user?._id)) && c.threadId) next[c.threadId] = 0;
+          if (ids.includes(String(c.user?._id)) && c.threadId)
+            next[c.threadId] = 0;
         });
         return next;
       });
@@ -1081,149 +1849,174 @@ const MessagesPage = () => {
           >
             {/* Always show the chat list; welcome will appear on right until a chat is clicked */}
             <>
-                {/* Sticky search */}
-                <div className="sticky-head px-4 py-3 bg-gradient-to-r from-white/90 to-slate-100/90 backdrop-blur border-b border-slate-200">
-                  <div className="relative">
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Search conversations"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white text-slate-800 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-400/60 focus:border-transparent outline-none"
-                    />
+              {/* Sticky search */}
+              <div className="sticky-head px-4 py-3 bg-gradient-to-r from-white/90 to-slate-100/90 backdrop-blur border-b border-slate-200">
+                <div className="relative">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search conversations"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white text-slate-800 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-400/60 focus:border-transparent outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Top action bar when chats are selected */}
+              {selectedChatIds.size > 0 && (
+                <div className="sticky top-[48px] z-20 px-3 py-2 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-700">
+                    {selectedChatIds.size} selected
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleBulkChatDelete}
+                      className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+                      title="Delete chats"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                    <button
+                      onClick={handleBulkBlock}
+                      className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                      title="Block user(s)"
+                    >
+                      <Ban size={16} />
+                    </button>
+                    <button
+                      onClick={handleBulkReport}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                      title="Report user(s)"
+                    >
+                      <Flag size={16} />
+                    </button>
+                    <button
+                      onClick={clearChatSelection}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200"
+                      title="Clear selection"
+                    >
+                      <LucideX size={16} />
+                    </button>
                   </div>
                 </div>
+              )}
 
-                {/* Top action bar when chats are selected */}
-                {selectedChatIds.size > 0 && (
-                  <div className="sticky top-[48px] z-20 px-3 py-2 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-slate-700">
-                      {selectedChatIds.size} selected
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleBulkChatDelete}
-                        className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
-                        title="Delete chats"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                      <button
-                        onClick={handleBulkBlock}
-                        className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
-                        title="Block user(s)"
-                      >
-                        <Ban size={16} />
-                      </button>
-                      <button
-                        onClick={handleBulkReport}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
-                        title="Report user(s)"
-                      >
-                        <Flag size={16} />
-                      </button>
-                      <button
-                        onClick={clearChatSelection}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200"
-                        title="Clear selection"
-                      >
-                        <LucideX size={16} />
-                      </button>
-                    </div>
+              {/* List */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {connections.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400">
+                    <div className="text-6xl mb-3">💬</div>
+                    <p className="text-base font-medium">No connections yet</p>
+                    <p className="text-xs mt-1">
+                      Connect with people to start conversations
+                    </p>
                   </div>
-                )}
-
-                {/* List */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  {connections.length === 0 ? (
-                    <div className="p-6 text-center text-slate-400">
-                      <div className="text-6xl mb-3">💬</div>
-                      <p className="text-base font-medium">No connections yet</p>
-                      <p className="text-xs mt-1">
-                        Connect with people to start conversations
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="py-2">
-                  {getVisibleConnections().map((connection, index) => (
+                ) : (
+                  <div className="py-2">
+                    {getVisibleConnections().map((connection, index) => (
                       <motion.button
-                            key={connection._id}
-                            initial={{ opacity: 0, y: 12 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: Math.min(index * 0.03, 0.3) }}
-                        onClick={(e) => handleChatRowClick(connection, index, e)}
+                        key={connection._id}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(index * 0.03, 0.3) }}
+                        onClick={(e) =>
+                          handleChatRowClick(connection, index, e)
+                        }
                         className={`w-full text-left px-3 py-2.5 flex items-center gap-3 rounded-lg transition-colors ${
                           selectedUser?._id === connection.user?._id
                             ? "bg-white border border-indigo-200/70 shadow-sm"
                             : "hover:bg-white/70"
                         }`}
-                          >
+                      >
                         {/* Professional multi-select trigger via row menu area (no checkbox) */}
                         <button
-                          title={selectedChatIds.has(String(connection.user?._id)) ? "Deselect" : "Select"}
+                          title={
+                            selectedChatIds.has(String(connection.user?._id))
+                              ? "Deselect"
+                              : "Select"
+                          }
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleChatSelection(connection.user._id, index, "toggle", e);
+                            toggleChatSelection(
+                              connection.user._id,
+                              index,
+                              "toggle",
+                              e
+                            );
                           }}
-                          className={`shrink-0 h-6 w-6 rounded-md border ${selectedChatIds.has(String(connection.user?._id)) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'} grid place-items-center hover:bg-indigo-50`}
-                          aria-pressed={selectedChatIds.has(String(connection.user?._id))}
+                          className={`shrink-0 h-6 w-6 rounded-md border ${
+                            selectedChatIds.has(String(connection.user?._id))
+                              ? "bg-indigo-600 border-indigo-600"
+                              : "bg-white border-slate-300"
+                          } grid place-items-center hover:bg-indigo-50`}
+                          aria-pressed={selectedChatIds.has(
+                            String(connection.user?._id)
+                          )}
                         >
-                          <span className={`block h-3 w-3 rounded-sm ${selectedChatIds.has(String(connection.user?._id)) ? 'bg-white' : 'bg-transparent'}`} />
+                          <span
+                            className={`block h-3 w-3 rounded-sm ${
+                              selectedChatIds.has(String(connection.user?._id))
+                                ? "bg-white"
+                                : "bg-transparent"
+                            }`}
+                          />
                         </button>
                         <div className="relative shrink-0">
-                              <img
-                                src={
-                                  connection.user?.avatarUrl
-                                    ? getAvatarUrl(connection.user.avatarUrl)
-                                    : "/default-avatar.png"
-                                }
-                                alt={connection.user?.name}
-                                className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10"
-                              />
+                          <img
+                            src={
+                              connection.user?.avatarUrl
+                                ? getAvatarUrl(connection.user.avatarUrl)
+                                : "/default-avatar.png"
+                            }
+                            alt={connection.user?.name}
+                            className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10"
+                          />
                           {connection.user?.isOnline && (
                             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#f7f8fa] rounded-full" />
                           )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold truncate">
-                                  {connection.user?.name}
-                                </p>
-                                {connection.lastMessageTime && (
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold truncate">
+                              {connection.user?.name}
+                            </p>
+                            {connection.lastMessageTime && (
                               <span className="text-[11px] text-slate-500 whitespace-nowrap">
-                                    {new Date(
-                                      connection.lastMessageTime
-                                    ).toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </span>
-                                )}
-                              </div>
+                                {new Date(
+                                  connection.lastMessageTime
+                                ).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-slate-600 truncate">
-                                @{connection.user?.username}
-                              </p>
+                            @{connection.user?.username}
+                          </p>
                           <p className="text-xs text-slate-600/80 truncate">
-                                {connection.lastMessage || ""}
-                              </p>
-                            </div>
-                            {/* Unread badge */}
-                            {(() => {
-                              const threadId = connection.threadId;
-                              const base =
-                                typeof connection.unreadCount === "number"
-                                  ? connection.unreadCount
-                                  : 0;
-                              const count = threadId
-                                ? unreadByConversationId[threadId] ?? base
-                                : base;
-                              const hide =
-                                selectedUser?._id === connection.user?._id;
+                            {connection.lastMessage || ""}
+                          </p>
+                        </div>
+                        {/* Unread badge */}
+                        {(() => {
+                          const threadId = connection.threadId;
+                          const base =
+                            typeof connection.unreadCount === "number"
+                              ? connection.unreadCount
+                              : 0;
+                          const count = threadId
+                            ? unreadByConversationId[threadId] ?? base
+                            : base;
+                          const hide =
+                            selectedUser?._id === connection.user?._id;
                           return !hide ? (
                             <span
                               className={`ml-auto inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-semibold shadow ${
-                                count > 0 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"
+                                count > 0
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-slate-200 text-slate-600"
                               }`}
                               aria-label={`${count} unread messages`}
                               title={`${count} unread`}
@@ -1231,13 +2024,13 @@ const MessagesPage = () => {
                               {count > 999 ? "999+" : count}
                             </span>
                           ) : null;
-                            })()}
-                          </motion.button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              </>
+                        })()}
+                      </motion.button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           </motion.aside>
 
           {/* Right Pane */}
@@ -1357,7 +2150,7 @@ const MessagesPage = () => {
                 <div
                   ref={messageContainerRef}
                   className="chat-body flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-5"
-                  style={{ position: 'relative', overflowY: 'auto' }}
+                  style={{ position: "relative", overflowY: "auto" }}
                 >
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-300">
@@ -1475,50 +2268,84 @@ const MessagesPage = () => {
                                       </div>
                                     )}
                                     {message.content && (
-                                      <div className={`message-content ${isEmojiOnly(message.content) ? "emoji-only" : ""}`}>
+                                      <div
+                                        className={`message-content ${
+                                          isEmojiOnly(message.content)
+                                            ? "emoji-only"
+                                            : ""
+                                        }`}
+                                      >
                                         {renderMessageContent(message.content)}
                                       </div>
                                     )}
-                                    {message.attachments && message.attachments.length > 0 && (
-                                      <div className="mt-2 space-y-2">
-                                        {message.attachments.map((attachment, idx) => {
-                                          const lower = String(attachment).toLowerCase();
-                                          const isImage = /(\.png|\.jpg|\.jpeg|\.gif|\.webp)$/i.test(lower) || lower.startsWith('/uploads/messages/');
-                                          const isVideo = /(\.mp4|\.webm|\.ogg|\.mov|\.qt)$/i.test(lower);
-                                          const isDoc = /(\.pdf|\.docx?|\.pptx?|\.xlsx?)$/i.test(lower);
-                                          if (isImage) {
-                                            return (
-                                              <img
-                                                key={idx}
-                                                src={attachment}
-                                                alt="image"
-                                                onClick={() => setLightboxSrc(attachment)}
-                                                className="media-img cursor-zoom-in hover:opacity-90 transition"
-                                              />
-                                            );
-                                          }
-                                          if (isVideo) {
-                                            return (
-                                              <video key={idx} controls className="max-w-[72vw] max-h-[40vh] rounded-xl border border-white/10 shadow">
-                                                <source src={attachment} />
-                                              </video>
-                                            );
-                                          }
-                                          return (
-                                            <a
-                                              key={idx}
-                                              href={attachment}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="block p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
-                                            >
-                                              <div className="text-sm font-semibold">Attachment</div>
-                                              <div className="text-xs opacity-80">Open / Download</div>
-                                            </a>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
+                                    {message.attachments &&
+                                      message.attachments.length > 0 && (
+                                        <div className="mt-2 space-y-2">
+                                          {message.attachments.map(
+                                            (attachment, idx) => {
+                                              const lower =
+                                                String(
+                                                  attachment
+                                                ).toLowerCase();
+                                              const isImage =
+                                                /(\.png|\.jpg|\.jpeg|\.gif|\.webp)$/i.test(
+                                                  lower
+                                                ) ||
+                                                lower.startsWith(
+                                                  "/uploads/messages/"
+                                                );
+                                              const isVideo =
+                                                /(\.mp4|\.webm|\.ogg|\.mov|\.qt)$/i.test(
+                                                  lower
+                                                );
+                                              const isDoc =
+                                                /(\.pdf|\.docx?|\.pptx?|\.xlsx?)$/i.test(
+                                                  lower
+                                                );
+                                              if (isImage) {
+                                                return (
+                                                  <img
+                                                    key={idx}
+                                                    src={attachment}
+                                                    alt="image"
+                                                    onClick={() =>
+                                                      setLightboxSrc(attachment)
+                                                    }
+                                                    className="media-img cursor-zoom-in hover:opacity-90 transition"
+                                                  />
+                                                );
+                                              }
+                                              if (isVideo) {
+                                                return (
+                                                  <video
+                                                    key={idx}
+                                                    controls
+                                                    className="max-w-[72vw] max-h-[40vh] rounded-xl border border-white/10 shadow"
+                                                  >
+                                                    <source src={attachment} />
+                                                  </video>
+                                                );
+                                              }
+                                              return (
+                                                <a
+                                                  key={idx}
+                                                  href={attachment}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  className="block p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+                                                >
+                                                  <div className="text-sm font-semibold">
+                                                    Attachment
+                                                  </div>
+                                                  <div className="text-xs opacity-80">
+                                                    Open / Download
+                                                  </div>
+                                                </a>
+                                              );
+                                            }
+                                          )}
+                                        </div>
+                                      )}
                                     {/* Timestamp below bubble */}
                                     <div
                                       className={`timestamp-below ${
@@ -1538,13 +2365,22 @@ const MessagesPage = () => {
                                       {isMine && (
                                         <span className="inline-flex items-center ml-1 align-middle">
                                           {message.status === "sent" && (
-                                            <FiCheck size={14} color="#1976D2" />
+                                            <FiCheck
+                                              size={14}
+                                              color="#1976D2"
+                                            />
                                           )}
                                           {message.status === "delivered" && (
-                                            <BiCheckDouble size={14} color="#1976D2" />
+                                            <BiCheckDouble
+                                              size={14}
+                                              color="#1976D2"
+                                            />
                                           )}
                                           {message.status === "seen" && (
-                                            <BiCheckDouble size={14} color="#1976D2" />
+                                            <BiCheckDouble
+                                              size={14}
+                                              color="#1976D2"
+                                            />
                                           )}
                                         </span>
                                       )}
@@ -1813,7 +2649,7 @@ const MessagesPage = () => {
                       <div
                         onDragOver={(e) => {
                           e.preventDefault();
-                          e.dataTransfer.dropEffect = 'copy';
+                          e.dataTransfer.dropEffect = "copy";
                         }}
                         onDrop={(e) => {
                           e.preventDefault();
@@ -1821,7 +2657,8 @@ const MessagesPage = () => {
                           if (file) {
                             setSelectedImage(file);
                             const reader = new FileReader();
-                            reader.onload = (ev) => setImagePreview(ev.target.result);
+                            reader.onload = (ev) =>
+                              setImagePreview(ev.target.result);
                             reader.readAsDataURL(file);
                           }
                         }}
@@ -1876,30 +2713,112 @@ const MessagesPage = () => {
               </>
             ) : (
               <div className="h-full w-full welcome-bg flex items-center justify-center">
-                <div className="welcome-card rounded-3xl shadow-2xl p-8 md:p-10 max-w-2xl w-[92%] text-center" style={{ fontFamily: 'Inter, Poppins, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji' }}>
+                <div
+                  className="welcome-card rounded-3xl shadow-2xl p-8 md:p-10 max-w-2xl w-[92%] text-center"
+                  style={{
+                    fontFamily:
+                      "Inter, Poppins, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji",
+                  }}
+                >
                   <div className="mx-auto mb-6 floaty" aria-hidden="true">
                     {/* Simple alumni-themed vector: open book + chat bubbles + handshake */}
-                    <svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto">
+                    <svg
+                      width="160"
+                      height="160"
+                      viewBox="0 0 160 160"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="mx-auto"
+                    >
                       {/* Book */}
-                      <rect x="24" y="40" width="52" height="72" rx="8" fill="#BBDEFB" stroke="#90CAF9"/>
-                      <rect x="84" y="40" width="52" height="72" rx="8" fill="#E1BEE7" stroke="#CE93D8"/>
-                      <line x1="80" y1="40" x2="80" y2="112" stroke="#9CA3AF" strokeWidth="2"/>
+                      <rect
+                        x="24"
+                        y="40"
+                        width="52"
+                        height="72"
+                        rx="8"
+                        fill="#BBDEFB"
+                        stroke="#90CAF9"
+                      />
+                      <rect
+                        x="84"
+                        y="40"
+                        width="52"
+                        height="72"
+                        rx="8"
+                        fill="#E1BEE7"
+                        stroke="#CE93D8"
+                      />
+                      <line
+                        x1="80"
+                        y1="40"
+                        x2="80"
+                        y2="112"
+                        stroke="#9CA3AF"
+                        strokeWidth="2"
+                      />
                       {/* Pages */}
-                      <path d="M28 48C40 44 60 44 72 48" stroke="#64B5F6" strokeWidth="2"/>
-                      <path d="M88 48C100 44 120 44 132 48" stroke="#BA68C8" strokeWidth="2"/>
+                      <path
+                        d="M28 48C40 44 60 44 72 48"
+                        stroke="#64B5F6"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M88 48C100 44 120 44 132 48"
+                        stroke="#BA68C8"
+                        strokeWidth="2"
+                      />
                       {/* Chat bubbles */}
-                      <rect x="18" y="18" width="38" height="22" rx="8" fill="#A7F3D0" stroke="#34D399"/>
-                      <path d="M30 40 L28 46 L36 41" fill="#A7F3D0"/>
-                      <rect x="104" y="14" width="38" height="22" rx="8" fill="#BFDBFE" stroke="#60A5FA"/>
-                      <path d="M122 36 L120 42 L128 37" fill="#BFDBFE"/>
+                      <rect
+                        x="18"
+                        y="18"
+                        width="38"
+                        height="22"
+                        rx="8"
+                        fill="#A7F3D0"
+                        stroke="#34D399"
+                      />
+                      <path d="M30 40 L28 46 L36 41" fill="#A7F3D0" />
+                      <rect
+                        x="104"
+                        y="14"
+                        width="38"
+                        height="22"
+                        rx="8"
+                        fill="#BFDBFE"
+                        stroke="#60A5FA"
+                      />
+                      <path d="M122 36 L120 42 L128 37" fill="#BFDBFE" />
                       {/* Handshake */}
-                      <path d="M58 112 C68 100 92 100 102 112" stroke="#F59E0B" strokeWidth="6" strokeLinecap="round"/>
-                      <circle cx="60" cy="114" r="6" fill="#FDE68A" stroke="#F59E0B"/>
-                      <circle cx="100" cy="114" r="6" fill="#FDE68A" stroke="#F59E0B"/>
+                      <path
+                        d="M58 112 C68 100 92 100 102 112"
+                        stroke="#F59E0B"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                      />
+                      <circle
+                        cx="60"
+                        cy="114"
+                        r="6"
+                        fill="#FDE68A"
+                        stroke="#F59E0B"
+                      />
+                      <circle
+                        cx="100"
+                        cy="114"
+                        r="6"
+                        fill="#FDE68A"
+                        stroke="#F59E0B"
+                      />
                     </svg>
                   </div>
-                  <h2 className="text-3xl md:text-4xl font-extrabold mb-3 text-blue-800">Welcome to MIT’s AlumniConnect!</h2>
-                  <p className="text-lg md:text-xl text-slate-700">Let’s stay connected. Enjoy real-time conversations and networking.</p>
+                  <h2 className="text-3xl md:text-4xl font-extrabold mb-3 text-blue-800">
+                    Welcome to MIT’s AlumniConnect!
+                  </h2>
+                  <p className="text-lg md:text-xl text-slate-700">
+                    Let’s stay connected. Enjoy real-time conversations and
+                    networking.
+                  </p>
                 </div>
               </div>
             )}
