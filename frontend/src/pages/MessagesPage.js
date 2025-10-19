@@ -204,21 +204,27 @@ const customScrollbarStyles = `
     cursor: default;
   }
 
-  /* Bubble wrapper for anchoring actions */
+  /* Bubble wrapper; let actions anchor to the row container */
   .bubble-wrap {
-    position: relative;
+    position: static; /* actions will position against .bubble-row */
     display: inline-block;
   }
 
-  /* Actions aligned next to bubble edge */
+  /* Each message row provides the positioning context for actions */
+  .bubble-row {
+    position: relative;
+  }
+
+  /* Actions aligned to inside edge of the row (WhatsApp-like) */
   .bubble-actions {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    z-index: 250;
+    z-index: 500;
     display: flex;
     align-items: center;
     gap: 8px;
+    pointer-events: auto;
   }
 
   .bubble::before {
@@ -242,6 +248,8 @@ const customScrollbarStyles = `
     box-shadow: 0 10px 30px rgba(59, 130, 246, 0.35),
                 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
     margin-left: auto;
+    /* Reserve space for inside actions */
+    padding-right: 52px;
   }
 
   .bubble-sent::after {
@@ -260,6 +268,8 @@ const customScrollbarStyles = `
     color: #062e2e;
     box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4),
                 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+    /* Reserve space for inside actions */
+    padding-left: 52px;
   }
 
   .bubble-received::after {
@@ -539,7 +549,7 @@ const customScrollbarStyles = `
     position: relative; 
     z-index: 999; 
     overflow-y: auto; 
-    overflow-x: hidden; 
+    overflow-x: hidden; /* STRICT: prevent horizontal leaks */
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
     flex: 1;
     padding: 24px;
@@ -2238,7 +2248,7 @@ const MessagesPage = () => {
                                   duration: 0.16,
                                   ease: [0.2, 0.7, 0.3, 1],
                                 }}
-                                className={`group relative flex ${
+                                className={`bubble-row group relative flex ${
                                   isMine ? "justify-end" : "justify-start"
                                 }`}
                                 onMouseEnter={() =>
@@ -2251,7 +2261,7 @@ const MessagesPage = () => {
                                 }
                               >
                                 <div
-                                  className={`bubble-wrap relative z-[100] max-w-[85%] ${
+                                  className={`bubble-wrap z-[100] max-w-[85%] ${
                                     isMine ? "order-2" : "order-1"
                                   }`}
                                 >
@@ -2397,7 +2407,7 @@ const MessagesPage = () => {
                                   {hoverQuickFor === message.id && (
                                     <div
                                       className={`bubble-actions ${
-                                        isMine ? "right-[-36px]" : "left-[-36px]"
+                                        isMine ? "right-[12px]" : "left-[12px]"
                                       }`}
                                     >
                                       <button
@@ -2444,7 +2454,7 @@ const MessagesPage = () => {
                                   )}
                                   <div
                                     className={`caret-trigger bubble-actions ${
-                                      isMine ? "right-[-36px]" : "left-[-36px]"
+                                      isMine ? "right-[12px]" : "left-[12px]"
                                     }`}
                                   >
                                     <div className="relative z-[1200]">
@@ -2545,12 +2555,12 @@ const MessagesPage = () => {
                                   </div>
                                 </div>
 
-                                {/* Hover emoji trigger outside bubble */}
+                                {/* Hover emoji trigger anchored inside chat container */}
                                 {hoverQuickFor === message.id && (
                                   <div
-                                    className={`absolute z-[250] ${
-                                      isMine ? "right-[-36px]" : "left-[-36px]"
-                                    } top-1/2 -translate-y-1/2`}
+                                    className={`bubble-actions ${
+                                      isMine ? "right-[12px]" : "left-[12px]"
+                                    }`}
                                   >
                                     <button
                                       className="emoji-trigger"
@@ -2604,9 +2614,9 @@ const MessagesPage = () => {
 
                                 {/* Caret trigger beside bubble - dropdown in front of message */}
                                 <div
-                                  className={`caret-trigger absolute z-[250] ${
-                                    isMine ? "right-[-36px]" : "left-[-36px]"
-                                  } top-1/2 -translate-y-1/2`}
+                                  className={`caret-trigger bubble-actions ${
+                                    isMine ? "right-[12px]" : "left-[12px]"
+                                  }`}
                                 >
                                   <div className="relative z-[1200]">
                                     <button
