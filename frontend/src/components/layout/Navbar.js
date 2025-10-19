@@ -38,7 +38,10 @@ const Navbar = () => {
     };
     const handleResize = () => {
       if (navRef.current) {
-        const h = Math.max(1, Math.round(navRef.current.getBoundingClientRect().height));
+        const h = Math.max(
+          1,
+          Math.round(navRef.current.getBoundingClientRect().height)
+        );
         setNavHeight(h);
         document.documentElement.style.setProperty("--navbar-height", `${h}px`);
       }
@@ -54,7 +57,10 @@ const Navbar = () => {
 
   // Fetch total unread messages for navbar badge
   useEffect(() => {
-    if (!user) { setMsgUnreadTotal(0); return; }
+    if (!user) {
+      setMsgUnreadTotal(0);
+      return;
+    }
     let mounted = true;
     const refreshUnread = async () => {
       try {
@@ -68,8 +74,12 @@ const Navbar = () => {
     refreshUnread();
     const interval = setInterval(refreshUnread, 15000);
     const onFocus = () => refreshUnread();
-    window.addEventListener('focus', onFocus);
-    return () => { mounted = false; clearInterval(interval); window.removeEventListener('focus', onFocus); };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [user]);
 
   const toggleMenu = () => setIsOpen(!isOpen);
@@ -82,22 +92,36 @@ const Navbar = () => {
   const isStudent = user && (user.role || "").toLowerCase() === "student";
   const isPosterRole =
     user &&
-    (["teacher", "alumni", "admin"].includes((user.role || "").toLowerCase()));
+    ["teacher", "alumni", "admin"].includes((user.role || "").toLowerCase());
 
   // Build nav ensuring Home is always first for students
   const baseItems = [
     { to: "/", label: "Home", icon: FiHome },
     { to: "/about", label: "About", icon: FiUsers },
   ];
-  const postsItem = user ? [{ to: "/posts", label: "Posts", icon: FiFileText }] : [];
-  const forumItem = (user && (user.role || "").toLowerCase() !== "teacher" && (user.role || "").toLowerCase() !== "alumni") ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }] : [];
-  const netItem = user ? [{ to: "/network", label: "Network", icon: FiUsers }] : [];
-  const adminItem = (user && (user.role || "").toLowerCase() === "admin") ? [{ to: "/admin", label: "Admin", icon: FiUser }] : [];
+  const postsItem = user
+    ? [{ to: "/posts", label: "Posts", icon: FiFileText }]
+    : [];
+  const forumItem =
+    user &&
+    (user.role || "").toLowerCase() !== "teacher" &&
+    (user.role || "").toLowerCase() !== "alumni"
+      ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }]
+      : [];
+  const netItem = user
+    ? [{ to: "/network", label: "Network", icon: FiUsers }]
+    : [];
+  const adminItem =
+    user && (user.role || "").toLowerCase() === "admin"
+      ? [{ to: "/admin", label: "Admin", icon: FiUser }]
+      : [];
 
   const navItems = [
     ...baseItems,
     // Non-students get direct Events link
-    ...(!isStudent ? [{ to: "/events", label: "Events", icon: FiCalendar }] : []),
+    ...(!isStudent
+      ? [{ to: "/events", label: "Events", icon: FiCalendar }]
+      : []),
     // For students, Posts is in the Events dropdown, so exclude it here to avoid duplication
     ...(!isStudent ? postsItem : []),
     ...forumItem,
@@ -111,7 +135,7 @@ const Navbar = () => {
     <motion.nav
       ref={navRef}
       className="relative z-50 transition-all duration-500 backdrop-blur-md bg-transparent"
-      style={{ ['--navbar-height']: `${navHeight}px` }}
+      style={{ ["--navbar-height"]: `${navHeight}px` }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ type: "spring", stiffness: 200, damping: 20 }}
@@ -296,21 +320,28 @@ const Navbar = () => {
               >
                 {/* Messages */}
                 <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
+                  whileHover={{ scale: 1.06 }}
+                  whileTap={{ scale: 0.94 }}
                 >
-                  <Link
-                    to="/messages"
-                    className="p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 transition-all duration-300 relative group"
-                  >
-                    <FiMessageSquare size={20} />
+                  <Link to="/messages" className="navbar-icon-btn group">
+                    <FiMessageSquare
+                      size={20}
+                      className="icon transition-colors duration-300"
+                    />
                     {msgUnreadTotal > 0 && (
                       <span
-                        style={{ position: 'absolute', top: '-5px', right: '-5px', background: '#ef4444', color: '#fff', borderRadius: '9999px', padding: '2px 6px', fontSize: '11px', fontWeight: 600 }}
+                        className="unread-badge shadow"
+                        style={{
+                          background: "#ef4444",
+                          color: "#fff",
+                          borderRadius: "9999px",
+                          padding: "2px 6px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                        }}
                         aria-label={`${msgUnreadTotal} unread messages`}
-                        className="shadow"
                       >
-                        {msgUnreadTotal > 999 ? '999+' : msgUnreadTotal}
+                        {msgUnreadTotal > 999 ? "999+" : msgUnreadTotal}
                       </span>
                     )}
                   </Link>
