@@ -57,12 +57,12 @@ const customScrollbarStyles = `
   .caret-button:hover { background: rgba(255,255,255,0.14); }
   .emoji-trigger { width: 40px; height: 40px; border-radius: 9999px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.35); color: #ffd166; }
   .emoji-trigger:hover { background: rgba(255,255,255,0.14); }
-  .quick-menu { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
-  .quick-item { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #e6e8ee; }
-  .quick-item:hover { background: rgba(255,255,255,0.08); }
-  .full-menu { position: absolute; min-width: 240px; background: #1f1f1f; color: #e6e8ee; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+  .quick-menu { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 6px; display: flex; gap: 4px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12); z-index: 1200; }
+  .quick-item { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #0f172a; }
+  .quick-item:hover { background: #f1f5f9; }
+  .full-menu { position: absolute; min-width: 260px; background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 12px; padding: 6px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18); z-index: 2000; }
   .menu-item { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; }
-  .menu-item:hover, .menu-item[aria-selected="true"] { background: rgba(255,255,255,0.08); }
+  .menu-item:hover, .menu-item[aria-selected="true"] { background: #f1f5f9; }
   .menu-reactions { display: flex; gap: 8px; padding: 8px; border-top: 1px solid rgba(255,255,255,0.1); }
   .menu-reactions button { width: 34px; height: 34px; border-radius: 10px; background: transparent; color: #e6e8ee; border: 0; display: grid; place-items: center; }
   .menu-reactions button:hover { background: rgba(255,255,255,0.08); }
@@ -77,9 +77,9 @@ const customScrollbarStyles = `
   /* Emoji-only amplification */
   .emoji-only { text-align: center; }
   .emoji-only .emoji-char { font-size: 2.4em; }
-  .reaction-popover { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: rgba(24,25,29,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; display: flex; gap: 6px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); z-index: 60; }
-  .reaction-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; }
-  .reaction-btn:hover { background: rgba(255,255,255,0.08); }
+  .reaction-popover { position: absolute; inset: auto auto 100% 0; transform: translateY(-8px); background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 6px; display: flex; gap: 6px; box-shadow: 0 16px 48px rgba(15, 23, 42, 0.15); z-index: 1500; }
+  .reaction-btn { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; font-size: 18px; color: #0f172a; }
+  .reaction-btn:hover { background: #f1f5f9; }
   .date-separator { position: sticky; top: 12px; z-index: 5; display: inline-block; margin: 12px auto; padding: 6px 12px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; font-size: 11px; letter-spacing: .02em; backdrop-filter: blur(6px); }
   /* Welcome panel visuals */
   .welcome-bg { background: linear-gradient(135deg, #e0f7fa 0%, #e8f0fe 35%, #f3e5f5 100%); }
@@ -1057,7 +1057,7 @@ const MessagesPage = () => {
                                 selectedUser?._id === connection.user?._id;
                               return !hide && count > 0 ? (
                                 <span
-                                  className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow-lg"
+                                  className="ml-2 inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow"
                                   aria-label={`${count} unread messages`}
                                   title={`${count} unread`}
                                 >
@@ -1190,6 +1190,7 @@ const MessagesPage = () => {
                 <div
                   ref={messageContainerRef}
                   className="chat-body flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-5"
+                  style={{ position: 'relative', overflowY: 'auto' }}
                 >
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-300">
@@ -1259,7 +1260,7 @@ const MessagesPage = () => {
                                 }
                               >
                                 <div
-                                  className={`max-w-[72%] ${
+                                  className={`relative z-[100] max-w-[72%] ${
                                     isMine ? "order-2" : "order-1"
                                   }`}
                                 >
@@ -1455,7 +1456,7 @@ const MessagesPage = () => {
                                     isMine ? "right-0 -mr-10" : "left-0 -ml-10"
                                   } top-[calc(50%+46px)]`}
                                 >
-                                  <div className="relative">
+                                  <div className="relative z-[1200]">
                                     <button
                                       className="caret-button focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                                       aria-haspopup="menu"

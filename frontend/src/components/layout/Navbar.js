@@ -343,26 +343,18 @@ const Navbar = () => {
                 transition={{ delay: 0.3 }}
               >
                 {/* Messages */}
-                <motion.div
-                  whileHover={{ scale: 1.06 }}
-                  whileTap={{ scale: 0.94 }}
-                >
-                  <Link to="/messages" className="navbar-icon-btn group">
+                <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}>
+                  <Link
+                    to="/messages"
+                    className="navbar-icon-btn group relative rounded-xl px-3 py-2 hover:bg-white/70 backdrop-blur border border-white/40 transition-colors"
+                  >
                     <FiMessageSquare
                       size={20}
-                      className="icon transition-colors duration-300"
+                      className="icon transition-colors duration-300 text-slate-800 group-hover:text-indigo-700"
                     />
                     {msgUnreadTotal > 0 && (
                       <span
-                        className="unread-badge shadow"
-                        style={{
-                          background: "#ef4444",
-                          color: "#fff",
-                          borderRadius: "9999px",
-                          padding: "2px 6px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                        }}
+                        className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow"
                         aria-label={`${msgUnreadTotal} unread messages`}
                       >
                         {msgUnreadTotal > 999 ? "999+" : msgUnreadTotal}
