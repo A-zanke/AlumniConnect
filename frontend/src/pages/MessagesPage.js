@@ -25,8 +25,8 @@ import {
   FiShare2,
   FiCheckSquare,
   FiCheck,
-  FiCheckDouble,
 } from "react-icons/fi";
+import { BiCheckDouble } from "react-icons/bi";
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -940,8 +940,8 @@ const MessagesPage = () => {
                                         {isMine && (
                                           <span className="inline-flex items-center ml-1 align-middle">
                                             {message.status === 'sent' && <FiCheck size={14} color="#888" />}
-                                            {message.status === 'delivered' && <FiCheckDouble size={14} color="#888" />}
-                                            {message.status === 'seen' && <FiCheckDouble size={14} color="#0A84FF" />}
+                                            {message.status === 'delivered' && <BiCheckDouble size={14} color="#888" />}
+                                            {message.status === 'seen' && <BiCheckDouble size={14} color="#0A84FF" />}
                                           </span>
                                         )}
                                       </div>
