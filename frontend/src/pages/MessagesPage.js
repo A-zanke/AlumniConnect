@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Trash2, Ban, Flag, X as LucideX } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../context/AuthContext";
 import Spinner from "../components/ui/Spinner";
@@ -142,6 +143,9 @@ const MessagesPage = () => {
   const [forwardSource, setForwardSource] = useState(null); // message to forward
   const [showForwardDialog, setShowForwardDialog] = useState(false);
   const [forwardSelected, setForwardSelected] = useState(new Set());
+  // Chat list multi-select state
+  const [selectedChatIds, setSelectedChatIds] = useState(new Set()); // userIds
+  const [lastSelectedChatIndex, setLastSelectedChatIndex] = useState(null);
 
   const generateClientKey = () =>
     `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -519,6 +523,134 @@ const MessagesPage = () => {
   useEffect(() => {
     fetchMessagesData();
   }, [fetchMessagesData]);
+
+  // --- Chat list helpers for multi-select ---
+  const getVisibleConnections = () =>
+    connections.filter(
+      (conn) =>
+        (conn.user?.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (conn.user?.username || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+  const toggleChatSelection = (userId, index, mode = "toggle", event = null) => {
+    setSelectedChatIds((prev) => {
+      const next = new Set(prev);
+      if (mode === "range" && lastSelectedChatIndex !== null) {
+        const visible = getVisibleConnections();
+        const start = Math.min(lastSelectedChatIndex, index);
+        const end = Math.max(lastSelectedChatIndex, index);
+        for (let i = start; i <= end; i++) {
+          const uid = visible[i]?.user?._id;
+          if (uid) next.add(String(uid));
+        }
+      } else {
+        const key = String(userId);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+      }
+      return next;
+    });
+    setLastSelectedChatIndex(index);
+    if (event) event.stopPropagation();
+  };
+
+  const handleChatRowClick = (connection, index, e) => {
+    if (e.shiftKey) {
+      toggleChatSelection(connection.user._id, index, "range", e);
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      toggleChatSelection(connection.user._id, index, "toggle", e);
+      return;
+    }
+    // Normal open
+    setSelectedUser(connection.user);
+    setShowSidebar(false);
+    if (connection.threadId && socket) {
+      socket.emit("messages:markRead", { conversationId: connection.threadId });
+    }
+  };
+
+  const clearChatSelection = () => {
+    setSelectedChatIds(new Set());
+    setLastSelectedChatIndex(null);
+  };
+
+  const handleBulkChatDelete = async () => {
+    try {
+      const ids = Array.from(selectedChatIds);
+      if (ids.length === 0) return;
+      const token = localStorage.getItem("token");
+      await Promise.all(
+        ids.map((uid) =>
+          axios.delete(`${baseURL}/api/messages/chat/${uid}?for=me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
+      );
+      // Zero out unread locally and clear lastMessage snippet
+      setConnections((prev) =>
+        prev.map((c) =>
+          ids.includes(String(c.user?._id))
+            ? { ...c, lastMessage: "", lastMessageTime: null }
+            : c
+        )
+      );
+      setUnreadByConversationId((prev) => {
+        const next = { ...prev };
+        connections.forEach((c) => {
+          if (ids.includes(String(c.user?._id)) && c.threadId) next[c.threadId] = 0;
+        });
+        return next;
+      });
+      clearChatSelection();
+    } catch (e) {
+      toast.error("Failed to delete chats");
+    }
+  };
+
+  const handleBulkBlock = async () => {
+    try {
+      const ids = Array.from(selectedChatIds);
+      if (ids.length === 0) return;
+      const token = localStorage.getItem("token");
+      await Promise.all(
+        ids.map((uid) =>
+          axios.post(
+            `${baseURL}/api/messages/block`,
+            { targetUserId: uid, action: "block" },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+        )
+      );
+      toast.success("User(s) blocked");
+      clearChatSelection();
+    } catch (e) {
+      toast.error("Failed to block user(s)");
+    }
+  };
+
+  const handleBulkReport = async () => {
+    try {
+      const ids = Array.from(selectedChatIds);
+      if (ids.length === 0) return;
+      const reason = prompt("Report reason (applies to all selected)?") || "";
+      const token = localStorage.getItem("token");
+      await Promise.all(
+        ids.map((uid) =>
+          axios.post(
+            `${baseURL}/api/messages/report`,
+            { targetUserId: uid, reason },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+        )
+      );
+      toast.success("Reported to admin");
+      clearChatSelection();
+    } catch (e) {
+      toast.error("Failed to report user(s)");
+    }
+  };
 
   // Remove theme toggle per request (keep class intact)
 
@@ -950,7 +1082,7 @@ const MessagesPage = () => {
             {/* Always show the chat list; welcome will appear on right until a chat is clicked */}
             <>
                 {/* Sticky search */}
-                <div className="sticky-head px-4 py-3 bg-[#0d1117]/95 backdrop-blur border-b border-white/10">
+                <div className="sticky-head px-4 py-3 bg-gradient-to-r from-white/90 to-slate-100/90 backdrop-blur border-b border-slate-200">
                   <div className="relative">
                     <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
@@ -958,10 +1090,49 @@ const MessagesPage = () => {
                       placeholder="Search conversations"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent outline-none"
+                      className="w-full pl-10 pr-4 py-2.5 bg-white text-slate-800 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-400/60 focus:border-transparent outline-none"
                     />
                   </div>
                 </div>
+
+                {/* Top action bar when chats are selected */}
+                {selectedChatIds.size > 0 && (
+                  <div className="sticky top-[48px] z-20 px-3 py-2 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-slate-700">
+                      {selectedChatIds.size} selected
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleBulkChatDelete}
+                        className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+                        title="Delete chats"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <button
+                        onClick={handleBulkBlock}
+                        className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                        title="Block user(s)"
+                      >
+                        <Ban size={16} />
+                      </button>
+                      <button
+                        onClick={handleBulkReport}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                        title="Report user(s)"
+                      >
+                        <Flag size={16} />
+                      </button>
+                      <button
+                        onClick={clearChatSelection}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200"
+                        title="Clear selection"
+                      >
+                        <LucideX size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* List */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -975,38 +1146,34 @@ const MessagesPage = () => {
                     </div>
                   ) : (
                     <div className="py-2">
-                      {connections
-                        .filter(
-                          (conn) =>
-                            (conn.user?.name || "")
-                              .toLowerCase()
-                              .includes(searchQuery.toLowerCase()) ||
-                            (conn.user?.username || "")
-                              .toLowerCase()
-                              .includes(searchQuery.toLowerCase())
-                        )
-                        .map((connection, index) => (
-                          <motion.button
+                  {getVisibleConnections().map((connection, index) => (
+                      <motion.button
                             key={connection._id}
                             initial={{ opacity: 0, y: 12 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: Math.min(index * 0.03, 0.3) }}
-                            onClick={() => {
-                              setSelectedUser(connection.user);
-                              setShowSidebar(false);
-                              if (connection.threadId && socket) {
-                                socket.emit("messages:markRead", {
-                                  conversationId: connection.threadId,
-                                });
-                              }
-                            }}
+                        onClick={(e) => handleChatRowClick(connection, index, e)}
                         className={`w-full text-left px-3 py-2.5 flex items-center gap-3 rounded-lg transition-colors ${
                           selectedUser?._id === connection.user?._id
                             ? "bg-white border border-indigo-200/70 shadow-sm"
                             : "hover:bg-white/70"
                         }`}
                           >
-                            <div className="relative shrink-0">
+                        {/* Checkbox for multi-select */}
+                        <div className="shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedChatIds.has(String(connection.user?._id))}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              if (e.shiftKey) toggleChatSelection(connection.user._id, index, "range", e);
+                              else toggleChatSelection(connection.user._id, index, "toggle", e);
+                            }}
+                            className="h-4 w-4 accent-indigo-600 rounded cursor-pointer"
+                            aria-label={`Select ${connection.user?.name}`}
+                          />
+                        </div>
+                        <div className="relative shrink-0">
                               <img
                                 src={
                                   connection.user?.avatarUrl
@@ -1055,15 +1222,17 @@ const MessagesPage = () => {
                                 : base;
                               const hide =
                                 selectedUser?._id === connection.user?._id;
-                              return !hide && count > 0 ? (
-                                <span
-                                  className="ml-auto inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold shadow"
-                                  aria-label={`${count} unread messages`}
-                                  title={`${count} unread`}
-                                >
-                                  {count > 999 ? "999+" : count}
-                                </span>
-                              ) : null;
+                          return !hide ? (
+                            <span
+                              className={`ml-auto inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-semibold shadow ${
+                                count > 0 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600"
+                              }`}
+                              aria-label={`${count} unread messages`}
+                              title={`${count} unread`}
+                            >
+                              {count > 999 ? "999+" : count}
+                            </span>
+                          ) : null;
                             })()}
                           </motion.button>
                         ))}
