@@ -295,9 +295,9 @@ io.on("connection", (socket) => {
         body: msg.content,
         createdAt: msg.createdAt,
       };
-      // Acknowledge to sender: sent
-      socket.emit("message:ack", { id: String(msg._id), status: "sent" });
-      socket.emit("message:sent", { id: String(msg._id), messageId: String(msg._id), status: "sent" });
+      // Acknowledge to sender: sent (include clientKey if present)
+      socket.emit("message:ack", { id: String(msg._id), messageId: String(msg._id), status: "sent", clientKey: clientKey || null });
+      socket.emit("message:sent", { id: String(msg._id), messageId: String(msg._id), status: "sent", clientKey: clientKey || null });
       // Targeted delivery only to recipient
       io.to(to).emit("message:new", messagePayload);
       // Unread update to recipient
@@ -306,7 +306,7 @@ io.on("connection", (socket) => {
       // If recipient is currently online (in room), then it's delivered
       const isRecipientOnline = !!io.sockets.adapter.rooms.get(String(to));
       if (isRecipientOnline) {
-        io.to(from).emit("message:delivered", { id: String(msg._id), messageId: String(msg._id) });
+        io.to(from).emit("message:delivered", { id: String(msg._id), messageId: String(msg._id), clientKey: clientKey || null });
       }
     } catch (e) {
       console.error("Socket chat error:", e);

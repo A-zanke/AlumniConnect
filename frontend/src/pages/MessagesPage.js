@@ -126,6 +126,8 @@ const MessagesPage = () => {
   const [showForwardDialog, setShowForwardDialog] = useState(false);
   const [forwardSelected, setForwardSelected] = useState(new Set());
 
+  const generateClientKey = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   // Accessible full menu portal state
   const [menuPortal, setMenuPortal] = useState({ open: false, x: 0, y: 0, items: [], messageId: null, focusIndex: 0 });
   const menuPortalRef = useRef(null);
@@ -286,6 +288,24 @@ const MessagesPage = () => {
         setUnreadByConversationId((prev) => ({ ...prev, [conversationId]: newCount }));
       });
 
+      // ACK for optimistic sends: map clientKey -> real id
+      const handleAck = (payload = {}) => {
+        const realId = String(payload.id || payload.messageId || '');
+        const clientKey = payload.clientKey ? String(payload.clientKey) : '';
+        if (clientKey) {
+          setMessages((prev) => prev.map((m) => {
+            if (String(m.id) === clientKey) {
+              return { ...m, id: realId, status: 'sent' };
+            }
+            return m;
+          }));
+          return;
+        }
+        if (realId) updateMessageStatus(realId, 'sent');
+      };
+      s.on('message:ack', handleAck);
+      s.on('messageAck', handleAck);
+
       // Message delivery and seen status updates (both colon and camel event names)
       const handleDelivered = (payload = {}) => {
         const id = payload.messageId || payload.id;
@@ -295,13 +315,9 @@ const MessagesPage = () => {
         const id = payload.messageId || payload.id;
         if (id) updateMessageStatus(id, 'seen');
       };
-      s.on('message:sent', (p) => {
-        const id = p?.messageId || p?.id;
-        if (id) updateMessageStatus(id, 'sent');
-      });
+      s.on('message:sent', (p) => handleAck(p));
       s.on('messageSent', (p) => {
-        const id = p?.messageId || p?.id;
-        if (id) updateMessageStatus(id, 'sent');
+        handleAck(p);
       });
       s.on('message:delivered', handleDelivered);
       s.on('messageDelivered', handleDelivered);
@@ -480,17 +496,41 @@ const MessagesPage = () => {
       if (replyTo?.id) formData.append("replyToId", replyTo.id);
 
       const token = localStorage.getItem("token");
+
+      // Optimistic UI for text-only message using clientKey
+      const isTextOnly = !!newMessage.trim() && !selectedImage;
+      let clientKey = null;
+      if (isTextOnly) {
+        clientKey = generateClientKey();
+        const optimistic = {
+          id: clientKey,
+          senderId: user._id,
+          recipientId: selectedUser._id,
+          content: newMessage,
+          attachments: [],
+          timestamp: new Date().toISOString(),
+          status: 'sent',
+        };
+        setMessages((prev) => [...prev, optimistic]);
+        setTimeout(scrollToBottom, 50);
+        if (socket) {
+          socket.emit('chat:send', { to: selectedUser._id, content: newMessage, clientKey });
+        }
+      }
+
+      // Always send via HTTP to persist and handle attachments
+      if (clientKey) formData.append('clientKey', clientKey);
       const resp = await axios.post(`${baseURL}/api/messages/${selectedUser._id}`, formData, {
         headers: { "Content-Type": "multipart/form-data", Authorization: `Bearer ${token}` },
       });
       const messageData = resp.data;
 
-      // De-duplication: if the socket event already added this message,
-      // skip adding it again from the HTTP response.
-      const idStr = messageData?.id ? String(messageData.id) : null;
-      if (!idStr || !seenIdsRef.current.has(idStr)) {
-        if (idStr) seenIdsRef.current.add(idStr);
-        setMessages((prev) => [...prev, { ...messageData, status: 'sent' }]);
+      if (!clientKey) {
+        const idStr = messageData?.id ? String(messageData.id) : null;
+        if (!idStr || !seenIdsRef.current.has(idStr)) {
+          if (idStr) seenIdsRef.current.add(idStr);
+          setMessages((prev) => [...prev, { ...messageData, status: 'sent' }]);
+        }
       }
 
       // Clear input and image

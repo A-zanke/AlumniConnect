@@ -184,6 +184,7 @@ exports.sendMessage = async (req, res) => {
       attachments.push(`reply:${req.body.replyToId}`);
     }
 
+    const clientKey = (req.body?.clientKey || '').toString() || null;
     const msg = await Message.create({ from: me, to, content, attachments });
     const dto = parseMessage(msg.toObject(), me);
 
@@ -213,12 +214,12 @@ exports.sendMessage = async (req, res) => {
       const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
       req.io.to(String(to)).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
       // Status events to sender
-      req.io.to(String(me)).emit("message:sent", { id: String(dto.id), messageId: String(dto.id), status: "sent" });
+      req.io.to(String(me)).emit("message:sent", { id: String(dto.id), messageId: String(dto.id), status: "sent", clientKey });
       // If recipient currently connected, mark delivered
       try {
         const isRecipientOnline = !!req.io.sockets?.adapter?.rooms?.get?.(String(to));
         if (isRecipientOnline) {
-          req.io.to(String(me)).emit("message:delivered", { id: String(dto.id), messageId: String(dto.id), status: "delivered" });
+          req.io.to(String(me)).emit("message:delivered", { id: String(dto.id), messageId: String(dto.id), status: "delivered", clientKey });
         }
       } catch {}
     }
