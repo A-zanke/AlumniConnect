@@ -44,9 +44,9 @@ const customScrollbarStyles = `
   .z-popover { z-index: 40; }
   .z-over { z-index: 30; }
   .z-under { z-index: 10; }
-  .bubble { position: relative; border-radius: 18px; padding: 10px 12px; max-width: 65%; }
-  .bubble-sent { background: linear-gradient(140deg, #3b82f6, #9333ea); color: #ffffff; box-shadow: 0 6px 18px rgba(59, 130, 246, 0.18); }
-  .bubble-received { background: linear-gradient(135deg, #ffffff, #f5f7fa); color: #111827; border: 1px solid #e5e7eb; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+  .bubble { position: relative; border-radius: 20px; padding: 10px 12px; max-width: 65%; }
+  .bubble-sent { background: linear-gradient(135deg, #FFA726 60%, #FFECB3 100%); color: #1f2937; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+  .bubble-received { background: linear-gradient(135deg, #64B5F6 50%, #E3F2FD 100%); color: #ffffff; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
   .bubble:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
   .bubble .message-content { font-size: 15px; line-height: 1.5; font-weight: 500; }
   .message-content { white-space: pre-wrap; word-break: break-word; font-size: 15.5px; line-height: 1.5; }
@@ -74,7 +74,7 @@ const customScrollbarStyles = `
   .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
   .custom-scrollbar { scroll-behavior: smooth; }
   .chat-body { position: relative; z-index: 999; overflow-y: auto; overflow-x: hidden; background: #f3f6f9; }
-  .timestamp-below { display: block; font-size: 11px; line-height: 1; opacity: 0.85; letter-spacing: 0.01em; margin-top: 6px; color: #94a3b8; }
+  .timestamp-below { display: block; font-size: 11px; line-height: 1; opacity: 0.9; letter-spacing: 0.01em; margin-top: 6px; color: #94a3b8; text-align: right; }
   /* Emoji-only amplification */
   .emoji-only { text-align: center; }
   .emoji-only .emoji-char { font-size: 2.4em; }
@@ -1159,20 +1159,18 @@ const MessagesPage = () => {
                             : "hover:bg-white/70"
                         }`}
                           >
-                        {/* Checkbox for multi-select */}
-                        <div className="shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={selectedChatIds.has(String(connection.user?._id))}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              if (e.shiftKey) toggleChatSelection(connection.user._id, index, "range", e);
-                              else toggleChatSelection(connection.user._id, index, "toggle", e);
-                            }}
-                            className="h-4 w-4 accent-indigo-600 rounded cursor-pointer"
-                            aria-label={`Select ${connection.user?.name}`}
-                          />
-                        </div>
+                        {/* Professional multi-select trigger via row menu area (no checkbox) */}
+                        <button
+                          title={selectedChatIds.has(String(connection.user?._id)) ? "Deselect" : "Select"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleChatSelection(connection.user._id, index, "toggle", e);
+                          }}
+                          className={`shrink-0 h-6 w-6 rounded-md border ${selectedChatIds.has(String(connection.user?._id)) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'} grid place-items-center hover:bg-indigo-50`}
+                          aria-pressed={selectedChatIds.has(String(connection.user?._id))}
+                        >
+                          <span className={`block h-3 w-3 rounded-sm ${selectedChatIds.has(String(connection.user?._id)) ? 'bg-white' : 'bg-transparent'}`} />
+                        </button>
                         <div className="relative shrink-0">
                               <img
                                 src={
@@ -1481,46 +1479,46 @@ const MessagesPage = () => {
                                         {renderMessageContent(message.content)}
                                       </div>
                                     )}
-                                    {message.attachments &&
-                                      message.attachments.length > 0 && (
-                                        <div className="mt-2 space-y-2">
-                                          {message.attachments.map(
-                                            (attachment, idx) =>
-                                              attachment.startsWith(
-                                                "/forum/"
-                                              ) ? (
-                                                <a
-                                                  key={idx}
-                                                  href={attachment}
-                                                  onClick={(e) => {
-                                                    e.preventDefault();
-                                                    window.location.href =
-                                                      attachment;
-                                                  }}
-                                                  className="block p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
-                                                >
-                                                  <div className="text-sm font-semibold text-slate-100">
-                                                    Forum Post
-                                                  </div>
-                                                  <div className="text-xs text-slate-300">
-                                                    Tap to open the original
-                                                    post
-                                                  </div>
-                                                </a>
-                                              ) : (
-                                                <img
-                                                  key={idx}
-                                                  src={attachment}
-                                                  alt="attachment"
-                                                  onClick={() =>
-                                                    setLightboxSrc(attachment)
-                                                  }
-                                                  className="media-img cursor-zoom-in hover:opacity-90 transition"
-                                                />
-                                              )
-                                          )}
-                                        </div>
-                                      )}
+                                    {message.attachments && message.attachments.length > 0 && (
+                                      <div className="mt-2 space-y-2">
+                                        {message.attachments.map((attachment, idx) => {
+                                          const lower = String(attachment).toLowerCase();
+                                          const isImage = /(\.png|\.jpg|\.jpeg|\.gif|\.webp)$/i.test(lower) || lower.startsWith('/uploads/messages/');
+                                          const isVideo = /(\.mp4|\.webm|\.ogg|\.mov|\.qt)$/i.test(lower);
+                                          const isDoc = /(\.pdf|\.docx?|\.pptx?|\.xlsx?)$/i.test(lower);
+                                          if (isImage) {
+                                            return (
+                                              <img
+                                                key={idx}
+                                                src={attachment}
+                                                alt="image"
+                                                onClick={() => setLightboxSrc(attachment)}
+                                                className="media-img cursor-zoom-in hover:opacity-90 transition"
+                                              />
+                                            );
+                                          }
+                                          if (isVideo) {
+                                            return (
+                                              <video key={idx} controls className="max-w-[72vw] max-h-[40vh] rounded-xl border border-white/10 shadow">
+                                                <source src={attachment} />
+                                              </video>
+                                            );
+                                          }
+                                          return (
+                                            <a
+                                              key={idx}
+                                              href={attachment}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="block p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+                                            >
+                                              <div className="text-sm font-semibold">Attachment</div>
+                                              <div className="text-xs opacity-80">Open / Download</div>
+                                            </a>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
                                     {/* Timestamp below bubble */}
                                     <div
                                       className={`timestamp-below ${
@@ -1540,19 +1538,13 @@ const MessagesPage = () => {
                                       {isMine && (
                                         <span className="inline-flex items-center ml-1 align-middle">
                                           {message.status === "sent" && (
-                                            <FiCheck size={14} color="#888" />
+                                            <FiCheck size={14} color="#1976D2" />
                                           )}
                                           {message.status === "delivered" && (
-                                            <BiCheckDouble
-                                              size={14}
-                                              color="#888"
-                                            />
+                                            <BiCheckDouble size={14} color="#1976D2" />
                                           )}
                                           {message.status === "seen" && (
-                                            <BiCheckDouble
-                                              size={14}
-                                              color="#0A84FF"
-                                            />
+                                            <BiCheckDouble size={14} color="#1976D2" />
                                           )}
                                         </span>
                                       )}
@@ -1816,6 +1808,25 @@ const MessagesPage = () => {
                         accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx"
                         onChange={handleImageSelect}
                         className="hidden"
+                      />
+                      {/* Drag & drop overlay */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'copy';
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) {
+                            setSelectedImage(file);
+                            const reader = new FileReader();
+                            reader.onload = (ev) => setImagePreview(ev.target.result);
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="absolute inset-0 pointer-events-none"
+                        aria-hidden="true"
                       />
                       {showEmojiPicker && (
                         <div
