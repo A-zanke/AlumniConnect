@@ -89,7 +89,11 @@ const MessagesPage = () => {
   const [messages, setMessages] = useState([]);
   const updateMessageStatus = useCallback((messageId, status) => {
     if (!messageId || !status) return;
-    setMessages((prev) => prev.map((m) => (String(m.id) === String(messageId) ? { ...m, status } : m)));
+    setMessages((prev) =>
+      prev.map((m) =>
+        String(m.id) === String(messageId) ? { ...m, status } : m
+      )
+    );
   }, []);
   const [newMessage, setNewMessage] = useState("");
   const [socket, setSocket] = useState(null);
@@ -130,10 +134,18 @@ const MessagesPage = () => {
   const [showForwardDialog, setShowForwardDialog] = useState(false);
   const [forwardSelected, setForwardSelected] = useState(new Set());
 
-  const generateClientKey = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const generateClientKey = () =>
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   // Accessible full menu portal state
-  const [menuPortal, setMenuPortal] = useState({ open: false, x: 0, y: 0, items: [], messageId: null, focusIndex: 0 });
+  const [menuPortal, setMenuPortal] = useState({
+    open: false,
+    x: 0,
+    y: 0,
+    items: [],
+    messageId: null,
+    focusIndex: 0,
+  });
   const menuPortalRef = useRef(null);
 
   // Hover quick menu state (per-bubble)
@@ -149,11 +161,17 @@ const MessagesPage = () => {
         setLoading(true);
         const token = localStorage.getItem("token");
         const [convResp, connResp] = await Promise.all([
-          axios.get(`${baseURL}/api/messages`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${baseURL}/api/messages`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
           connectionAPI.getConnections().catch(() => ({ data: [] })),
         ]);
-        const convList = Array.isArray(convResp?.data?.data) ? convResp.data.data : [];
-        const rawConnections = Array.isArray(connResp?.data) ? connResp.data : [];
+        const convList = Array.isArray(convResp?.data?.data)
+          ? convResp.data.data
+          : [];
+        const rawConnections = Array.isArray(connResp?.data)
+          ? connResp.data
+          : [];
 
         const map = new Map();
         convList.forEach((item) => {
@@ -188,22 +206,34 @@ const MessagesPage = () => {
             const entry = map.get(uid);
             entry.user = {
               ...entry.user,
-              name: entry.user?.name || u.name || u.fullName || u.username || "Unknown",
+              name:
+                entry.user?.name ||
+                u.name ||
+                u.fullName ||
+                u.username ||
+                "Unknown",
               username: entry.user?.username || u.username || "user",
-              avatarUrl: entry.user?.avatarUrl || u.avatarUrl || u.avatar || null,
+              avatarUrl:
+                entry.user?.avatarUrl || u.avatarUrl || u.avatar || null,
               isOnline: entry.user?.isOnline ?? u.isOnline,
               lastSeen: entry.user?.lastSeen ?? u.lastSeen,
             };
           }
         });
         const merged = Array.from(map.values()).sort((a, b) => {
-          const at = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
-          const bt = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+          const at = a.lastMessageTime
+            ? new Date(a.lastMessageTime).getTime()
+            : 0;
+          const bt = b.lastMessageTime
+            ? new Date(b.lastMessageTime).getTime()
+            : 0;
           return bt - at;
         });
         setConnections(merged);
         const initUnread = {};
-        merged.forEach((row) => { if (row.threadId) initUnread[row.threadId] = row.unreadCount || 0; });
+        merged.forEach((row) => {
+          if (row.threadId) initUnread[row.threadId] = row.unreadCount || 0;
+        });
         setUnreadByConversationId(initUnread);
         if (merged.length > 0 && !selectedUser) {
           setSelectedUser(merged[0].user);
@@ -223,7 +253,11 @@ const MessagesPage = () => {
   useEffect(() => {
     if (user) {
       const token = localStorage.getItem("token");
-      const s = io(SOCKET_URL, { auth: { token }, withCredentials: true, transports: ["websocket"] });
+      const s = io(SOCKET_URL, {
+        auth: { token },
+        withCredentials: true,
+        transports: ["websocket"],
+      });
 
       s.on("connect", () => {
         console.log("Connected to server");
@@ -261,86 +295,114 @@ const MessagesPage = () => {
         }
       };
       // New message event contract
-      s.on("message:new", ({ conversationId, messageId, senderId, body, createdAt }) => {
-        const isCurrent = selectedUser && String(senderId) === String(selectedUser._id);
-        // if current thread open and focused in this tab
-        const tabFocused = document.visibilityState === 'visible';
-        if (isCurrent && tabFocused) {
-          // append live, mark read later via debounce
-          setMessages((prev) => [...prev, { id: messageId, senderId, recipientId: user._id, content: body, attachments: [], timestamp: createdAt }]);
-          // do not increment unread locally
-          // issue markRead signal
-          if (s) s.emit('messages:markRead', { conversationId });
-          return;
+      s.on(
+        "message:new",
+        ({ conversationId, messageId, senderId, body, createdAt }) => {
+          const isCurrent =
+            selectedUser && String(senderId) === String(selectedUser._id);
+          // if current thread open and focused in this tab
+          const tabFocused = document.visibilityState === "visible";
+          if (isCurrent && tabFocused) {
+            // append live, mark read later via debounce
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: messageId,
+                senderId,
+                recipientId: user._id,
+                content: body,
+                attachments: [],
+                timestamp: createdAt,
+              },
+            ]);
+            // do not increment unread locally
+            // issue markRead signal
+            if (s) s.emit("messages:markRead", { conversationId });
+            return;
+          }
+          // else, increment unread for that conversation
+          setUnreadByConversationId((prev) => {
+            const next = { ...prev };
+            next[conversationId] = Math.min(
+              1000,
+              (prev[conversationId] || 0) + 1
+            );
+            return next;
+          });
+          // Suppress pop-ups/toasts per requirement
         }
-        // else, increment unread for that conversation
-        setUnreadByConversationId((prev) => {
-          const next = { ...prev };
-          next[conversationId] = Math.min(1000, (prev[conversationId] || 0) + 1);
-          return next;
-        });
-        // Suppress pop-ups/toasts per requirement
-      });
+      );
 
-      s.on('unread:snapshot', (rows) => {
+      s.on("unread:snapshot", (rows) => {
         const map = {};
-        (rows || []).forEach((r) => { map[r.conversationId] = r.count || 0; });
+        (rows || []).forEach((r) => {
+          map[r.conversationId] = r.count || 0;
+        });
         setUnreadByConversationId(map);
       });
 
-      s.on('unread:update', ({ conversationId, newCount }) => {
-        setUnreadByConversationId((prev) => ({ ...prev, [conversationId]: newCount }));
+      s.on("unread:update", ({ conversationId, newCount }) => {
+        setUnreadByConversationId((prev) => ({
+          ...prev,
+          [conversationId]: newCount,
+        }));
       });
 
       // ACK for optimistic sends: map clientKey -> real id
       const handleAck = (payload = {}) => {
-        const realId = String(payload.id || payload.messageId || '');
-        const clientKey = payload.clientKey ? String(payload.clientKey) : '';
+        const realId = String(payload.id || payload.messageId || "");
+        const clientKey = payload.clientKey ? String(payload.clientKey) : "";
         if (clientKey) {
-          setMessages((prev) => prev.map((m) => {
-            if (String(m.id) === clientKey) {
-              return { ...m, id: realId, status: 'sent' };
-            }
-            return m;
-          }));
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (String(m.id) === clientKey) {
+                return { ...m, id: realId, status: "sent" };
+              }
+              return m;
+            })
+          );
           return;
         }
-        if (realId) updateMessageStatus(realId, 'sent');
+        if (realId) updateMessageStatus(realId, "sent");
       };
-      s.on('message:ack', handleAck);
-      s.on('messageAck', handleAck);
+      s.on("message:ack", handleAck);
+      s.on("messageAck", handleAck);
 
       // Message delivery and seen status updates (both colon and camel event names)
       const handleDelivered = (payload = {}) => {
         const id = payload.messageId || payload.id;
-        if (id) updateMessageStatus(id, 'delivered');
+        if (id) updateMessageStatus(id, "delivered");
       };
       const handleSeen = (payload = {}) => {
         const id = payload.messageId || payload.id;
-        if (id) updateMessageStatus(id, 'seen');
+        if (id) updateMessageStatus(id, "seen");
       };
-      s.on('message:sent', (p) => handleAck(p));
-      s.on('messageSent', (p) => {
+      s.on("message:sent", (p) => handleAck(p));
+      s.on("messageSent", (p) => {
         handleAck(p);
       });
-      s.on('message:delivered', handleDelivered);
-      s.on('messageDelivered', handleDelivered);
-      s.on('message:seen', handleSeen);
-      s.on('messageSeen', handleSeen);
+      s.on("message:delivered", handleDelivered);
+      s.on("messageDelivered", handleDelivered);
+      s.on("message:seen", handleSeen);
+      s.on("messageSeen", handleSeen);
 
       // Fallback: read receipts provide a timestamp up to which messages are read
-      s.on('messages:readReceipt', ({ conversationId, readerId, readUpTo }) => {
-        if (!selectedUser || String(readerId) !== String(selectedUser._id)) return;
+      s.on("messages:readReceipt", ({ conversationId, readerId, readUpTo }) => {
+        if (!selectedUser || String(readerId) !== String(selectedUser._id))
+          return;
         const cutoff = new Date(readUpTo).getTime();
-        setMessages((prev) => prev.map((m) => {
-          const isMine = String(m.senderId) === String(user._id);
-          const isToSelected = String(m.recipientId) === String(selectedUser._id);
-          const sentAt = new Date(m.timestamp).getTime();
-          if (isMine && isToSelected && sentAt <= cutoff) {
-            return { ...m, status: 'seen' };
-          }
-          return m;
-        }));
+        setMessages((prev) =>
+          prev.map((m) => {
+            const isMine = String(m.senderId) === String(user._id);
+            const isToSelected =
+              String(m.recipientId) === String(selectedUser._id);
+            const sentAt = new Date(m.timestamp).getTime();
+            if (isMine && isToSelected && sentAt <= cutoff) {
+              return { ...m, status: "seen" };
+            }
+            return m;
+          })
+        );
       });
 
       // reactions
@@ -359,7 +421,10 @@ const MessagesPage = () => {
         } else if (payload?.messageIds) {
           const ids = new Set(payload.messageIds.map(String));
           setMessages((prev) => prev.filter((m) => !ids.has(String(m.id))));
-        } else if (payload?.chatCleared && payload?.userId === selectedUser?._id) {
+        } else if (
+          payload?.chatCleared &&
+          payload?.userId === selectedUser?._id
+        ) {
           setMessages([]);
         }
       });
@@ -416,14 +481,19 @@ const MessagesPage = () => {
       setLoading(true);
       const data = await fetchMessages(selectedUser._id);
       // Initialize without toasts; statuses will update via socket events
-      const normalized = (Array.isArray(data) ? data : []).map((m) => ({ ...m }));
+      const normalized = (Array.isArray(data) ? data : []).map((m) => ({
+        ...m,
+      }));
       setMessages(normalized);
       // also fetch shared media previews
       try {
         const token = localStorage.getItem("token");
-        const resp = await axios.get(`${baseURL}/api/messages/media/${selectedUser._id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const resp = await axios.get(
+          `${baseURL}/api/messages/media/${selectedUser._id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         setSharedMedia(resp?.data?.media || []);
       } catch {}
       setError(null);
@@ -449,11 +519,15 @@ const MessagesPage = () => {
       if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
         setOpenHeaderMenu(false);
       }
-      if (reactionMenuRef.current && !reactionMenuRef.current.contains(e.target)) {
+      if (
+        reactionMenuRef.current &&
+        !reactionMenuRef.current.contains(e.target)
+      ) {
         setActiveReactionFor(null);
       }
       // Close emoji picker only when clicking outside the emoji area
-      const clickedInsideEmojiArea = emojiAreaRef.current && emojiAreaRef.current.contains(e.target);
+      const clickedInsideEmojiArea =
+        emojiAreaRef.current && emojiAreaRef.current.contains(e.target);
       if (!clickedInsideEmojiArea && showEmojiPicker) setShowEmojiPicker(false);
       if (menuPortal.open) setMenuPortal((s) => ({ ...s, open: false }));
     };
@@ -467,13 +541,16 @@ const MessagesPage = () => {
         e.preventDefault();
         setMenuPortal((s) => {
           const len = (s.items || []).length;
-          const next = e.key === "ArrowDown" ? (s.focusIndex + 1) % len : (s.focusIndex - 1 + len) % len;
+          const next =
+            e.key === "ArrowDown"
+              ? (s.focusIndex + 1) % len
+              : (s.focusIndex - 1 + len) % len;
           return { ...s, focusIndex: next };
         });
       }
       if (menuPortal.open && e.key === "Enter") {
         const item = menuPortal.items[menuPortal.focusIndex];
-        if (item && typeof item.onSelect === 'function') {
+        if (item && typeof item.onSelect === "function") {
           item.onSelect();
           setMenuPortal((s) => ({ ...s, open: false }));
         }
@@ -513,27 +590,38 @@ const MessagesPage = () => {
           content: newMessage,
           attachments: [],
           timestamp: new Date().toISOString(),
-          status: 'sent',
+          status: "sent",
         };
         setMessages((prev) => [...prev, optimistic]);
         setTimeout(scrollToBottom, 50);
         if (socket) {
-          socket.emit('chat:send', { to: selectedUser._id, content: newMessage, clientKey });
+          socket.emit("chat:send", {
+            to: selectedUser._id,
+            content: newMessage,
+            clientKey,
+          });
         }
       }
 
       // Always send via HTTP to persist and handle attachments
-      if (clientKey) formData.append('clientKey', clientKey);
-      const resp = await axios.post(`${baseURL}/api/messages/${selectedUser._id}`, formData, {
-        headers: { "Content-Type": "multipart/form-data", Authorization: `Bearer ${token}` },
-      });
+      if (clientKey) formData.append("clientKey", clientKey);
+      const resp = await axios.post(
+        `${baseURL}/api/messages/${selectedUser._id}`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       const messageData = resp.data;
 
       if (!clientKey) {
         const idStr = messageData?.id ? String(messageData.id) : null;
         if (!idStr || !seenIdsRef.current.has(idStr)) {
           if (idStr) seenIdsRef.current.add(idStr);
-          setMessages((prev) => [...prev, { ...messageData, status: 'sent' }]);
+          setMessages((prev) => [...prev, { ...messageData, status: "sent" }]);
         }
       }
 
@@ -564,7 +652,10 @@ const MessagesPage = () => {
 
       if (isTypingTimeout) clearTimeout(isTypingTimeout);
       const timeout = setTimeout(() => {
-        socket.emit("stop_typing", { userId: user._id, recipientId: selectedUser._id });
+        socket.emit("stop_typing", {
+          userId: user._id,
+          recipientId: selectedUser._id,
+        });
       }, 900);
       setIsTypingTimeout(timeout);
     }
@@ -617,7 +708,9 @@ const MessagesPage = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, reactions: resp.data.reactions } : m))
+        prev.map((m) =>
+          m.id === id ? { ...m, reactions: resp.data.reactions } : m
+        )
       );
     } catch (e) {
       toast.error("Failed to react");
@@ -630,20 +723,30 @@ const MessagesPage = () => {
       const formData = new FormData();
       formData.append("content", forwardSource.content || "");
       const token = localStorage.getItem("token");
-      const resp = await axios.post(`${baseURL}/api/messages/${targetUserId}`, formData, {
-        headers: { "Content-Type": "multipart/form-data", Authorization: `Bearer ${token}` },
-      });
+      const resp = await axios.post(
+        `${baseURL}/api/messages/${targetUserId}`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       const dto = resp?.data;
-      if (selectedUser?._id && String(targetUserId) === String(selectedUser._id)) {
+      if (
+        selectedUser?._id &&
+        String(targetUserId) === String(selectedUser._id)
+      ) {
         const idStr = dto?.id ? String(dto.id) : null;
         if (!idStr || !seenIdsRef.current.has(idStr)) {
           if (idStr) seenIdsRef.current.add(idStr);
-          setMessages((prev) => [...prev, { ...dto, status: 'sent' }]);
+          setMessages((prev) => [...prev, { ...dto, status: "sent" }]);
         }
       }
     } catch (e) {
       // Silent failure per requirement
-      console.error('Failed to forward message', e);
+      console.error("Failed to forward message", e);
     } finally {
       setShowForwardDialog(false);
       setForwardSource(null);
@@ -684,9 +787,12 @@ const MessagesPage = () => {
   const handleDeleteChat = async (scope = "me") => {
     try {
       const token = localStorage.getItem("token");
-      await axios.delete(`${baseURL}/api/messages/chat/${selectedUser._id}?for=${scope}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await axios.delete(
+        `${baseURL}/api/messages/chat/${selectedUser._id}?for=${scope}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       setMessages([]);
       setShowMenu(false);
     } catch (e) {
@@ -694,15 +800,26 @@ const MessagesPage = () => {
     }
   };
 
-  const findMessageById = (id) => messages.find((m) => String(m.id) === String(id));
+  const findMessageById = (id) =>
+    messages.find((m) => String(m.id) === String(id));
 
   const renderHighlighted = (text) => {
     if (!chatSearchQuery) return [text];
     try {
-      const parts = text.split(new RegExp(`(${chatSearchQuery.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")})`, "ig"));
+      const parts = text.split(
+        new RegExp(
+          `(${chatSearchQuery.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")})`,
+          "ig"
+        )
+      );
       return parts.map((part, i) =>
         part.toLowerCase() === chatSearchQuery.toLowerCase() ? (
-          <mark key={`mk-${i}`} className="bg-yellow-300/20 text-yellow-200 rounded px-0.5">{part}</mark>
+          <mark
+            key={`mk-${i}`}
+            className="bg-yellow-300/20 text-yellow-200 rounded px-0.5"
+          >
+            {part}
+          </mark>
         ) : (
           <span key={`tx-${i}`}>{part}</span>
         )
@@ -722,8 +839,19 @@ const MessagesPage = () => {
       for (let i = 0; i < node.length; i++) {
         const ch = node[i];
         if (EMOJI_REGEX.test(ch)) {
-          if (buf) { out.push(<span key={`t-${idxBase}-${i}`}>{buf}</span>); buf = ""; }
-          out.push(<span key={`e-${idxBase}-${i}`} className="emoji-char select-none" aria-hidden="false">{ch}</span>);
+          if (buf) {
+            out.push(<span key={`t-${idxBase}-${i}`}>{buf}</span>);
+            buf = "";
+          }
+          out.push(
+            <span
+              key={`e-${idxBase}-${i}`}
+              className="emoji-char select-none"
+              aria-hidden="false"
+            >
+              {ch}
+            </span>
+          );
         } else {
           buf += ch;
         }
@@ -788,7 +916,9 @@ const MessagesPage = () => {
           <motion.aside
             initial={{ opacity: 0, x: -16 }}
             animate={{ opacity: 1, x: 0 }}
-            className={`${showSidebar ? "flex" : "hidden"} lg:flex pane-left flex-col border-r border-white/10 bg-[#0d1117]`}
+            className={`${
+              showSidebar ? "flex" : "hidden"
+            } lg:flex pane-left flex-col border-r border-white/10 bg-[#0d1117]`}
           >
             {/* Sticky search */}
             <div className="sticky-head px-4 py-3 bg-[#0d1117]/95 backdrop-blur border-b border-white/10">
@@ -810,15 +940,21 @@ const MessagesPage = () => {
                 <div className="p-6 text-center text-slate-400">
                   <div className="text-6xl mb-3">💬</div>
                   <p className="text-base font-medium">No connections yet</p>
-                  <p className="text-xs mt-1">Connect with people to start conversations</p>
+                  <p className="text-xs mt-1">
+                    Connect with people to start conversations
+                  </p>
                 </div>
               ) : (
                 <div className="py-2">
                   {connections
                     .filter(
                       (conn) =>
-                        (conn.user?.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        (conn.user?.username || "").toLowerCase().includes(searchQuery.toLowerCase())
+                        (conn.user?.name || "")
+                          .toLowerCase()
+                          .includes(searchQuery.toLowerCase()) ||
+                        (conn.user?.username || "")
+                          .toLowerCase()
+                          .includes(searchQuery.toLowerCase())
                     )
                     .map((connection, index) => (
                       <motion.button
@@ -826,34 +962,77 @@ const MessagesPage = () => {
                         initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: Math.min(index * 0.03, 0.3) }}
-                        onClick={() => { setSelectedUser(connection.user); setShowSidebar(false); if (connection.threadId && socket) { socket.emit('messages:markRead', { conversationId: connection.threadId }); } }}
-                        className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors ${selectedUser?._id === connection.user?._id ? 'bg-indigo-600/20' : ''}`}
+                        onClick={() => {
+                          setSelectedUser(connection.user);
+                          setShowSidebar(false);
+                          if (connection.threadId && socket) {
+                            socket.emit("messages:markRead", {
+                              conversationId: connection.threadId,
+                            });
+                          }
+                        }}
+                        className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors ${
+                          selectedUser?._id === connection.user?._id
+                            ? "bg-indigo-600/20"
+                            : ""
+                        }`}
                       >
                         <div className="relative shrink-0">
-                          <img src={connection.user?.avatarUrl ? getAvatarUrl(connection.user.avatarUrl) : "/default-avatar.png"} alt={connection.user?.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10" />
+                          <img
+                            src={
+                              connection.user?.avatarUrl
+                                ? getAvatarUrl(connection.user.avatarUrl)
+                                : "/default-avatar.png"
+                            }
+                            alt={connection.user?.name}
+                            className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10"
+                          />
                           {connection.user?.isOnline && (
                             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#0d1117] rounded-full" />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold truncate">{connection.user?.name}</p>
+                            <p className="text-sm font-semibold truncate">
+                              {connection.user?.name}
+                            </p>
                             {connection.lastMessageTime && (
-                              <span className="text-[11px] text-slate-400 whitespace-nowrap">{new Date(connection.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                                {new Date(
+                                  connection.lastMessageTime
+                                ).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-400 truncate">@{connection.user?.username}</p>
-                          <p className="text-xs text-slate-400/80 truncate">{connection.lastMessage || ''}</p>
+                          <p className="text-xs text-slate-400 truncate">
+                            @{connection.user?.username}
+                          </p>
+                          <p className="text-xs text-slate-400/80 truncate">
+                            {connection.lastMessage || ""}
+                          </p>
                         </div>
                         {/* Unread badge */}
                         {(() => {
                           const threadId = connection.threadId;
-                          const base = typeof connection.unreadCount === 'number' ? connection.unreadCount : 0;
-                          const count = threadId ? (unreadByConversationId[threadId] ?? base) : base;
-                          const hide = selectedUser?._id === connection.user?._id;
+                          const base =
+                            typeof connection.unreadCount === "number"
+                              ? connection.unreadCount
+                              : 0;
+                          const count = threadId
+                            ? unreadByConversationId[threadId] ?? base
+                            : base;
+                          const hide =
+                            selectedUser?._id === connection.user?._id;
                           return !hide && count > 0 ? (
-                            <span className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold" aria-label={`${count} unread messages`} title={`${count} unread`}>
-                              {count > 999 ? '999+' : count}
+                            <span
+                              className="ml-2 inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-emerald-600 text-white text-[11px] font-semibold"
+                              aria-label={`${count} unread messages`}
+                              title={`${count} unread`}
+                            >
+                              {count > 999 ? "999+" : count}
                             </span>
                           ) : null;
                         })()}
@@ -865,20 +1044,44 @@ const MessagesPage = () => {
           </motion.aside>
 
           {/* Right Pane */}
-          <section className={`${showSidebar ? 'hidden' : 'flex'} lg:flex pane-right flex-col flex-1 min-w-0`}>
+          <section
+            className={`${
+              showSidebar ? "hidden" : "flex"
+            } lg:flex pane-right flex-col flex-1 min-w-0`}
+          >
             {selectedUser ? (
               <>
                 {/* Header */}
                 <div className="sticky-head flex items-center justify-between px-4 py-3 bg-[#0b0f15]/95 backdrop-blur border-b border-white/10">
                   <div className="flex items-center gap-3 min-w-0">
-                    <button className="lg:hidden p-2 rounded-full hover:bg-white/10" onClick={() => setShowSidebar(true)} aria-label="Back to conversations">
+                    <button
+                      className="lg:hidden p-2 rounded-full hover:bg-white/10"
+                      onClick={() => setShowSidebar(true)}
+                      aria-label="Back to conversations"
+                    >
                       <FiArrowLeft />
                     </button>
-                    <img src={selectedUser.avatarUrl ? getAvatarUrl(selectedUser.avatarUrl) : "/default-avatar.png"} alt={selectedUser.name} className="h-10 w-10 rounded-full object-cover ring-2 ring-white/10" />
+                    <img
+                      src={
+                        selectedUser.avatarUrl
+                          ? getAvatarUrl(selectedUser.avatarUrl)
+                          : "/default-avatar.png"
+                      }
+                      alt={selectedUser.name}
+                      className="h-10 w-10 rounded-full object-cover ring-2 ring-white/10"
+                    />
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate">{selectedUser.name}</p>
+                      <p className="text-sm font-semibold truncate">
+                        {selectedUser.name}
+                      </p>
                       <p className="text-xs text-slate-400 truncate">
-                        {((presenceData[selectedUser._id]?.isOnline) ?? (selectedUser.isOnline)) ? 'Online' : `Last seen ${formatLastSeen((presenceData[selectedUser._id]?.lastSeen) ?? (selectedUser.lastSeen))}`}
+                        {presenceData[selectedUser._id]?.isOnline ??
+                        selectedUser.isOnline
+                          ? "Online"
+                          : `Last seen ${formatLastSeen(
+                              presenceData[selectedUser._id]?.lastSeen ??
+                                selectedUser.lastSeen
+                            )}`}
                       </p>
                       {isTyping && typingUser && (
                         <div className="text-[11px] text-indigo-400 italic flex items-center gap-1">
@@ -895,20 +1098,56 @@ const MessagesPage = () => {
                   <div className="flex items-center gap-2">
                     <div className="hidden md:flex items-center relative">
                       <FiSearch className="absolute left-3 text-slate-400" />
-                      <input value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} placeholder="Search in chat" className="pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 focus:ring-2 focus:ring-indigo-500/70" />
+                      <input
+                        value={chatSearchQuery}
+                        onChange={(e) => setChatSearchQuery(e.target.value)}
+                        placeholder="Search in chat"
+                        className="pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 focus:ring-2 focus:ring-indigo-500/70"
+                      />
                     </div>
                     <div className="relative" ref={headerMenuRef}>
-                      <button onClick={() => setOpenHeaderMenu((v) => !v)} className="p-2 rounded-full hover:bg-white/10" aria-haspopup="menu" aria-expanded={openHeaderMenu} aria-label="Conversation options">
+                      <button
+                        onClick={() => setOpenHeaderMenu((v) => !v)}
+                        className="p-2 rounded-full hover:bg-white/10"
+                        aria-haspopup="menu"
+                        aria-expanded={openHeaderMenu}
+                        aria-label="Conversation options"
+                      >
                         <FiMoreVertical className="text-slate-300" />
                       </button>
                       {openHeaderMenu && (
                         <div className="absolute right-0 mt-2 w-64 bg-[#1f1f1f] border border-white/10 shadow-2xl rounded-xl z-[1000] p-1">
-                          <button onClick={() => setSelectionMode((v) => !v)} className="menu-item">{selectionMode ? 'Cancel selection' : 'Select messages'}</button>
-                          <button onClick={() => handleBlockToggle(true)} className="menu-item">Block user</button>
-                          <button onClick={handleReport} className="menu-item">Report user</button>
+                          <button
+                            onClick={() => setSelectionMode((v) => !v)}
+                            className="menu-item"
+                          >
+                            {selectionMode
+                              ? "Cancel selection"
+                              : "Select messages"}
+                          </button>
+                          <button
+                            onClick={() => handleBlockToggle(true)}
+                            className="menu-item"
+                          >
+                            Block user
+                          </button>
+                          <button onClick={handleReport} className="menu-item">
+                            Report user
+                          </button>
                           <div className="menu-reactions">
-                            {['👍','❤️','😂','😮','😢','🙏'].map((emo)=> (
-                              <button key={emo} onClick={()=>{ if (selectedMessageIds.size>0){ const first=[...selectedMessageIds][0]; handleReact(first, emo);} }} aria-label={`React ${emo}`}>{emo}</button>
+                            {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emo) => (
+                              <button
+                                key={emo}
+                                onClick={() => {
+                                  if (selectedMessageIds.size > 0) {
+                                    const first = [...selectedMessageIds][0];
+                                    handleReact(first, emo);
+                                  }
+                                }}
+                                aria-label={`React ${emo}`}
+                              >
+                                {emo}
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -918,12 +1157,20 @@ const MessagesPage = () => {
                 </div>
 
                 {/* Messages body */}
-                <div ref={messageContainerRef} className="chat-body flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-5">
+                <div
+                  ref={messageContainerRef}
+                  className="chat-body flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-5"
+                >
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-300">
                       <div className="text-7xl mb-4">✨</div>
-                      <p className="text-xl font-semibold mb-1">No messages yet</p>
-                      <p className="text-sm opacity-80">Say hi to {selectedUser.name} and start a stunning new chat.</p>
+                      <p className="text-xl font-semibold mb-1">
+                        No messages yet
+                      </p>
+                      <p className="text-sm opacity-80">
+                        Say hi to {selectedUser.name} and start a stunning new
+                        chat.
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -933,7 +1180,10 @@ const MessagesPage = () => {
                           // Date separators
                           const currentDate = new Date(message.timestamp);
                           const prev = messages[index - 1];
-                          const showDateSeparator = !prev || (new Date(prev.timestamp)).toDateString() !== currentDate.toDateString();
+                          const showDateSeparator =
+                            !prev ||
+                            new Date(prev.timestamp).toDateString() !==
+                              currentDate.toDateString();
                           return (
                             <div key={message.id || index}>
                               {showDateSeparator && (
@@ -943,148 +1193,452 @@ const MessagesPage = () => {
                                       const today = new Date();
                                       const yest = new Date();
                                       yest.setDate(today.getDate() - 1);
-                                      if (currentDate.toDateString() === today.toDateString()) return 'Today';
-                                      if (currentDate.toDateString() === yest.toDateString()) return 'Yesterday';
+                                      if (
+                                        currentDate.toDateString() ===
+                                        today.toDateString()
+                                      )
+                                        return "Today";
+                                      if (
+                                        currentDate.toDateString() ===
+                                        yest.toDateString()
+                                      )
+                                        return "Yesterday";
                                       return currentDate.toLocaleDateString();
                                     })()}
                                   </span>
                                 </div>
                               )}
-                              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.16, ease: [0.2,0.7,0.3,1] }} className={`group relative flex ${isMine ? 'justify-end' : 'justify-start'}`} onMouseEnter={() => setHoverQuickFor(message.id)} onMouseLeave={() => setHoverQuickFor((v) => (v === message.id ? null : v))}>
-                                <div className={`max-w-[72%] ${isMine ? 'order-2' : 'order-1'}`}>
-                                  <div className={`bubble ${isMine ? 'bubble-sent' : 'bubble-received'} smooth-transition`}>
-                                  {selectionMode && (
-                                    <div className={isMine ? 'text-indigo-100 mb-1' : 'text-slate-400 mb-1'}>
-                                      <label className="inline-flex items-center gap-2 text-xs">
-                                        <input type="checkbox" className="accent-indigo-500" checked={selectedMessageIds.has(message.id)} onChange={() => toggleMessageSelection(message.id)} /> Select
-                                      </label>
-                                    </div>
-                                  )}
-                                  {message.replyTo?.id && (
-                                    <div className={`${isMine ? 'bg-white/10' : 'bg-white/5'} rounded-xl mb-2 p-2 border border-white/10`}>
-                                      <div className="text-[11px] opacity-70 mb-1">Replying to</div>
-                                      <div className="text-xs line-clamp-2">{findMessageById(message.replyTo.id)?.content || 'Media'}</div>
-                                    </div>
-                                  )}
-                                  {message.content && (
-                                    <div className="message-content">{renderMessageContent(message.content)}</div>
-                                  )}
-                                  {message.attachments && message.attachments.length > 0 && (
-                                    <div className="mt-2 space-y-2">
-                                      {message.attachments.map((attachment, idx) => (
-                                        attachment.startsWith('/forum/') ? (
-                                          <a key={idx} href={attachment} onClick={(e) => { e.preventDefault(); window.location.href = attachment; }} className="block p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors">
-                                            <div className="text-sm font-semibold text-slate-100">Forum Post</div>
-                                            <div className="text-xs text-slate-300">Tap to open the original post</div>
-                                          </a>
-                                        ) : (
-                                          <img key={idx} src={attachment} alt="attachment" onClick={() => setLightboxSrc(attachment)} className="media-img cursor-zoom-in hover:opacity-90 transition" />
-                                        )
-                                      ))}
-                                    </div>
-                                  )}
-                                      {/* Timestamp below bubble */}
-                                      <div className={`timestamp-below ${isMine ? 'text-indigo-100/70 text-right' : 'text-slate-300/70 text-left'}`}>
-                                        <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                        {isMine && (
-                                          <span className="inline-flex items-center ml-1 align-middle">
-                                            {message.status === 'sent' && <FiCheck size={14} color="#888" />}
-                                            {message.status === 'delivered' && <BiCheckDouble size={14} color="#888" />}
-                                            {message.status === 'seen' && <BiCheckDouble size={14} color="#0A84FF" />}
-                                          </span>
-                                        )}
+                              <motion.div
+                                initial={{ opacity: 0, y: 16 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -16 }}
+                                transition={{
+                                  duration: 0.16,
+                                  ease: [0.2, 0.7, 0.3, 1],
+                                }}
+                                className={`group relative flex ${
+                                  isMine ? "justify-end" : "justify-start"
+                                }`}
+                                onMouseEnter={() =>
+                                  setHoverQuickFor(message.id)
+                                }
+                                onMouseLeave={() =>
+                                  setHoverQuickFor((v) =>
+                                    v === message.id ? null : v
+                                  )
+                                }
+                              >
+                                <div
+                                  className={`max-w-[72%] ${
+                                    isMine ? "order-2" : "order-1"
+                                  }`}
+                                >
+                                  <div
+                                    className={`bubble ${
+                                      isMine ? "bubble-sent" : "bubble-received"
+                                    } smooth-transition`}
+                                  >
+                                    {selectionMode && (
+                                      <div
+                                        className={
+                                          isMine
+                                            ? "text-indigo-100 mb-1"
+                                            : "text-slate-400 mb-1"
+                                        }
+                                      >
+                                        <label className="inline-flex items-center gap-2 text-xs">
+                                          <input
+                                            type="checkbox"
+                                            className="accent-indigo-500"
+                                            checked={selectedMessageIds.has(
+                                              message.id
+                                            )}
+                                            onChange={() =>
+                                              toggleMessageSelection(message.id)
+                                            }
+                                          />{" "}
+                                          Select
+                                        </label>
                                       </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Hover emoji trigger outside bubble */}
-                                  {hoverQuickFor === message.id && (
-                                    <div className={`absolute ${isMine ? 'right-0 -mr-10' : 'left-0 -ml-10'} top-1/2 -translate-y-1/2`}>
-                                      <button className="emoji-trigger" title="React" onClick={(e)=>{e.stopPropagation(); setActiveReactionFor(activeReactionFor===message.id?null:message.id);}} aria-haspopup="true" aria-expanded={activeReactionFor===message.id}>😊</button>
-                                      {activeReactionFor===message.id && (
-                                        <div className={`reaction-popover ${isMine ? 'right-0' : 'left-0'}`} role="menu" aria-label="Reactions">
-                                          {['👍','❤️','😂','😮','😢','👏'].map((emo)=> (
-                                            <button key={emo} className="reaction-btn" onClick={()=>{ handleReact(message.id, emo); setActiveReactionFor(null); }}>
-                                              {emo}
-                                            </button>
-                                          ))}
+                                    )}
+                                    {message.replyTo?.id && (
+                                      <div
+                                        className={`${
+                                          isMine ? "bg-white/10" : "bg-white/5"
+                                        } rounded-xl mb-2 p-2 border border-white/10`}
+                                      >
+                                        <div className="text-[11px] opacity-70 mb-1">
+                                          Replying to
+                                        </div>
+                                        <div className="text-xs line-clamp-2">
+                                          {findMessageById(message.replyTo.id)
+                                            ?.content || "Media"}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {message.content && (
+                                      <div className="message-content">
+                                        {renderMessageContent(message.content)}
+                                      </div>
+                                    )}
+                                    {message.attachments &&
+                                      message.attachments.length > 0 && (
+                                        <div className="mt-2 space-y-2">
+                                          {message.attachments.map(
+                                            (attachment, idx) =>
+                                              attachment.startsWith(
+                                                "/forum/"
+                                              ) ? (
+                                                <a
+                                                  key={idx}
+                                                  href={attachment}
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    window.location.href =
+                                                      attachment;
+                                                  }}
+                                                  className="block p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+                                                >
+                                                  <div className="text-sm font-semibold text-slate-100">
+                                                    Forum Post
+                                                  </div>
+                                                  <div className="text-xs text-slate-300">
+                                                    Tap to open the original
+                                                    post
+                                                  </div>
+                                                </a>
+                                              ) : (
+                                                <img
+                                                  key={idx}
+                                                  src={attachment}
+                                                  alt="attachment"
+                                                  onClick={() =>
+                                                    setLightboxSrc(attachment)
+                                                  }
+                                                  className="media-img cursor-zoom-in hover:opacity-90 transition"
+                                                />
+                                              )
+                                          )}
                                         </div>
                                       )}
-                                    </div>
-                                  )}
-
-                                  {/* Caret trigger beside bubble - dropdown in front of message */}
-                                  <div className={`caret-trigger absolute ${isMine ? 'right-0 -mr-10' : 'left-0 -ml-10'} top-[calc(50%+46px)]`}> 
-                                    <div className="relative">
-                                      <button
-                                        className="caret-button focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                                        aria-haspopup="menu"
-                                        aria-expanded={menuPortal.open && menuPortal.messageId === message.id}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          lastFocusRef.current = e.currentTarget;
-                                          const rect = e.currentTarget.getBoundingClientRect();
-                                          const baseItems = [
-                                            { label: 'Reply', icon: <FiCornerUpLeft />, onSelect: () => setReplyTo({ id: message.id }) },
-                                            { label: 'Copy', icon: <FiCopy />, onSelect: () => navigator.clipboard.writeText(message.content || '') },
-                                            { label: 'Forward', icon: <FiShare2 />, onSelect: () => { setForwardSource(message); setShowForwardDialog(true); } },
-                                            { label: 'Star / Pin', icon: <FiStar />, onSelect: () => toast.success('Starred') },
-                                            { label: 'Delete for me', icon: <FiTrash2 />, onSelect: () => handleDeleteSingle(message.id, 'me') },
-                                            { label: selectionMode ? 'Cancel select' : 'Select', icon: <FiCheckSquare />, onSelect: () => setSelectionMode((v) => !v) },
-                                            { label: 'Report', icon: <FiFlag />, onSelect: () => handleReport() },
-                                            { label: 'Info', icon: <FiInfo />, onSelect: () => toast.info('Info coming soon') },
-                                          ];
-                                          const x = Math.min(window.innerWidth - 260, Math.max(8, rect.left - 200 + rect.width / 2));
-                                          const y = Math.min(window.innerHeight - 12, Math.max(12, rect.bottom + 8));
-                                          setMenuPortal({ open: true, x, y, items: baseItems, messageId: message.id, focusIndex: 0 });
-                                        }}
-                                      >
-                                        <FiChevronDown />
-                                      </button>
+                                    {/* Timestamp below bubble */}
+                                    <div
+                                      className={`timestamp-below ${
+                                        isMine
+                                          ? "text-indigo-100/70 text-right"
+                                          : "text-slate-300/70 text-left"
+                                      }`}
+                                    >
+                                      <span>
+                                        {new Date(
+                                          message.timestamp
+                                        ).toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                      {isMine && (
+                                        <span className="inline-flex items-center ml-1 align-middle">
+                                          {message.status === "sent" && (
+                                            <FiCheck size={14} color="#888" />
+                                          )}
+                                          {message.status === "delivered" && (
+                                            <BiCheckDouble
+                                              size={14}
+                                              color="#888"
+                                            />
+                                          )}
+                                          {message.status === "seen" && (
+                                            <BiCheckDouble
+                                              size={14}
+                                              color="#0A84FF"
+                                            />
+                                          )}
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
+                                </div>
+
+                                {/* Hover emoji trigger outside bubble */}
+                                {hoverQuickFor === message.id && (
+                                  <div
+                                    className={`absolute ${
+                                      isMine
+                                        ? "right-0 -mr-10"
+                                        : "left-0 -ml-10"
+                                    } top-1/2 -translate-y-1/2`}
+                                  >
+                                    <button
+                                      className="emoji-trigger"
+                                      title="React"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveReactionFor(
+                                          activeReactionFor === message.id
+                                            ? null
+                                            : message.id
+                                        );
+                                      }}
+                                      aria-haspopup="true"
+                                      aria-expanded={
+                                        activeReactionFor === message.id
+                                      }
+                                    >
+                                      😊
+                                    </button>
+                                    {activeReactionFor === message.id && (
+                                      <div
+                                        className={`reaction-popover ${
+                                          isMine ? "right-0" : "left-0"
+                                        }`}
+                                        role="menu"
+                                        aria-label="Reactions"
+                                      >
+                                        {[
+                                          "👍",
+                                          "❤️",
+                                          "😂",
+                                          "😮",
+                                          "😢",
+                                          "👏",
+                                        ].map((emo) => (
+                                          <button
+                                            key={emo}
+                                            className="reaction-btn"
+                                            onClick={() => {
+                                              handleReact(message.id, emo);
+                                              setActiveReactionFor(null);
+                                            }}
+                                          >
+                                            {emo}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Caret trigger beside bubble - dropdown in front of message */}
+                                <div
+                                  className={`caret-trigger absolute ${
+                                    isMine ? "right-0 -mr-10" : "left-0 -ml-10"
+                                  } top-[calc(50%+46px)]`}
+                                >
+                                  <div className="relative">
+                                    <button
+                                      className="caret-button focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                      aria-haspopup="menu"
+                                      aria-expanded={
+                                        menuPortal.open &&
+                                        menuPortal.messageId === message.id
+                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        lastFocusRef.current = e.currentTarget;
+                                        const rect =
+                                          e.currentTarget.getBoundingClientRect();
+                                        const baseItems = [
+                                          {
+                                            label: "Reply",
+                                            icon: <FiCornerUpLeft />,
+                                            onSelect: () =>
+                                              setReplyTo({ id: message.id }),
+                                          },
+                                          {
+                                            label: "Copy",
+                                            icon: <FiCopy />,
+                                            onSelect: () =>
+                                              navigator.clipboard.writeText(
+                                                message.content || ""
+                                              ),
+                                          },
+                                          {
+                                            label: "Forward",
+                                            icon: <FiShare2 />,
+                                            onSelect: () => {
+                                              setForwardSource(message);
+                                              setShowForwardDialog(true);
+                                            },
+                                          },
+                                          {
+                                            label: "Star / Pin",
+                                            icon: <FiStar />,
+                                            onSelect: () =>
+                                              toast.success("Starred"),
+                                          },
+                                          {
+                                            label: "Delete for me",
+                                            icon: <FiTrash2 />,
+                                            onSelect: () =>
+                                              handleDeleteSingle(
+                                                message.id,
+                                                "me"
+                                              ),
+                                          },
+                                          {
+                                            label: selectionMode
+                                              ? "Cancel select"
+                                              : "Select",
+                                            icon: <FiCheckSquare />,
+                                            onSelect: () =>
+                                              setSelectionMode((v) => !v),
+                                          },
+                                          {
+                                            label: "Report",
+                                            icon: <FiFlag />,
+                                            onSelect: () => handleReport(),
+                                          },
+                                          {
+                                            label: "Info",
+                                            icon: <FiInfo />,
+                                            onSelect: () =>
+                                              toast.info("Info coming soon"),
+                                          },
+                                        ];
+                                        const x = Math.min(
+                                          window.innerWidth - 260,
+                                          Math.max(
+                                            8,
+                                            rect.left - 200 + rect.width / 2
+                                          )
+                                        );
+                                        const y = Math.min(
+                                          window.innerHeight - 12,
+                                          Math.max(12, rect.bottom + 8)
+                                        );
+                                        setMenuPortal({
+                                          open: true,
+                                          x,
+                                          y,
+                                          items: baseItems,
+                                          messageId: message.id,
+                                          focusIndex: 0,
+                                        });
+                                      }}
+                                    >
+                                      <FiChevronDown />
+                                    </button>
+                                  </div>
+                                </div>
                               </motion.div>
                             </div>
                           );
                         })}
                       </AnimatePresence>
-                      <div style={{ height: '72px' }} />
+                      <div style={{ height: "72px" }} />
                     </div>
                   )}
                 </div>
 
                 {/* Composer */}
-                <div className="sticky-compose px-4 py-3 bg-[#0b0f15]/95 backdrop-blur border-t border-white/10" style={{ paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 12px)` }}>
+                <div
+                  className="sticky-compose px-4 py-3 bg-[#0b0f15]/95 backdrop-blur border-t border-white/10"
+                  style={{
+                    paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 12px)`,
+                  }}
+                >
                   {imagePreview && (
                     <div className="mb-3 relative">
-                      <img src={imagePreview} alt="Preview" className="h-28 object-cover rounded-xl ring-1 ring-white/15" style={{ maxWidth: 'min(60vw, 420px)' }} />
-                      <button onClick={removeImage} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 grid place-items-center text-xs">×</button>
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="h-28 object-cover rounded-xl ring-1 ring-white/15"
+                        style={{ maxWidth: "min(60vw, 420px)" }}
+                      />
+                      <button
+                        onClick={removeImage}
+                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 grid place-items-center text-xs"
+                      >
+                        ×
+                      </button>
                     </div>
                   )}
                   {replyTo?.id && (
                     <div className="mb-2 p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-start justify-between">
                       <div>
-                        <div className="text-[11px] font-semibold text-indigo-300 mb-1">Replying to</div>
-                        <div className="text-xs text-indigo-200/90 line-clamp-2">{findMessageById(replyTo.id)?.content || 'Media'}</div>
+                        <div className="text-[11px] font-semibold text-indigo-300 mb-1">
+                          Replying to
+                        </div>
+                        <div className="text-xs text-indigo-200/90 line-clamp-2">
+                          {findMessageById(replyTo.id)?.content || "Media"}
+                        </div>
                       </div>
-                      <button onClick={() => setReplyTo(null)} className="text-indigo-300 hover:text-indigo-200"><FiX /></button>
+                      <button
+                        onClick={() => setReplyTo(null)}
+                        className="text-indigo-300 hover:text-indigo-200"
+                      >
+                        <FiX />
+                      </button>
                     </div>
                   )}
-                  <form onSubmit={(e)=>{ handleSendMessage(e); }} className="flex items-end gap-3">
+                  <form
+                    onSubmit={(e) => {
+                      handleSendMessage(e);
+                    }}
+                    className="flex items-end gap-3"
+                  >
                     <div className="flex-1 relative">
-                      <input type="text" value={newMessage} onChange={handleTyping} onKeyDown={(e)=>{ if(e.key==='Enter' && !e.shiftKey){ handleSendMessage(e); } }} placeholder="Type a message" className="w-full px-4 py-3 pr-12 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent" />
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={handleTyping}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            handleSendMessage(e);
+                          }
+                        }}
+                        placeholder="Type a message"
+                        className="w-full px-4 py-3 pr-12 bg-white/5 text-slate-100 rounded-xl border border-white/10 focus:ring-2 focus:ring-indigo-500/70 focus:border-transparent"
+                      />
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg hover:bg-white/10 text-slate-300"><FiImage /></button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setShowEmojiPicker((v) => !v); }} className="p-2 rounded-lg hover:bg-white/10 text-slate-300"><FiSmile /></button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-2 rounded-lg hover:bg-white/10 text-slate-300"
+                        >
+                          <FiImage />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEmojiPicker((v) => !v);
+                          }}
+                          className="p-2 rounded-lg hover:bg-white/10 text-slate-300"
+                        >
+                          <FiSmile />
+                        </button>
                       </div>
-                      <input ref={fileInputRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx" onChange={handleImageSelect} className="hidden" />
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx"
+                        onChange={handleImageSelect}
+                        className="hidden"
+                      />
                       {showEmojiPicker && (
-                        <div className="absolute bottom-full right-0 mb-2 z-popover" ref={emojiAreaRef}>
-                          <Picker onEmojiClick={(emojiData) => { const emoji = emojiData?.emoji || ''; setNewMessage((prev) => prev + emoji); }} skinTonesDisabled searchDisabled previewConfig={{ showPreview: false }} />
+                        <div
+                          className="absolute bottom-full right-0 mb-2 z-popover"
+                          ref={emojiAreaRef}
+                        >
+                          <Picker
+                            onEmojiClick={(emojiData) => {
+                              const emoji = emojiData?.emoji || "";
+                              setNewMessage((prev) => prev + emoji);
+                            }}
+                            skinTonesDisabled
+                            searchDisabled
+                            previewConfig={{ showPreview: false }}
+                          />
                         </div>
                       )}
                     </div>
-                    <button type="submit" disabled={!newMessage.trim() && !selectedImage} className="px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500 focus-visible:ring-2 focus-visible:ring-indigo-500/70 disabled:opacity-50">
+                    <button
+                      type="submit"
+                      disabled={!newMessage.trim() && !selectedImage}
+                      className="px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500 focus-visible:ring-2 focus-visible:ring-indigo-500/70 disabled:opacity-50"
+                    >
                       <FiSend />
                     </button>
                   </form>
@@ -1092,8 +1646,18 @@ const MessagesPage = () => {
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
                       <div>Selected: {selectedMessageIds.size}</div>
                       <div className="flex gap-2">
-                        <button onClick={() => handleBulkDelete('me')} className="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10">Delete for me</button>
-                        <button onClick={() => handleBulkDelete('everyone')} className="px-3 py-2 rounded-lg border border-white/10 text-red-400 hover:bg-red-500/10">Delete for everyone</button>
+                        <button
+                          onClick={() => handleBulkDelete("me")}
+                          className="px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10"
+                        >
+                          Delete for me
+                        </button>
+                        <button
+                          onClick={() => handleBulkDelete("everyone")}
+                          className="px-3 py-2 rounded-lg border border-white/10 text-red-400 hover:bg-red-500/10"
+                        >
+                          Delete for everyone
+                        </button>
                       </div>
                     </div>
                   )}
@@ -1102,8 +1666,12 @@ const MessagesPage = () => {
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-400">
                 <div className="text-7xl mb-4">💬</div>
-                <p className="text-lg font-semibold mb-1">Welcome to Messages</p>
-                <p className="text-sm">Select a conversation to start chatting</p>
+                <p className="text-lg font-semibold mb-1">
+                  Welcome to Messages
+                </p>
+                <p className="text-sm">
+                  Select a conversation to start chatting
+                </p>
               </div>
             )}
           </section>
@@ -1112,58 +1680,138 @@ const MessagesPage = () => {
 
       {/* Lightbox */}
       {lightboxSrc && (
-        <div className="fixed inset-0 bg-black/80 z-popover flex items-center justify-center" onClick={() => setLightboxSrc(null)}>
-          <img src={lightboxSrc} alt="media" className="max-h-[90vh] max-w-[90vw] rounded-2xl shadow-2xl" />
+        <div
+          className="fixed inset-0 bg-black/80 z-popover flex items-center justify-center"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <img
+            src={lightboxSrc}
+            alt="media"
+            className="max-h-[90vh] max-w-[90vw] rounded-2xl shadow-2xl"
+          />
         </div>
       )}
       {/* Forward dialog */}
       {showForwardDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-popover" onClick={() => setShowForwardDialog(false)}>
-          <div className="bg-[#0f1320] text-slate-100 rounded-2xl shadow-2xl w-full max-w-md p-4 border border-white/10" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-popover"
+          onClick={() => setShowForwardDialog(false)}
+        >
+          <div
+            className="bg-[#0f1320] text-slate-100 rounded-2xl shadow-2xl w-full max-w-md p-4 border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="text-lg font-semibold mb-3">Forward message</div>
             <div className="max-h-72 overflow-y-auto custom-scrollbar divide-y divide-white/10">
               {connections.map((c) => (
-                <label key={c._id} className="w-full p-3 hover:bg-white/5 flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" className="mr-2" checked={forwardSelected.has(c._id)} onChange={(e) => {
-                    setForwardSelected((prev)=>{ const next = new Set(prev); if(e.target.checked) next.add(c._id); else next.delete(c._id); return next; });
-                  }} />
-                  <img src={c.user?.avatarUrl ? getAvatarUrl(c.user.avatarUrl) : "/default-avatar.png"} alt="avatar" className="h-8 w-8 rounded-full" />
+                <label
+                  key={c._id}
+                  className="w-full p-3 hover:bg-white/5 flex items-center gap-3 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    className="mr-2"
+                    checked={forwardSelected.has(c._id)}
+                    onChange={(e) => {
+                      setForwardSelected((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(c._id);
+                        else next.delete(c._id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <img
+                    src={
+                      c.user?.avatarUrl
+                        ? getAvatarUrl(c.user.avatarUrl)
+                        : "/default-avatar.png"
+                    }
+                    alt="avatar"
+                    className="h-8 w-8 rounded-full"
+                  />
                   <div className="flex-1">
                     <div className="font-medium">{c.user?.name}</div>
-                    <div className="text-xs text-slate-400">@{c.user?.username}</div>
+                    <div className="text-xs text-slate-400">
+                      @{c.user?.username}
+                    </div>
                   </div>
                 </label>
               ))}
             </div>
             <div className="mt-3 flex justify-between">
-              <button onClick={() => { setForwardSelected(new Set()); setShowForwardDialog(false); }} className="px-4 py-2 rounded-xl border border-white/10 hover:bg-white/5">Cancel</button>
-              <button onClick={async () => {
-                const ids = Array.from(forwardSelected);
-                for (const id of ids) { await handleForwardTo(id); }
-                setForwardSelected(new Set());
-                setShowForwardDialog(false);
-              }} disabled={forwardSelected.size===0} className="px-4 py-2 rounded-xl bg-indigo-600 disabled:opacity-50">Forward</button>
+              <button
+                onClick={() => {
+                  setForwardSelected(new Set());
+                  setShowForwardDialog(false);
+                }}
+                className="px-4 py-2 rounded-xl border border-white/10 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const ids = Array.from(forwardSelected);
+                  for (const id of ids) {
+                    await handleForwardTo(id);
+                  }
+                  setForwardSelected(new Set());
+                  setShowForwardDialog(false);
+                }}
+                disabled={forwardSelected.size === 0}
+                className="px-4 py-2 rounded-xl bg-indigo-600 disabled:opacity-50"
+              >
+                Forward
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* Full menu portal */}
-      {menuPortal.open && createPortal(
-        <div ref={menuPortalRef} className="full-menu z-popover" role="menu" aria-label="Message actions" style={{ left: menuPortal.x, top: menuPortal.y }} onKeyDown={(e)=>{
-          if(e.key==='Tab'){
-            e.preventDefault();
-            setMenuPortal(s=>({ ...s, focusIndex: (s.focusIndex + (e.shiftKey?-1:1) + s.items.length) % s.items.length }));
-          }
-        }}>
-          {menuPortal.items.map((it, idx) => (
-            <button key={it.label} className="menu-item" role="menuitem" aria-selected={menuPortal.focusIndex === idx} autoFocus={menuPortal.focusIndex === idx} onMouseEnter={() => setMenuPortal((s) => ({ ...s, focusIndex: idx }))} onClick={() => { it.onSelect(); setMenuPortal((s) => ({ ...s, open: false })); setTimeout(()=> lastFocusRef.current?.focus(), 0); }}>
-              <span className="opacity-90">{it.icon}</span>
-              <span className="text-sm">{it.label}</span>
-            </button>
-          ))}
-        </div>, document.body)
-      }
+      {menuPortal.open &&
+        createPortal(
+          <div
+            ref={menuPortalRef}
+            className="full-menu z-popover"
+            role="menu"
+            aria-label="Message actions"
+            style={{ left: menuPortal.x, top: menuPortal.y }}
+            onKeyDown={(e) => {
+              if (e.key === "Tab") {
+                e.preventDefault();
+                setMenuPortal((s) => ({
+                  ...s,
+                  focusIndex:
+                    (s.focusIndex + (e.shiftKey ? -1 : 1) + s.items.length) %
+                    s.items.length,
+                }));
+              }
+            }}
+          >
+            {menuPortal.items.map((it, idx) => (
+              <button
+                key={it.label}
+                className="menu-item"
+                role="menuitem"
+                aria-selected={menuPortal.focusIndex === idx}
+                autoFocus={menuPortal.focusIndex === idx}
+                onMouseEnter={() =>
+                  setMenuPortal((s) => ({ ...s, focusIndex: idx }))
+                }
+                onClick={() => {
+                  it.onSelect();
+                  setMenuPortal((s) => ({ ...s, open: false }));
+                  setTimeout(() => lastFocusRef.current?.focus(), 0);
+                }}
+              >
+                <span className="opacity-90">{it.icon}</span>
+                <span className="text-sm">{it.label}</span>
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };
