@@ -24,6 +24,8 @@ import {
   FiCopy,
   FiShare2,
   FiCheckSquare,
+  FiCheck,
+  FiCheckDouble,
 } from "react-icons/fi";
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -81,6 +83,10 @@ const MessagesPage = () => {
   const [unreadByConversationId, setUnreadByConversationId] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
+  const updateMessageStatus = useCallback((messageId, status) => {
+    if (!messageId || !status) return;
+    setMessages((prev) => prev.map((m) => (String(m.id) === String(messageId) ? { ...m, status } : m)));
+  }, []);
   const [newMessage, setNewMessage] = useState("");
   const [socket, setSocket] = useState(null);
   const messageContainerRef = useRef(null);
@@ -267,23 +273,7 @@ const MessagesPage = () => {
           next[conversationId] = Math.min(1000, (prev[conversationId] || 0) + 1);
           return next;
         });
-        // toast or native notification
-        try {
-          if (document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted') {
-            const n = new Notification('New message', { body: body?.slice(0, 80) || 'New message', icon: '/default-avatar.png' });
-            n.onclick = () => {
-              window.focus();
-              // navigate by selecting sender in list
-              const match = connections.find((c) => String(c.user?._id) === String(senderId));
-              if (match) {
-                setSelectedUser(match.user);
-                if (match.threadId && s) s.emit('messages:markRead', { conversationId });
-              }
-            };
-          } else {
-            toast.info(`New message: ${body?.slice(0, 80) || ''}`);
-          }
-        } catch {}
+        // Suppress pop-ups/toasts per requirement
       });
 
       s.on('unread:snapshot', (rows) => {
@@ -296,8 +286,41 @@ const MessagesPage = () => {
         setUnreadByConversationId((prev) => ({ ...prev, [conversationId]: newCount }));
       });
 
+      // Message delivery and seen status updates (both colon and camel event names)
+      const handleDelivered = (payload = {}) => {
+        const id = payload.messageId || payload.id;
+        if (id) updateMessageStatus(id, 'delivered');
+      };
+      const handleSeen = (payload = {}) => {
+        const id = payload.messageId || payload.id;
+        if (id) updateMessageStatus(id, 'seen');
+      };
+      s.on('message:sent', (p) => {
+        const id = p?.messageId || p?.id;
+        if (id) updateMessageStatus(id, 'sent');
+      });
+      s.on('messageSent', (p) => {
+        const id = p?.messageId || p?.id;
+        if (id) updateMessageStatus(id, 'sent');
+      });
+      s.on('message:delivered', handleDelivered);
+      s.on('messageDelivered', handleDelivered);
+      s.on('message:seen', handleSeen);
+      s.on('messageSeen', handleSeen);
+
+      // Fallback: read receipts provide a timestamp up to which messages are read
       s.on('messages:readReceipt', ({ conversationId, readerId, readUpTo }) => {
-        // optionally update UI indicators in future
+        if (!selectedUser || String(readerId) !== String(selectedUser._id)) return;
+        const cutoff = new Date(readUpTo).getTime();
+        setMessages((prev) => prev.map((m) => {
+          const isMine = String(m.senderId) === String(user._id);
+          const isToSelected = String(m.recipientId) === String(selectedUser._id);
+          const sentAt = new Date(m.timestamp).getTime();
+          if (isMine && isToSelected && sentAt <= cutoff) {
+            return { ...m, status: 'seen' };
+          }
+          return m;
+        }));
       });
 
       // reactions
@@ -372,7 +395,9 @@ const MessagesPage = () => {
     try {
       setLoading(true);
       const data = await fetchMessages(selectedUser._id);
-      setMessages(Array.isArray(data) ? data : []);
+      // Initialize without toasts; statuses will update via socket events
+      const normalized = (Array.isArray(data) ? data : []).map((m) => ({ ...m }));
+      setMessages(normalized);
       // also fetch shared media previews
       try {
         const token = localStorage.getItem("token");
@@ -465,7 +490,7 @@ const MessagesPage = () => {
       const idStr = messageData?.id ? String(messageData.id) : null;
       if (!idStr || !seenIdsRef.current.has(idStr)) {
         if (idStr) seenIdsRef.current.add(idStr);
-        setMessages((prev) => [...prev, messageData]);
+        setMessages((prev) => [...prev, { ...messageData, status: 'sent' }]);
       }
 
       // Clear input and image
@@ -477,8 +502,8 @@ const MessagesPage = () => {
       // Scroll to bottom after sending
       setTimeout(scrollToBottom, 100);
     } catch (error) {
+      // Silent failure per requirement
       console.error("Error sending message:", error);
-      toast.error("Failed to send message");
     }
   };
 
@@ -569,12 +594,12 @@ const MessagesPage = () => {
         const idStr = dto?.id ? String(dto.id) : null;
         if (!idStr || !seenIdsRef.current.has(idStr)) {
           if (idStr) seenIdsRef.current.add(idStr);
-          setMessages((prev) => [...prev, dto]);
+          setMessages((prev) => [...prev, { ...dto, status: 'sent' }]);
         }
       }
-      toast.success("Message forwarded");
     } catch (e) {
-      toast.error("Failed to forward message");
+      // Silent failure per requirement
+      console.error('Failed to forward message', e);
     } finally {
       setShowForwardDialog(false);
       setForwardSource(null);
@@ -911,7 +936,14 @@ const MessagesPage = () => {
                                   )}
                                       {/* Timestamp below bubble */}
                                       <div className={`timestamp-below ${isMine ? 'text-indigo-100/70 text-right' : 'text-slate-300/70 text-left'}`}>
-                                        {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        {isMine && (
+                                          <span className="inline-flex items-center ml-1 align-middle">
+                                            {message.status === 'sent' && <FiCheck size={14} color="#888" />}
+                                            {message.status === 'delivered' && <FiCheckDouble size={14} color="#888" />}
+                                            {message.status === 'seen' && <FiCheckDouble size={14} color="#0A84FF" />}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </div>

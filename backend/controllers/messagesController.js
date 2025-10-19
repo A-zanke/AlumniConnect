@@ -212,6 +212,15 @@ exports.sendMessage = async (req, res) => {
       // Notify unread update to recipient only
       const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
       req.io.to(String(to)).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
+      // Status events to sender
+      req.io.to(String(me)).emit("message:sent", { id: String(dto.id), messageId: String(dto.id), status: "sent" });
+      // If recipient currently connected, mark delivered
+      try {
+        const isRecipientOnline = !!req.io.sockets?.adapter?.rooms?.get?.(String(to));
+        if (isRecipientOnline) {
+          req.io.to(String(me)).emit("message:delivered", { id: String(dto.id), messageId: String(dto.id), status: "delivered" });
+        }
+      } catch {}
     }
 
     return res.status(201).json(dto);
