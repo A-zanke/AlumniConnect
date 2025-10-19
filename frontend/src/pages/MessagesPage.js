@@ -44,8 +44,8 @@ const customScrollbarStyles = `
   .z-over { z-index: 30; }
   .z-under { z-index: 10; }
   .bubble { position: relative; border-radius: 18px; padding: 10px 12px; max-width: 65%; }
-  .bubble-sent { background: #005C4B; color: #eafaf6; box-shadow: 0 6px 22px rgba(0, 92, 75, 0.22); }
-  .bubble-received { background: #202C33; color: #e6e8ee; box-shadow: 0 8px 26px rgba(0,0,0,0.22); }
+  .bubble-sent { background: linear-gradient(140deg, #2563eb, #9333ea); color: #ffffff; box-shadow: 0 6px 22px rgba(37, 99, 235, 0.22); }
+  .bubble-received { background: rgba(255,255,255,0.06); color: #e6e8ee; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 8px 26px rgba(0,0,0,0.22); }
   .bubble:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,0,0,0.25); }
   .bubble .message-content { font-size: 15px; line-height: 1.5; font-weight: 500; }
   .message-content { white-space: pre-wrap; word-break: break-word; }
@@ -902,10 +902,15 @@ const MessagesPage = () => {
                         <FiMoreVertical className="text-slate-300" />
                       </button>
                       {openHeaderMenu && (
-                        <div className="absolute right-0 mt-2 w-56 bg-[#151821] border border-white/10 shadow-2xl rounded-xl z-popover p-1">
+                        <div className="absolute right-0 mt-2 w-64 bg-[#1f1f1f] border border-white/10 shadow-2xl rounded-xl z-[1000] p-1">
                           <button onClick={() => setSelectionMode((v) => !v)} className="menu-item">{selectionMode ? 'Cancel selection' : 'Select messages'}</button>
                           <button onClick={() => handleBlockToggle(true)} className="menu-item">Block user</button>
                           <button onClick={handleReport} className="menu-item">Report user</button>
+                          <div className="menu-reactions">
+                            {['👍','❤️','😂','😮','😢','🙏'].map((emo)=> (
+                              <button key={emo} onClick={()=>{ if (selectedMessageIds.size>0){ const first=[...selectedMessageIds][0]; handleReact(first, emo);} }} aria-label={`React ${emo}`}>{emo}</button>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -913,12 +918,12 @@ const MessagesPage = () => {
                 </div>
 
                 {/* Messages body */}
-                <div ref={messageContainerRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-5 bg-[#0b0f15]">
+                <div ref={messageContainerRef} className="chat-body flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-5">
                   {messages.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                      <div className="text-7xl mb-4">💭</div>
-                      <p className="text-lg font-medium">Start the conversation</p>
-                      <p className="text-sm mt-1">Send a message to begin chatting with {selectedUser.name}</p>
+                    <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                      <div className="text-7xl mb-4">✨</div>
+                      <p className="text-xl font-semibold mb-1">No messages yet</p>
+                      <p className="text-sm opacity-80">Say hi to {selectedUser.name} and start a stunning new chat.</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
