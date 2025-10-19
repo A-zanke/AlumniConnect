@@ -106,7 +106,9 @@ exports.getConversations = async (req, res) => {
         };
       })
       .sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
-    return res.json({ data: conversations });
+    // Also compute total unread for navbar (only messages to me and not read)
+    const totalUnread = await Message.countDocuments({ to: me, isRead: false });
+    return res.json({ data: conversations, totalUnread });
   } catch (error) {
     console.error("Error fetching conversations:", error);
     return res.status(500).json({ message: "Error fetching conversations" });
@@ -138,19 +140,25 @@ exports.getMessages = async (req, res) => {
       const dto = parseMessage(d, me);
       if (dto) out.push(dto);
     }
-    // Mark as read server-side on fetch
+    // Mark as read server-side on fetch (WhatsApp-like: when opening chat)
     const participants = [String(me), String(other)].sort();
     const thread = await Thread.findOne({ participants: { $all: participants, $size: 2 } });
     if (thread) {
       const now = new Date();
+      // Mark all unseen messages to me as read
+      await Message.updateMany({ from: other, to: me, isRead: false }, { $set: { isRead: true, readAt: now } });
+      // Update thread counters/lastReadAt
       thread.lastReadAt.set(String(me), now);
-      // recompute unread = messages to me after lastReadAt
-      const unread = await Message.countDocuments({ from: other, to: me, createdAt: { $gt: now } });
-      thread.unreadCount.set(String(me), unread);
+      thread.unreadCount.set(String(me), 0);
       await thread.save();
       if (req.io) {
-        req.io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: unread });
+        req.io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: 0 });
         req.io.to(String(other)).emit("messages:readReceipt", { conversationId: String(thread._id), readerId: String(me), readUpTo: now });
+        // Also emit total unread for navbar
+        try {
+          const total = await Message.countDocuments({ to: me, isRead: false });
+          req.io.to(String(me)).emit("unread:total", { total });
+        } catch {}
       }
     }
     return res.json(out);
@@ -185,7 +193,7 @@ exports.sendMessage = async (req, res) => {
     }
 
     const clientKey = (req.body?.clientKey || '').toString() || null;
-    const msg = await Message.create({ from: me, to, content, attachments });
+    const msg = await Message.create({ from: me, to, content, attachments, isRead: false });
     const dto = parseMessage(msg.toObject(), me);
 
     // Upsert thread and increment unread for recipient (server authority)
@@ -213,6 +221,11 @@ exports.sendMessage = async (req, res) => {
       // Notify unread update to recipient only
       const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
       req.io.to(String(to)).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
+      // Update navbar total for recipient
+      try {
+        const total = await Message.countDocuments({ to, isRead: false });
+        req.io.to(String(to)).emit("unread:total", { total });
+      } catch {}
       // Status events to sender
       req.io.to(String(me)).emit("message:sent", { id: String(dto.id), messageId: String(dto.id), status: "sent", clientKey });
       // If recipient currently connected, mark delivered

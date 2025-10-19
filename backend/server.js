@@ -268,7 +268,7 @@ io.on("connection", (socket) => {
       if (ab || ba) return;
       const participants = [String(from), String(to)].sort();
       const threadId = `${participants[0]}_${participants[1]}`;
-      const messageData = { threadId, clientKey, from, to, content: content || "" };
+      const messageData = { threadId, clientKey, from, to, content: content || "", isRead: false };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
@@ -325,23 +325,21 @@ io.on("connection", (socket) => {
       const thread = await Thread.findById(conversationId);
       if (!thread) return;
       const now = new Date();
-      thread.lastReadAt.set(String(me), now);
-      // recompute unread based on messages addressed to me after lastReadAt
-      const others = (thread.participants || []).map((p) => String(p)).filter((p) => p !== String(me));
-      if (others.length === 1) {
-        const other = others[0];
-        const unread = await Message.countDocuments({ from: other, to: me, createdAt: { $gt: now } });
-        thread.unreadCount.set(String(me), unread);
-        // notify sender(s) of seen messages up to now
-        const seenMsgs = await Message.find({ from: other, to: me, createdAt: { $lte: now } }).select("_id").lean();
-        for (const m of seenMsgs) {
-          io.to(String(other)).emit("message:seen", { id: String(m._id), messageId: String(m._id) });
-        }
-      } else {
-        thread.unreadCount.set(String(me), 0);
+      // Mark all messages in this thread addressed to me as read
+      const participants = (thread.participants || []).map((p) => String(p));
+      const other = participants.find((p) => p !== String(me));
+      if (other) {
+        await Message.updateMany({ from: other, to: me, isRead: false }, { $set: { isRead: true, readAt: now } });
       }
+      thread.lastReadAt.set(String(me), now);
+      thread.unreadCount.set(String(me), 0);
       await thread.save();
-      io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: thread.unreadCount.get(String(me)) || 0 });
+      io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: 0 });
+      // emit total unread for navbar
+      try {
+        const total = await Message.countDocuments({ to: me, isRead: false });
+        io.to(String(me)).emit("unread:total", { total });
+      } catch {}
       // broadcast readReceipt to participants
       for (const p of thread.participants) {
         io.to(String(p)).emit("messages:readReceipt", { conversationId: String(thread._id), readerId: String(me), readUpTo: now });
@@ -358,6 +356,11 @@ io.on("connection", (socket) => {
       const threads = await Thread.find({ participants: { $all: [socket.userId] } }).select("unreadCount").lean();
       const snapshot = threads.map((t) => ({ conversationId: String(t._id), count: (t.unreadCount && (t.unreadCount[socket.userId] || (t.unreadCount.get && t.unreadCount.get(socket.userId)) || 0)) }));
       io.to(socket.id).emit("unread:snapshot", snapshot);
+      // Also emit navbar total unread count
+      try {
+        const total = await Message.countDocuments({ to: socket.userId, isRead: false });
+        io.to(socket.id).emit("unread:total", { total });
+      } catch {}
     } catch (e) {}
   })();
 

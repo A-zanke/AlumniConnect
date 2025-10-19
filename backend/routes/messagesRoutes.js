@@ -44,7 +44,7 @@ const upload = multer({
   },
 });
 
-// Conversations list
+// Conversations list + total unread
 router.get("/", protect, getConversations);
 router.get("/blocks", protect, getBlocks);
 

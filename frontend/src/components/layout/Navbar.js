@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "../NotificationBell";
 import { getAvatarUrl } from "../utils/helpers";
 import { unreadAPI } from "../utils/api";
+import { io } from "socket.io-client";
 
 const Navbar = () => {
   const navRef = useRef(null);
@@ -31,6 +32,7 @@ const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [showEventsDropdown, setShowEventsDropdown] = useState(false);
   const [msgUnreadTotal, setMsgUnreadTotal] = useState(0);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -55,12 +57,8 @@ const Navbar = () => {
     };
   }, []);
 
-  // Fetch total unread messages for navbar badge
+  // Fetch total unread + setup real-time socket updates for navbar badge
   useEffect(() => {
-    if (!user) {
-      setMsgUnreadTotal(0);
-      return;
-    }
     let mounted = true;
     const refreshUnread = async () => {
       try {
@@ -71,14 +69,40 @@ const Navbar = () => {
         if (mounted) setMsgUnreadTotal(0);
       }
     };
+
+    if (!user) {
+      setMsgUnreadTotal(0);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      return;
+    }
+
     refreshUnread();
-    const interval = setInterval(refreshUnread, 15000);
-    const onFocus = () => refreshUnread();
-    window.addEventListener("focus", onFocus);
+
+    // Setup socket for real-time total updates
+    const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+    const s = io(baseURL, {
+      auth: { token: localStorage.getItem("token") },
+      withCredentials: true,
+      transports: ["websocket"],
+    });
+    socketRef.current = s;
+    s.on("unread:total", ({ total }) => {
+      if (typeof total === "number") setMsgUnreadTotal(total);
+    });
+    s.on("unread:snapshot", (rows) => {
+      try {
+        const total = (rows || []).reduce((sum, r) => sum + (r.count || 0), 0);
+        setMsgUnreadTotal(total);
+      } catch {}
+    });
+
     return () => {
       mounted = false;
-      clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
+      try { s.disconnect(); } catch {}
+      socketRef.current = null;
     };
   }, [user]);
 

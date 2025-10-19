@@ -220,7 +220,8 @@ export const unreadAPI = {
     try {
       const resp = await apiClient.get('/api/messages');
       const rows = Array.isArray(resp?.data?.data) ? resp.data.data : [];
-      return rows.map((c) => ({ conversationId: c._id, count: c.unreadCount || 0 }));
+      const total = typeof resp?.data?.totalUnread === 'number' ? resp.data.totalUnread : rows.reduce((s, r) => s + (r.unreadCount || 0), 0);
+      return rows.map((c) => ({ conversationId: c.threadId || c._id, count: c.unreadCount || 0, total }));
     } catch (e) {
       return [];
     }

@@ -111,6 +111,7 @@ const MessagesPage = () => {
   const [typingUser, setTypingUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [presenceData, setPresenceData] = useState({});
+  const [totalUnread, setTotalUnread] = useState(0);
   const [isTypingTimeout, setIsTypingTimeout] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -348,6 +349,11 @@ const MessagesPage = () => {
           ...prev,
           [conversationId]: newCount,
         }));
+      });
+
+      // Navbar total updates if this page is mounted
+      s.on("unread:total", ({ total }) => {
+        if (typeof total === "number") setTotalUnread(total);
       });
 
       // ACK for optimistic sends: map clientKey -> real id
