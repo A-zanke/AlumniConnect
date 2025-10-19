@@ -193,9 +193,10 @@ const customScrollbarStyles = `
   /* Message bubbles - STUNNING DESIGN */
   .bubble { 
     position: relative; 
+    display: inline-block;
     border-radius: 24px; 
     padding: 14px 18px; 
-    min-width: 240px;
+    width: fit-content;
     max-width: 85%;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
@@ -236,9 +237,9 @@ const customScrollbarStyles = `
   }
 
   .bubble-sent { 
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: #ffffff;
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4),
+    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+    color: #f8fafc;
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.35),
                 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
     margin-left: auto;
   }
@@ -255,10 +256,10 @@ const customScrollbarStyles = `
   }
 
   .bubble-received { 
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: #ffffff;
-    box-shadow: 0 10px 30px rgba(240, 147, 251, 0.4),
-                0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+    color: #062e2e;
+    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4),
+                0 0 0 1px rgba(255, 255, 255, 0.12) inset;
   }
 
   .bubble-received::after {
@@ -2032,15 +2033,11 @@ const MessagesPage = () => {
                           const count = threadId
                             ? unreadByConversationId[threadId] ?? base
                             : base;
-                          const hide =
-                            selectedUser?._id === connection.user?._id;
+                          const hide = selectedUser?._id === connection.user?._id;
+                          if (!count || count <= 0) return null;
                           return !hide ? (
                             <span
-                              className={`ml-auto inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-semibold shadow ${
-                                count > 0
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-slate-200 text-slate-600"
-                              }`}
+                              className={`ml-auto inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-semibold shadow bg-emerald-600 text-white`}
                               aria-label={`${count} unread messages`}
                               title={`${count} unread`}
                             >
@@ -2108,7 +2105,7 @@ const MessagesPage = () => {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                     <div className="hidden md:flex items-center relative">
                       <FiSearch className="absolute left-3 text-slate-400" />
                       <input
@@ -2118,6 +2115,17 @@ const MessagesPage = () => {
                         className="pl-9 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-100 focus:ring-2 focus:ring-indigo-500/70"
                       />
                     </div>
+                      {/* Selection mode toggle icon */}
+                      <button
+                        onClick={() => setSelectionMode((v) => !v)}
+                        className={`p-2 rounded-full hover:bg-white/10 ${
+                          selectionMode ? "ring-2 ring-emerald-400/60" : ""
+                        }`}
+                        title={selectionMode ? "Cancel selection" : "Select messages"}
+                        aria-pressed={selectionMode}
+                      >
+                        <FiCheckSquare />
+                      </button>
                     <div className="relative" ref={headerMenuRef}>
                       <button
                         onClick={() => setOpenHeaderMenu((v) => !v)}
@@ -2129,7 +2137,7 @@ const MessagesPage = () => {
                         <FiMoreVertical className="text-slate-300" />
                       </button>
                       {openHeaderMenu && (
-                        <div className="absolute left-50 mt-5 w-64 bg-[#1f1f1f] border border-white/10 shadow-2xl rounded-xl z-[200] p-1">
+                        <div className="absolute right-0 mt-3 w-64 bg-white text-slate-800 border border-slate-200 shadow-2xl rounded-xl z-[2200] p-1">
                           <button
                             onClick={() => setSelectionMode((v) => !v)}
                             className="menu-item"
@@ -2243,7 +2251,7 @@ const MessagesPage = () => {
                                 }
                               >
                                 <div
-                                  className={`bubble-wrap relative z-[100] max-w-[85%] min-w-[50%] ${
+                                  className={`bubble-wrap relative z-[100] max-w-[85%] ${
                                     isMine ? "order-2" : "order-1"
                                   }`}
                                 >
@@ -2252,29 +2260,7 @@ const MessagesPage = () => {
                                       isMine ? "bubble-sent" : "bubble-received"
                                     } smooth-transition`}
                                   >
-                                    {selectionMode && (
-                                      <div
-                                        className={
-                                          isMine
-                                            ? "text-indigo-100 mb-1"
-                                            : "text-slate-400 mb-1"
-                                        }
-                                      >
-                                        <label className="inline-flex items-center gap-2 text-xs">
-                                          <input
-                                            type="checkbox"
-                                            className="accent-indigo-500"
-                                            checked={selectedMessageIds.has(
-                                              message.id
-                                            )}
-                                            onChange={() =>
-                                              toggleMessageSelection(message.id)
-                                            }
-                                          />{" "}
-                                          Select
-                                        </label>
-                                      </div>
-                                    )}
+                                      {null}
                                     {message.replyTo?.id && (
                                       <div
                                         className={`${
@@ -2388,22 +2374,20 @@ const MessagesPage = () => {
                                       {isMine && (
                                         <span className="inline-flex items-center ml-1 align-middle">
                                           {message.status === "sent" && (
-                                            <FiCheck
-                                              size={14}
-                                              color="#1976D2"
-                                            />
+                                            <span className="ml-1 inline-flex items-center gap-1 text-emerald-300">
+                                              <FiCheck size={14} />
+                                            </span>
                                           )}
                                           {message.status === "delivered" && (
-                                            <BiCheckDouble
-                                              size={14}
-                                              color="#1976D2"
-                                            />
+                                            <span className="ml-1 inline-flex items-center gap-1 text-sky-300">
+                                              <BiCheckDouble size={14} />
+                                            </span>
                                           )}
                                           {message.status === "seen" && (
-                                            <BiCheckDouble
-                                              size={14}
-                                              color="#1976D2"
-                                            />
+                                            <span className="ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-700/40 text-emerald-200">
+                                              <BiCheckDouble size={14} />
+                                              <span className="text-[10px] uppercase tracking-wide">Read</span>
+                                            </span>
                                           )}
                                         </span>
                                       )}
