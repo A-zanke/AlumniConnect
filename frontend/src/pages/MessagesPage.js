@@ -574,9 +574,10 @@ const MessagesPage = () => {
   const handleReact = async (messageId, emoji) => {
     try {
       const token = localStorage.getItem("token");
+      const to = selectedUser?._id || messages.find((m) => String(m.id) === String(messageId))?.recipientId;
       const resp = await axios.post(
         `${baseURL}/api/messages/react`,
-        { messageId: String(messageId), emoji },
+        { messageId: String(messageId), emoji, to },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setMessages((prev) =>
@@ -588,7 +589,6 @@ const MessagesPage = () => {
       );
     } catch (e) {
       console.error("Reaction error:", e.response?.data || e.message);
-      toast.error("Failed to react to message");
     }
   };
 

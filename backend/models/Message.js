@@ -70,6 +70,15 @@ const MessageSchema = new mongoose.Schema(
       default: "text",
     },
 
+    // Reactions (normalized)
+    reactions: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        emoji: { type: String, required: true },
+        reactedAt: { type: Date, default: Date.now },
+      },
+    ],
+
     // For forwarded messages
     isForwarded: {
       type: Boolean,

@@ -545,7 +545,7 @@ exports.sendMessage = async (req, res) => {
 exports.react = async (req, res) => {
   try {
     const me = req.user._id;
-    const { messageId, emoji } = req.body || {};
+    const { messageId, emoji, to } = req.body || {};
 
     if (!messageId)
       return res.status(400).json({ message: "messageId required" });
@@ -560,6 +560,11 @@ exports.react = async (req, res) => {
       return res.status(400).json({ message: "Invalid emoji" });
     }
 
+    // Validate recipient user id
+    if (!to || !mongoose.Types.ObjectId.isValid(to)) {
+      return res.status(400).json({ message: "Invalid recipient ID" });
+    }
+
     // Accept either Mongo _id or client messageId
     let message = null;
     if (mongoose.Types.ObjectId.isValid(messageId)) {
@@ -571,7 +576,8 @@ exports.react = async (req, res) => {
     if (!message) return res.status(404).json({ message: "Message not found" });
 
     const isParticipant =
-      String(message.from) === String(me) || String(message.to) === String(me);
+      (String(message.from) === String(me) && String(message.to) === String(to)) ||
+      (String(message.to) === String(me) && String(message.from) === String(to));
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
     // Toggle reaction in structured array (preferred)
