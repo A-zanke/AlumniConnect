@@ -66,7 +66,7 @@
   background: rgba(255,255,255,0.18);
 }
 
-/* ===== Unified icon hover for Search + Messages (+ Bell if you add) ===== */
+/* ===== Generic icon tile base ===== */
 .navbar-icon-btn {
   position: relative;
   display: inline-flex;
@@ -85,8 +85,8 @@
     box-shadow 220ms ease;
   outline: none;
 }
-
-.navbar-icon-btn:hover {
+/* Search icon specific glow */
+.search-icon:hover {
   /* soft, glassy backdrop behind icon */
   background: rgba(99,102,241,0.12); /* indigo at ~12% */
   color: #7c3aed; /* purple-600 accent on hover */
@@ -113,16 +113,31 @@
   transition: transform 200ms ease, color 220ms ease;
 }
 
-.navbar-icon-btn:hover .icon {
+.search-icon:hover .icon {
   transform: rotate(10deg);
 }
 
-/* unread badge stays above the tile */
+/* Message icon and its badge are isolated */
+.message-icon {
+  position: relative;
+}
+.message-badge,
 .unread-badge {
   position: absolute;
   top: -6px;
   right: -6px;
-  z-index: 2;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #1e40af); /* blue badge */
+  border-radius: 9999px;
+  text-align: center;
+  z-index: 5;
+  border: 2px solid #fff;
 }
 
 /* Respect prefers-reduced-motion */

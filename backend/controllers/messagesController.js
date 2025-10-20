@@ -479,7 +479,8 @@ exports.react = async (req, res) => {
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
     // Toggle reaction in structured array (preferred)
-    const currentIndex = (message.reactions || []).findIndex(
+    if (!Array.isArray(message.reactions)) message.reactions = [];
+    const currentIndex = message.reactions.findIndex(
       (r) => String(r.userId) === String(me)
     );
 
@@ -502,7 +503,8 @@ exports.react = async (req, res) => {
     }
 
     // Maintain legacy markers for backward compatibility (optional, can be removed later)
-    const withoutLegacy = (message.attachments || []).filter(
+    if (!Array.isArray(message.attachments)) message.attachments = [];
+    const withoutLegacy = message.attachments.filter(
       (att) => !(typeof att === "string" && att.startsWith(`react:${me}:`))
     );
     if (emoji && String(emoji).trim() !== "") {
@@ -1078,6 +1080,13 @@ exports.getMessageInfo = async (req, res) => {
     ].includes(String(me));
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
+    const isStarred = Array.isArray(message.attachments)
+      ? message.attachments.includes(`star:${me}`)
+      : false;
+    const isPinned = Array.isArray(message.attachments)
+      ? message.attachments.includes(`pin:${me}`)
+      : false;
+
     const messageInfo = {
       id: message._id,
       content: message.content,
@@ -1087,10 +1096,10 @@ exports.getMessageInfo = async (req, res) => {
       deliveredAt: message.deliveredAt,
       readAt: message.readAt,
       reactions: message.reactions,
-      isStarred: message.isStarred.includes(me),
-      isPinned: message.isPinned,
-      isEdited: message.isEdited,
-      editHistory: message.editHistory,
+      isStarred,
+      isPinned,
+      isEdited: false,
+      editHistory: [],
       attachments: message.attachments,
       messageType: message.messageType,
     };

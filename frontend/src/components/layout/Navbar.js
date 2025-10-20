@@ -322,7 +322,7 @@ const Navbar = () => {
             {/* Search Button */}
             <motion.button
               onClick={() => navigate("/search")}
-              className="ml-4 p-3 rounded-xl hover:bg-indigo-100 focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group"
+              className="ml-4 p-3 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group navbar-icon-btn search-icon"
               whileHover={{ scale: 1.1, rotate: 15 }}
               whileTap={{ scale: 0.9 }}
               initial={{ opacity: 0 }}
@@ -346,30 +346,14 @@ const Navbar = () => {
                 <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}>
                   <Link
                     to="/messages"
-                    className="navbar-icon-btn group relative rounded-xl px-3 py-2 hover:bg-white/70 backdrop-blur border border-white/40 transition-colors"
+                    className="navbar-icon-btn message-icon group relative rounded-xl px-3 py-2 backdrop-blur border border-white/40 transition-colors"
                   >
                     <FiMessageSquare
                       size={20}
                       className="icon transition-colors duration-300 text-slate-800 group-hover:text-indigo-700"
                     />
                     {msgUnreadTotal > 0 && (
-                      <span
-                        className="absolute rounded-full text-white font-bold shadow-lg"
-                        style={{
-                          top: '-6px',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: '18px',
-                          height: '18px',
-                          lineHeight: '18px',
-                          background: 'linear-gradient(135deg, #F44336, #D32F2F)',
-                          fontSize: '10px',
-                          textAlign: 'center',
-                          zIndex: 5,
-                          border: '2px solid white',
-                        }}
-                        aria-label={`${msgUnreadTotal} unread messages`}
-                      >
+                      <span className="message-badge" aria-label={`${msgUnreadTotal} unread messages`}>
                         {msgUnreadTotal > 99 ? '99+' : msgUnreadTotal}
                       </span>
                     )}

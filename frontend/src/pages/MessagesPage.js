@@ -892,9 +892,13 @@ const MessagesPage = () => {
                 />
 
                 <div>
-                  <h2 className="font-semibold text-gray-900">
+                  <button
+                    onClick={() => setShowRightPanel(true)}
+                    className="font-semibold text-gray-900 hover:underline text-left"
+                    title="View contact info"
+                  >
                     {selectedUser.name}
-                  </h2>
+                  </button>
                   <p className="text-sm text-gray-500">
                     {isTyping && typingUser ? (
                       <span className="text-green-600 italic">typing...</span>
@@ -1371,6 +1375,19 @@ const MessagesPage = () => {
 
             {/* Message Input */}
             <div className="p-4 bg-white border-t border-gray-200">
+              {blockedUsers.has(selectedUser._id) ? (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-center justify-between">
+                  <div className="text-sm text-red-700">
+                    You blocked this contact. You won’t receive messages or calls.
+                  </div>
+                  <button
+                    onClick={() => handleBlock(false)}
+                    className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              ) : (
               {/* Image preview */}
               {imagePreview && (
                 <div className="mb-3 relative inline-block">
@@ -1480,6 +1497,7 @@ const MessagesPage = () => {
                   <FiSend size={18} />
                 </button>
               </form>
+              )}
             </div>
           </>
         ) : (
@@ -1510,6 +1528,81 @@ const MessagesPage = () => {
             alt="Full size"
             className="max-w-full max-h-full object-contain"
           />
+        </div>
+      )}
+
+      {/* Right side panel: contact info + media/links/docs + actions */}
+      {selectedUser && showRightPanel && (
+        <div className="fixed inset-y-0 right-0 w-full sm:w-[380px] bg-white border-l border-gray-200 shadow-2xl z-50 flex flex-col">
+          <div className="p-4 border-b flex items-center justify-between">
+            <div className="font-semibold">Contact info</div>
+            <button onClick={() => setShowRightPanel(false)} className="text-gray-400 hover:text-gray-600">
+              <FiX />
+            </button>
+          </div>
+          <div className="p-4 flex items-center gap-3 border-b">
+            <img
+              src={selectedUser.avatarUrl ? getAvatarUrl(selectedUser.avatarUrl) : "/default-avatar.png"}
+              alt={selectedUser.name}
+              className="w-12 h-12 rounded-full object-cover"
+            />
+            <div>
+              <div className="font-medium">{selectedUser.name}</div>
+              <div className="text-sm text-gray-500">@{selectedUser.username}</div>
+            </div>
+          </div>
+          <div className="px-4 pt-2 flex gap-2">
+            {[
+              { key: "media", label: "Media" },
+              { key: "docs", label: "Docs" },
+              { key: "links", label: "Links" },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setRightPanelTab(t.key)}
+                className={`px-3 py-1 rounded-full text-sm ${rightPanelTab === t.key ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="p-4 flex-1 overflow-y-auto">
+            {rightPanelTab === "media" && (
+              <div className="grid grid-cols-3 gap-2">
+                {sharedMedia
+                  .filter((m) => m.type !== "link")
+                  .map((m) => (
+                    <img key={m.id + String(m.url)} src={m.url} alt="" className="w-full h-24 object-cover rounded" />
+                  ))}
+              </div>
+            )}
+            {rightPanelTab === "docs" && (
+              <div className="space-y-2">
+                {sharedMedia
+                  .filter((m) => m.type === "document")
+                  .map((m) => (
+                    <a key={m.id + String(m.url)} href={m.url} target="_blank" rel="noreferrer" className="block p-2 bg-gray-50 rounded border hover:bg-gray-100">Document</a>
+                  ))}
+              </div>
+            )}
+            {rightPanelTab === "links" && (
+              <div className="space-y-2">
+                {sharedMedia
+                  .filter((m) => m.type === "link")
+                  .map((m) => (
+                    <a key={m.id + String(m.url)} href={m.url} target="_blank" rel="noreferrer" className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate">{m.url}</a>
+                  ))}
+              </div>
+            )}
+          </div>
+          <div className="p-4 border-t flex gap-2">
+            {blockedUsers.has(selectedUser._id) ? (
+              <button onClick={() => handleBlock(false)} className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white">Unblock</button>
+            ) : (
+              <button onClick={() => handleBlock(true)} className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white">Block</button>
+            )}
+            <button onClick={handleReport} className="px-3 py-2 rounded-lg bg-orange-500 text-white">Report</button>
+          </div>
         </div>
       )}
 
