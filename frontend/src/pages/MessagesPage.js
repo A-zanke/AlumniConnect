@@ -83,6 +83,7 @@ const MessagesPage = () => {
   const [error, setError] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [selectedFileField, setSelectedFileField] = useState('image');
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -470,7 +471,10 @@ const MessagesPage = () => {
     try {
       const formData = new FormData();
       formData.append("content", newMessage);
-      if (selectedImage) formData.append("image", selectedImage);
+      if (selectedImage) {
+        const field = (typeof selectedFileField !== 'undefined' && selectedFileField) || 'image';
+        formData.append(field, selectedImage);
+      }
       if (replyTo?.id) formData.append("replyToId", replyTo.id);
 
       const token = localStorage.getItem("token");
@@ -689,6 +693,16 @@ const MessagesPage = () => {
     const file = e.target.files[0];
     if (file) {
       setSelectedImage(file);
+      // Set proper upload field based on MIME type used by backend
+      if (file.type?.startsWith("video/")) {
+        setSelectedFileField && setSelectedFileField("video");
+      } else if (file.type?.startsWith("audio/")) {
+        setSelectedFileField && setSelectedFileField("audio");
+      } else if (file.type?.startsWith("image/")) {
+        setSelectedFileField && setSelectedFileField("image");
+      } else {
+        setSelectedFileField && setSelectedFileField("document");
+      }
       const reader = new FileReader();
       reader.onload = (e) => setImagePreview(e.target.result);
       reader.readAsDataURL(file);
