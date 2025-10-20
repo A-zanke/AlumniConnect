@@ -1,7 +1,8 @@
 // c:/Users/ASUS/Downloads/Telegram Desktop/AlumniConnect/AlumniConnect/backend/controllers/messagesController.js
 const path = require("path");
 const mongoose = require("mongoose");
-const fs = require("fs").promises;
+// Use fs with both constants and promises APIs
+const fs = require("fs");
 const User = require("../models/User");
 const Message = require("../models/Message");
 const Thread = require("../models/Thread");
@@ -345,7 +346,7 @@ exports.sendMessage = async (req, res) => {
     // Health check: verify uploads directory exists and is writable
     const uploadsDir = path.join(__dirname, "../uploads");
     try {
-      await fs.access(uploadsDir, fs.constants.F_OK | fs.constants.W_OK);
+      await fs.promises.access(uploadsDir, fs.constants.F_OK | fs.constants.W_OK);
     } catch (err) {
       console.error("Uploads directory not accessible:", err);
       return res
@@ -550,14 +551,14 @@ exports.react = async (req, res) => {
     if (!messageId)
       return res.status(400).json({ message: "messageId required" });
 
-    // Validate emoji: must be a single emoji (not empty or multiple characters)
-    if (
-      !emoji ||
-      typeof emoji !== "string" ||
-      emoji.length !== 1 ||
-      !/\p{Emoji}/u.test(emoji)
-    ) {
-      return res.status(400).json({ message: "Invalid emoji" });
+    // Allow removing reaction when emoji is empty/null.
+    // If provided, do a light validation only (string and reasonable length).
+    const isRemoval = emoji === undefined || emoji === null || String(emoji).trim() === "";
+    if (!isRemoval) {
+      const emojiStr = String(emoji);
+      if (typeof emojiStr !== "string" || emojiStr.trim() === "" || emojiStr.length > 16) {
+        return res.status(400).json({ message: "Invalid emoji" });
+      }
     }
 
     // Validate recipient user id (if provided)
@@ -585,7 +586,7 @@ exports.react = async (req, res) => {
       (r) => String(r.userId) === String(me)
     );
 
-    if (!emoji || String(emoji).trim() === "") {
+    if (isRemoval) {
       // remove any existing reaction for user
       if (currentIndex !== -1) {
         message.reactions.splice(currentIndex, 1);
@@ -608,7 +609,7 @@ exports.react = async (req, res) => {
     const withoutLegacy = message.attachments.filter(
       (att) => !(typeof att === "string" && att.startsWith(`react:${me}:`))
     );
-    if (emoji && String(emoji).trim() !== "") {
+    if (!isRemoval) {
       withoutLegacy.push(`react:${me}:${emoji}`);
     }
     message.attachments = withoutLegacy;

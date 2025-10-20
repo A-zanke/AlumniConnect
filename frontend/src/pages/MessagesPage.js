@@ -546,11 +546,8 @@ const MessagesPage = () => {
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error("Error sending message:", error);
-      // Clear input even on failure per request
-      setNewMessage("");
-      setSelectedImage(null);
-      setImagePreview(null);
-      setReplyTo(null);
+      toast.error("Failed to send message. Please try again.");
+      // Keep input and selected media so user can retry
     }
   };
 
