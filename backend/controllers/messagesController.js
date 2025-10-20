@@ -1278,21 +1278,19 @@ exports.block = async (req, res) => {
         .json({ message: "action must be 'block' or 'unblock'" });
     }
 
-    console.log("Executing Block model query for:", {
-      blocker: me,
-      blocked: targetUserId,
-      action,
-    });
+    // Normalize id types to strings for consistent matching
+    const blockerId = String(me);
+    const blockedId = String(targetUserId);
 
     try {
       if (action === "block") {
         await Block.updateOne(
-          { blocker: me, blocked: targetUserId },
-          { $setOnInsert: { blocker: me, blocked: targetUserId } },
+          { blocker: blockerId, blocked: blockedId },
+          { $setOnInsert: { blocker: blockerId, blocked: blockedId } },
           { upsert: true }
         );
       } else {
-        await Block.deleteOne({ blocker: me, blocked: targetUserId });
+        await Block.deleteOne({ blocker: blockerId, blocked: blockedId });
       }
     } catch (dbError) {
       console.error("Database error in block operation:", dbError);

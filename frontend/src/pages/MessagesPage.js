@@ -1129,7 +1129,7 @@ const MessagesPage = () => {
         {selectedUser ? (
           <>
             {/* Chat Header */}
-            <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+              <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
                   className="lg:hidden p-2 rounded-full hover:bg-gray-200"
@@ -1611,7 +1611,7 @@ const MessagesPage = () => {
                 <div className="text-green-800 font-medium">
                   {selectedMessageIds.size} selected
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 relative">
                   <button
                     onClick={() => handleBulkDelete("me")}
                     className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
