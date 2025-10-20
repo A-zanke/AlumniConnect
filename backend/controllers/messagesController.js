@@ -344,6 +344,13 @@ exports.sendMessage = async (req, res) => {
       }
     }
 
+    // If no multer files came through but the frontend sent base64 or remote URLs, normalize them
+    if (Array.isArray(req.body.attachments)) {
+      for (const a of req.body.attachments) {
+        if (typeof a === 'string' && a.startsWith('/uploads/')) attachments.push(a);
+      }
+    }
+
     // Handle reply (store as marker in attachments)
     let replyTo = null;
     if (req.body.replyToId) {

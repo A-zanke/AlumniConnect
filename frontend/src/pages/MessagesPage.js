@@ -1090,6 +1090,7 @@ const MessagesPage = () => {
                                           /\.(jpg|jpeg|png|gif|webp)$/i.test(
                                             attachment
                                           );
+                                        const filename = attachment.split('/').pop();
 
                                         if (isImage) {
                                           return (
@@ -1108,7 +1109,7 @@ const MessagesPage = () => {
                                         return (
                                           <div
                                             key={idx}
-                                            className="p-2 bg-gray-100 rounded-lg"
+                                            className="p-2 bg-gray-100 rounded-lg flex items-center justify-between"
                                           >
                                             <a
                                               href={attachment}
@@ -1117,7 +1118,14 @@ const MessagesPage = () => {
                                               className="text-blue-600 hover:underline flex items-center gap-2"
                                             >
                                               <FiPaperclip />
-                                              Attachment
+                                              {filename || 'Attachment'}
+                                            </a>
+                                            <a
+                                              href={attachment}
+                                              download
+                                              className="ml-3 text-gray-700 hover:text-gray-900 px-2 py-1 border rounded"
+                                            >
+                                              <FiDownload className="inline-block" />
                                             </a>
                                           </div>
                                         );
@@ -1388,6 +1396,7 @@ const MessagesPage = () => {
                   </button>
                 </div>
               ) : (
+              <>
               {/* Image preview */}
               {imagePreview && (
                 <div className="mb-3 relative inline-block">
@@ -1497,6 +1506,7 @@ const MessagesPage = () => {
                   <FiSend size={18} />
                 </button>
               </form>
+              </>
               )}
             </div>
           </>
