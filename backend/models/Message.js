@@ -150,9 +150,9 @@ const MessageSchema = new mongoose.Schema(
 MessageSchema.index({ from: 1, to: 1, createdAt: -1 });
 MessageSchema.index({ to: 1, isRead: 1, createdAt: -1 });
 MessageSchema.index({ createdAt: -1 });
-MessageSchema.index({ messageId: 1 });
-MessageSchema.index({ clientKey: 1 });
-MessageSchema.index({ threadId: 1 });
+MessageSchema.index({ messageId: 1 }, { sparse: true });
+MessageSchema.index({ clientKey: 1 }, { sparse: true });
+MessageSchema.index({ threadId: 1 }, { sparse: true });
 MessageSchema.index({ "reactions.userId": 1 });
 
 // TTL index for auto-expiring messages
@@ -205,10 +205,12 @@ MessageSchema.pre("save", function (next) {
 
 // Static method to find messages between two users
 MessageSchema.statics.findConversation = function (userA, userB, options = {}) {
+  const a = String(userA);
+  const b = String(userB);
   const query = {
     $or: [
-      { from: userA, to: userB },
-      { from: userB, to: userA },
+      { from: a, to: b },
+      { from: b, to: a },
     ],
   };
 

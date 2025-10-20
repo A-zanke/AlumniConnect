@@ -13,9 +13,6 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'No token provided' });
     }
 
-    // Debugging: Log JWT_SECRET
-    console.log('JWT_SECRET in authMiddleware:', process.env.JWT_SECRET);
-
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 

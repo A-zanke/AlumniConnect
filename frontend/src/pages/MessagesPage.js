@@ -542,7 +542,11 @@ const MessagesPage = () => {
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error("Error sending message:", error);
-      toast.error("Failed to send message");
+      // Clear input even on failure per request
+      setNewMessage("");
+      setSelectedImage(null);
+      setImagePreview(null);
+      setReplyTo(null);
     }
   };
 

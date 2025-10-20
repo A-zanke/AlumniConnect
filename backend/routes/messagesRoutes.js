@@ -166,7 +166,7 @@ router.get("/media/:userId", protect, getMedia);
 // Get detailed message info
 router.get("/info/:messageId", protect, getMessageInfo);
 
-// NOTE: Dynamic :userId routes MUST be defined AFTER all fixed subpaths
+// NOTE: Fixed subpaths are defined above. Define dynamic routes at the bottom.
 
 // React to message
 router.post("/react", protect, react);
@@ -600,6 +600,24 @@ router.post("/bulk-block", protect, bulkBlockUsers);
 
 // Bulk report users
 router.post("/bulk-report", protect, bulkReportUsers);
+
+// Get messages between current user and another user (dynamic)
+router.get("/:userId", protect, getMessages);
+
+// Send a message with optional files (dynamic) — MUST BE LAST POST route
+router.post(
+  "/:userId",
+  protect,
+  upload.fields([
+    { name: "image", maxCount: 5 },
+    { name: "video", maxCount: 3 },
+    { name: "audio", maxCount: 3 },
+    { name: "document", maxCount: 5 },
+    { name: "media", maxCount: 10 },
+  ]),
+  handleMulterError,
+  sendMessage
+);
 
 // Health check route
 router.get("/health", async (req, res) => {

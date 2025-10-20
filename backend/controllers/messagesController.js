@@ -465,19 +465,20 @@ exports.sendMessage = async (req, res) => {
 
     // Update thread
     const participants = [String(me), String(to)].sort();
-    const thread = await Thread.findOneAndUpdate(
-      { participants: { $all: participants, $size: 2 } },
-      {
-        $setOnInsert: { participants },
-        $set: {
-          lastMessageAt: new Date(),
-          lastMessage: message._id,
-          [`lastReadAt.${me}`]: new Date(),
-        },
-        $inc: { [`unreadCount.${to}`]: 1 },
-      },
-      { upsert: true, new: true }
-    );
+    // Avoid "participants matched twice" by first finding thread
+    let thread = await Thread.findOne({
+      participants: { $all: participants, $size: 2 },
+    });
+    if (!thread) {
+      thread = await Thread.create({ participants });
+    }
+    // Now update fields separately
+    thread.lastMessageAt = new Date();
+    thread.lastMessage = message._id;
+    thread.lastReadAt.set(String(me), new Date());
+    const currentUnread = thread.unreadCount.get(String(to)) || 0;
+    thread.unreadCount.set(String(to), currentUnread + 1);
+    await thread.save();
 
     // Real-time notifications
     if (req.io) {
