@@ -900,47 +900,16 @@ const MessagesPage = () => {
         <div className="p-4 bg-gray-50 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-gray-800">Chats</h1>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowSidebarMenu(!showSidebarMenu);
-                }}
-                className="p-2 rounded-full hover:bg-gray-200"
+                onClick={() => setChatSelectionMode((v) => !v)}
+                className={`p-2 rounded-full hover:bg-gray-200 ${
+                  chatSelectionMode ? "bg-green-100 text-green-600" : ""
+                }`}
+                title="Select chats"
               >
-                <FiMoreVertical className="text-gray-600" />
+                <FiCheckSquare />
               </button>
-              {showSidebarMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                  <button
-                    onClick={() => {
-                      setChatSelectionMode(true);
-                      setShowSidebarMenu(false);
-                    }}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                  >
-                    <FiCheckSquare /> Select chats
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Settings action
-                      setShowSidebarMenu(false);
-                    }}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                  >
-                    <FiSettings /> Settings
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Archived action
-                      setShowSidebarMenu(false);
-                    }}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                  >
-                    <FiArchive /> Archived
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 

@@ -381,6 +381,9 @@ router.post("/report", protect, report);
 
 // Block/unblock user
 router.post("/block", protect, block);
+router.post("/bulk-block", protect, require("../controllers/messagesController").bulkBlockUsers);
+router.delete("/bulk-delete-chats", protect, require("../controllers/messagesController").bulkDeleteChats);
+router.post("/bulk-report", protect, require("../controllers/messagesController").bulkReportUsers);
 
 // Mark messages as read
 router.post("/mark-read", protect, async (req, res) => {

@@ -9,11 +9,18 @@ const NotificationService = require("../services/notificationService");
 
 // Helper functions
 async function isBlocked(userAId, userBId) {
-  const [ab, ba] = await Promise.all([
-    Block.findOne({ blocker: userAId, blocked: userBId }).lean(),
-    Block.findOne({ blocker: userBId, blocked: userAId }).lean(),
-  ]);
-  return !!(ab || ba);
+  // Ensure proper ObjectId casting where needed
+  try {
+    const a = String(userAId);
+    const b = String(userBId);
+    const [ab, ba] = await Promise.all([
+      Block.findOne({ blocker: a, blocked: b }).lean(),
+      Block.findOne({ blocker: b, blocked: a }).lean(),
+    ]);
+    return !!(ab || ba);
+  } catch (e) {
+    return false;
+  }
 }
 
 async function areConnected(userAId, userBId) {
@@ -549,9 +556,8 @@ exports.react = async (req, res) => {
     }
     if (!message) return res.status(404).json({ message: "Message not found" });
 
-    const isParticipant = [String(message.from), String(message.to)].includes(
-      String(me)
-    );
+    const isParticipant =
+      String(message.from) === String(me) || String(message.to) === String(me);
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
     // Toggle reaction in structured array (preferred)
