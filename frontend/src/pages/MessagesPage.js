@@ -119,6 +119,8 @@ const MessagesPage = () => {
   const [archivedChats, setArchivedChats] = useState(new Set());
   const [messageInfo, setMessageInfo] = useState(null);
   const [showMessageInfo, setShowMessageInfo] = useState(false);
+  const [reactionsModalFor, setReactionsModalFor] = useState(null);
+  const [reactionsModalItems, setReactionsModalItems] = useState([]);
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
@@ -332,6 +334,17 @@ const MessagesPage = () => {
             m.id === messageId ? { ...m, reactions: reactions || [] } : m
           )
         );
+      });
+
+      // Unread counters updates
+      s.on("unread:update", ({ conversationId, newCount }) => {
+        setUnreadByConversationId((prev) => ({
+          ...prev,
+          [conversationId]: Math.max(0, Number(newCount || 0)),
+        }));
+      });
+      s.on("unread:total", ({ total }) => {
+        if (typeof total === "number") setTotalUnread(total);
       });
 
       // Deletions
@@ -784,6 +797,13 @@ const MessagesPage = () => {
                   onClick={() => {
                     setSelectedUser(connection.user);
                     setShowSidebar(false);
+                    // Optimistically clear unread count for this conversation
+                    if (connection.threadId) {
+                      setUnreadByConversationId((prev) => ({
+                        ...prev,
+                        [connection.threadId]: 0,
+                      }));
+                    }
                   }}
                 >
                   <div className="flex items-center gap-3">
@@ -1113,19 +1133,47 @@ const MessagesPage = () => {
                               </div>
 
                               {/* Reactions */}
-                              {message.reactions &&
-                                message.reactions.length > 0 && (
-                                  <div className="absolute -bottom-2 left-2 flex gap-1">
-                                    {message.reactions.map((reaction, idx) => (
-                                      <span
-                                        key={idx}
-                                        className="bg-white border border-gray-200 rounded-full px-1 text-sm shadow-sm"
-                                      >
-                                        {reaction.emoji}
+                              {(() => {
+                                const groups = Array.isArray(message.reactions)
+                                  ? message.reactions.reduce((acc, r) => {
+                                      acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                      return acc;
+                                    }, {})
+                                  : {};
+                                const entries = Object.entries(groups);
+                                if (entries.length === 0) return null;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        const token = localStorage.getItem("token");
+                                        const resp = await axios.get(
+                                          `${baseURL}/api/messages/info/${message.id}`,
+                                          { headers: { Authorization: `Bearer ${token}` } }
+                                        );
+                                        const list = Array.isArray(resp?.data?.messageInfo?.reactions)
+                                          ? resp.data.messageInfo.reactions
+                                          : [];
+                                        setReactionsModalItems(list);
+                                        setReactionsModalFor(message);
+                                      } catch {
+                                        // ignore
+                                      }
+                                    }}
+                                    className={`absolute -bottom-2 ${
+                                      isMine ? "right-2" : "left-2"
+                                    } flex gap-1 bg-white/90 rounded-full border border-gray-200 px-1 py-[1px] shadow-sm`}
+                                  >
+                                    {entries.map(([emoji, count]) => (
+                                      <span key={emoji} className="text-sm px-1">
+                                        {emoji} {count}
                                       </span>
                                     ))}
-                                  </div>
-                                )}
+                                  </button>
+                                );
+                              })()}
                             </div>
 
                             {/* Message actions (hover) */}
@@ -1618,6 +1666,43 @@ const MessagesPage = () => {
                   </div>
                 ) : null}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reactions Modal */}
+      {reactionsModalFor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Reactions</h3>
+              <button
+                onClick={() => setReactionsModalFor(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <FiX />
+              </button>
+            </div>
+
+            <div className="p-4 max-h-80 overflow-y-auto">
+              {reactionsModalItems.length === 0 ? (
+                <div className="text-center text-gray-500">No reactions yet</div>
+              ) : (
+                reactionsModalItems.map((r, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-2">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={getAvatarUrl(r.userId?.avatarUrl || r.userId?.avatar)}
+                        alt={r.userId?.name || "User"}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <div className="text-sm">{r.userId?.name || r.userId?.username || 'User'}</div>
+                    </div>
+                    <div className="text-lg">{r.emoji}</div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

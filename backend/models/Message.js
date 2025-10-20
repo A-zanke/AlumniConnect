@@ -31,6 +31,15 @@ const MessageSchema = new mongoose.Schema(
       },
     ],
 
+    // Per-message emoji reactions
+    reactions: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        emoji: { type: String, required: true, maxlength: 16 },
+        reactedAt: { type: Date, default: Date.now },
+      },
+    ],
+
     // Enhanced message status tracking
     isRead: {
       type: Boolean,
@@ -144,6 +153,7 @@ MessageSchema.index({ createdAt: -1 });
 MessageSchema.index({ messageId: 1 });
 MessageSchema.index({ clientKey: 1 });
 MessageSchema.index({ threadId: 1 });
+MessageSchema.index({ "reactions.userId": 1 });
 
 // TTL index for auto-expiring messages
 MessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -252,8 +262,16 @@ MessageSchema.methods.isDeletedFor = function (userId) {
 
 // Instance method to get reactions
 MessageSchema.methods.getReactions = function () {
-  if (!this.attachments) return [];
+  // Prefer structured reactions array if present
+  if (Array.isArray(this.reactions) && this.reactions.length > 0) {
+    return this.reactions.map((r) => ({
+      userId: r.userId,
+      emoji: r.emoji,
+    }));
+  }
 
+  // Fallback to legacy attachment markers react:{userId}:{emoji}
+  if (!this.attachments) return [];
   return this.attachments
     .filter((att) => typeof att === "string" && att.startsWith("react:"))
     .map((att) => {
@@ -307,7 +325,7 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
         typeof att === "string" &&
         att.startsWith("/uploads/") &&
         !att.includes("deletedFor:") &&
-        !att.includes("react:") &&
+        !att.includes("react:") && // filter legacy reaction markers
         !att.includes("star:") &&
         !att.includes("pin:") &&
         !att.includes("reply:")

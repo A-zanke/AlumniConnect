@@ -35,6 +35,13 @@ function parseReactionsFromAttachments(attachments) {
     });
 }
 
+function normalizeReactions(doc) {
+  if (Array.isArray(doc.reactions) && doc.reactions.length > 0) {
+    return doc.reactions.map((r) => ({ userId: r.userId, emoji: r.emoji }));
+  }
+  return parseReactionsFromAttachments(doc.attachments);
+}
+
 function getAttachmentUrls(attachments) {
   if (!Array.isArray(attachments)) return [];
   return attachments
@@ -69,9 +76,7 @@ function parseMessage(doc, viewerId) {
   try {
     if (isDeletedForViewer(doc, viewerId)) return null;
 
-    const reactions = Array.isArray(doc.reactions)
-      ? doc.reactions
-      : parseReactionsFromAttachments(doc.attachments);
+    const reactions = normalizeReactions(doc);
 
     const isStarred = Array.isArray(doc.attachments)
       ? doc.attachments.includes(`star:${viewerId}`)
@@ -229,7 +234,7 @@ exports.getMessages = async (req, res) => {
       .filter(Boolean);
 
     // Mark messages as read and delivered
-    await Message.updateMany(
+    const readResult = await Message.updateMany(
       { from: other, to: me, isRead: false },
       {
         $set: {
@@ -240,6 +245,17 @@ exports.getMessages = async (req, res) => {
       }
     );
 
+    // Also clear unread count on Thread map for this user if the thread exists
+    try {
+      const participants = [String(me), String(other)].sort();
+      await Thread.findOneAndUpdate(
+        { participants: { $all: participants, $size: 2 } },
+        {
+          $set: { [`unreadCount.${me}`]: 0, [`lastReadAt.${me}`]: new Date() },
+        }
+      );
+    } catch {}
+
     // Emit read receipts via socket
     if (req.io) {
       req.io.to(String(other)).emit("messages:readReceipt", {
@@ -248,11 +264,22 @@ exports.getMessages = async (req, res) => {
         readAt: new Date(),
       });
 
-      // Update total unread count
-      const totalUnread = await Message.countDocuments({
-        to: me,
-        isRead: false,
-      });
+      // Emit conversation cleared count and updated total for the viewer
+      const [participantsA, totalUnread] = await Promise.all([
+        (async () => {
+          const participants = [String(me), String(other)].sort();
+          const thread = await Thread.findOne({
+            participants: { $all: participants, $size: 2 },
+          }).select("_id");
+          if (thread) {
+            req.io.to(String(me)).emit("unread:update", {
+              conversationId: String(thread._id),
+              newCount: 0,
+            });
+          }
+        })(),
+        Message.countDocuments({ to: me, isRead: false }),
+      ]);
 
       req.io.to(String(me)).emit("unread:total", { total: totalUnread });
     }
@@ -401,13 +428,17 @@ exports.sendMessage = async (req, res) => {
         status: "delivered",
       });
 
-      // Update unread counts
-      const unreadCount = await Message.countDocuments({ to, isRead: false });
+      // Update unread counts for the conversation and total for recipient
+      const [threadDoc, totalUnread] = await Promise.all([
+        Thread.findById(thread?._id).select("unreadCount"),
+        Message.countDocuments({ to, isRead: false }),
+      ]);
+      const convCount = threadDoc?.unreadCount?.get(String(to)) || 0;
       req.io.to(String(to)).emit("unread:update", {
         conversationId: String(thread?._id || `${me}_${to}`),
-        newCount: unreadCount,
+        newCount: convCount,
       });
-      req.io.to(String(to)).emit("unread:total", { total: unreadCount });
+      req.io.to(String(to)).emit("unread:total", { total: totalUnread });
     }
 
     return res.status(201).json({
@@ -423,7 +454,7 @@ exports.sendMessage = async (req, res) => {
   }
 };
 
-// Enhanced message reactions
+// Enhanced message reactions (toggle)
 exports.react = async (req, res) => {
   try {
     const me = req.user._id;
@@ -447,13 +478,38 @@ exports.react = async (req, res) => {
     );
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-    // Toggle user's reaction: remove previous react marker then add new if provided
-    message.attachments = (message.attachments || []).filter(
+    // Toggle reaction in structured array (preferred)
+    const currentIndex = (message.reactions || []).findIndex(
+      (r) => String(r.userId) === String(me)
+    );
+
+    if (!emoji || String(emoji).trim() === "") {
+      // remove any existing reaction for user
+      if (currentIndex !== -1) {
+        message.reactions.splice(currentIndex, 1);
+      }
+    } else if (currentIndex !== -1) {
+      // same emoji => toggle off, different => update
+      if (message.reactions[currentIndex].emoji === emoji) {
+        message.reactions.splice(currentIndex, 1);
+      } else {
+        message.reactions[currentIndex].emoji = emoji;
+        message.reactions[currentIndex].reactedAt = new Date();
+      }
+    } else {
+      message.reactions = message.reactions || [];
+      message.reactions.push({ userId: me, emoji, reactedAt: new Date() });
+    }
+
+    // Maintain legacy markers for backward compatibility (optional, can be removed later)
+    const withoutLegacy = (message.attachments || []).filter(
       (att) => !(typeof att === "string" && att.startsWith(`react:${me}:`))
     );
     if (emoji && String(emoji).trim() !== "") {
-      message.attachments.push(`react:${me}:${emoji}`);
+      withoutLegacy.push(`react:${me}:${emoji}`);
     }
+    message.attachments = withoutLegacy;
+
     await message.save();
 
     if (req.io) {
@@ -461,7 +517,7 @@ exports.react = async (req, res) => {
       participants.forEach((userId) => {
         req.io.to(userId).emit("message:reacted", {
           messageId: String(messageId),
-          reactions: parseReactionsFromAttachments(message.attachments),
+          reactions: normalizeReactions(message),
           reactedBy: String(me),
           emoji,
         });
@@ -470,7 +526,7 @@ exports.react = async (req, res) => {
 
     return res.json({
       messageId: String(messageId),
-      reactions: parseReactionsFromAttachments(message.attachments),
+      reactions: normalizeReactions(message),
       success: true,
     });
   } catch (error) {
