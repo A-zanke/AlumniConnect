@@ -282,10 +282,17 @@ io.on("connection", (socket) => {
       const isConnected = me.connections.some((id) => id.toString() === to);
       if (!isConnected) return;
       // Block checks
-      const [ab, ba] = await Promise.all([
-        Block.findOne({ blocker: from, blocked: to }).lean(),
-        Block.findOne({ blocker: to, blocked: from }).lean(),
-      ]);
+      // Validate ObjectIds to avoid casting errors if payloads are wrong
+      const isValidFrom = /^[0-9a-fA-F]{24}$/.test(String(from));
+      const isValidTo = /^[0-9a-fA-F]{24}$/.test(String(to));
+      let ab = null;
+      let ba = null;
+      if (isValidFrom && isValidTo) {
+        [ab, ba] = await Promise.all([
+          Block.findOne({ blocker: from, blocked: to }).lean(),
+          Block.findOne({ blocker: to, blocked: from }).lean(),
+        ]);
+      }
       if (ab || ba) return;
       const participants = [String(from), String(to)].sort();
       const threadId = `${participants[0]}_${participants[1]}`;

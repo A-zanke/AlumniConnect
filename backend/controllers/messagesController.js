@@ -1,5 +1,6 @@
 // c:/Users/ASUS/Downloads/Telegram Desktop/AlumniConnect/AlumniConnect/backend/controllers/messagesController.js
 const path = require("path");
+const mongoose = require("mongoose");
 const fs = require("fs").promises;
 const User = require("../models/User");
 const Message = require("../models/Message");
@@ -208,6 +209,9 @@ exports.getMessages = async (req, res) => {
     const other = req.params.userId;
 
     if (!other) return res.status(400).json({ message: "Missing userId" });
+    if (!mongoose.Types.ObjectId.isValid(other)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
 
     const [connected, blocked] = await Promise.all([
       areConnected(me, other),
@@ -309,6 +313,9 @@ exports.sendMessage = async (req, res) => {
     const to = req.params.userId || req.body.to;
 
     if (!to) return res.status(400).json({ message: "Missing recipient" });
+    if (!mongoose.Types.ObjectId.isValid(to)) {
+      return res.status(400).json({ message: "Invalid recipient user ID" });
+    }
 
     const [connected, blocked] = await Promise.all([
       areConnected(me, to),
@@ -391,6 +398,9 @@ exports.sendMessage = async (req, res) => {
     // Handle reply (store as marker in attachments)
     let replyTo = null;
     if (req.body.replyToId) {
+      if (!mongoose.Types.ObjectId.isValid(req.body.replyToId)) {
+        return res.status(400).json({ message: "Invalid reply message ID" });
+      }
       const replyMessage = await Message.findById(req.body.replyToId).select(
         "_id"
       );
@@ -402,6 +412,9 @@ exports.sendMessage = async (req, res) => {
     // Handle forward
     let forwardedFrom = null;
     if (req.body.forwardedFromId) {
+      if (!mongoose.Types.ObjectId.isValid(req.body.forwardedFromId)) {
+        return res.status(400).json({ message: "Invalid forward message ID" });
+      }
       const originalMessage = await Message.findById(req.body.forwardedFromId);
       if (originalMessage) {
         forwardedFrom = {
@@ -548,7 +561,7 @@ exports.react = async (req, res) => {
 
     // Accept either Mongo _id or client messageId
     let message = null;
-    if (messageId.match && messageId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (mongoose.Types.ObjectId.isValid(messageId)) {
       message = await Message.findById(messageId);
     }
     if (!message) {
@@ -1274,7 +1287,7 @@ exports.block = async (req, res) => {
       return res.status(400).json({ message: "targetUserId required" });
 
     // Validate targetUserId is a valid MongoDB ObjectId
-    if (!targetUserId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
       return res.status(400).json({ message: "Invalid targetUserId format" });
     }
 
@@ -1342,6 +1355,13 @@ exports.report = async (req, res) => {
 
     if (!targetUserId)
       return res.status(400).json({ message: "targetUserId required" });
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ message: "Invalid targetUserId" });
+    }
+    if (messageId && !mongoose.Types.ObjectId.isValid(messageId)) {
+      return res.status(400).json({ message: "Invalid messageId" });
+    }
 
     // Create report notification for admins
     const admins = await User.find({ role: "admin" }).select("_id");
