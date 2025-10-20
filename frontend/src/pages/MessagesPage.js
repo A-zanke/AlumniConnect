@@ -88,7 +88,8 @@ const MessagesPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [presenceData, setPresenceData] = useState({});
   const [totalUnread, setTotalUnread] = useState(0);
-  const [isTypingTimeout, setIsTypingTimeout] = useState(null);
+  const typingTimeoutRef = useRef(null);
+  const selectedUserRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // WhatsApp-like UI states
@@ -233,6 +234,11 @@ const MessagesPage = () => {
     fetchConversations();
   }, [user]);
 
+  // Keep a ref of selected user for event handlers
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
   // Socket.IO connection
   useEffect(() => {
     if (user) {
@@ -240,7 +246,7 @@ const MessagesPage = () => {
       const s = io(SOCKET_URL, {
         auth: { token },
         withCredentials: true,
-        transports: ["websocket"],
+        // Let Socket.IO negotiate transports for stability
       });
 
       s.on("connect", () => {
@@ -257,8 +263,9 @@ const MessagesPage = () => {
       s.on(
         "message:new",
         ({ conversationId, messageId, senderId, body, createdAt }) => {
+          const currentSelected = selectedUserRef.current;
           const isCurrent =
-            selectedUser && String(senderId) === String(selectedUser._id);
+            currentSelected && String(senderId) === String(currentSelected._id);
           const tabFocused = document.visibilityState === "visible";
 
           if (isCurrent && tabFocused) {
@@ -344,27 +351,28 @@ const MessagesPage = () => {
 
       // Typing indicators
       s.on("typing:update", ({ from, typing }) => {
-        if (from !== user._id && selectedUser && from === selectedUser._id) {
-          setTypingUser(selectedUser.name);
+        const currentSelected = selectedUserRef.current;
+        if (from !== user._id && currentSelected && from === currentSelected._id) {
+          setTypingUser(currentSelected.name);
           setIsTyping(!!typing);
-          if (isTypingTimeout) clearTimeout(isTypingTimeout);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
           const timeout = setTimeout(() => {
             setIsTyping(false);
             setTypingUser(null);
           }, 2500);
-          setIsTypingTimeout(timeout);
+          typingTimeoutRef.current = timeout;
         }
       });
 
       setSocket(s);
       return () => {
         s.disconnect();
-        if (isTypingTimeout) {
-          clearTimeout(isTypingTimeout);
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
         }
       };
     }
-  }, [user, selectedUser, isTypingTimeout, updateMessageStatus]);
+  }, [user, updateMessageStatus]);
 
   // Auto-scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -505,14 +513,14 @@ const MessagesPage = () => {
         recipientId: selectedUser._id,
       });
 
-      if (isTypingTimeout) clearTimeout(isTypingTimeout);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       const timeout = setTimeout(() => {
         socket.emit("stop_typing", {
           userId: user._id,
           recipientId: selectedUser._id,
         });
       }, 900);
-      setIsTypingTimeout(timeout);
+      typingTimeoutRef.current = timeout;
     }
   };
 
