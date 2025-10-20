@@ -597,19 +597,24 @@ exports.react = async (req, res) => {
     await message.save();
 
     if (req.io) {
-      const participants = [String(message.from), String(message.to)];
-      participants.forEach((userId) => {
-        req.io.to(userId).emit("message:reacted", {
-          messageId: String(messageId),
-          reactions: normalizeReactions(message),
-          reactedBy: String(me),
-          emoji,
-        });
+      const pFrom = String(message.from);
+      const pTo = String(message.to);
+      req.io.to(pFrom).emit("message:reacted", {
+        messageId: String(message._id),
+        reactions: normalizeReactions(message),
+        reactedBy: String(me),
+        emoji,
+      });
+      req.io.to(pTo).emit("message:reacted", {
+        messageId: String(message._id),
+        reactions: normalizeReactions(message),
+        reactedBy: String(me),
+        emoji,
       });
     }
 
     return res.json({
-      messageId: String(messageId),
+      messageId: String(message._id),
       reactions: normalizeReactions(message),
       success: true,
     });
