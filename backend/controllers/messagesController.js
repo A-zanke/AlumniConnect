@@ -560,8 +560,8 @@ exports.react = async (req, res) => {
       return res.status(400).json({ message: "Invalid emoji" });
     }
 
-    // Validate recipient user id
-    if (!to || !mongoose.Types.ObjectId.isValid(to)) {
+    // Validate recipient user id (if provided)
+    if (to && !mongoose.Types.ObjectId.isValid(to)) {
       return res.status(400).json({ message: "Invalid recipient ID" });
     }
 
@@ -576,8 +576,7 @@ exports.react = async (req, res) => {
     if (!message) return res.status(404).json({ message: "Message not found" });
 
     const isParticipant =
-      (String(message.from) === String(me) && String(message.to) === String(to)) ||
-      (String(message.to) === String(me) && String(message.from) === String(to));
+      String(message.from) === String(me) || String(message.to) === String(me);
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
     // Toggle reaction in structured array (preferred)
