@@ -21,33 +21,88 @@ async function areConnected(userAId, userBId) {
   return user.connections.some((id) => id.toString() === String(userBId));
 }
 
-// Enhanced message parser
-function parseMessage(doc, viewerId) {
-  if (doc.isDeletedFor(viewerId)) return null;
+// Helpers for current schema (attachments used for flags/markers)
+function parseReactionsFromAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .filter((att) => typeof att === "string" && att.startsWith("react:"))
+    .map((att) => {
+      const parts = att.split(":");
+      return {
+        userId: parts[1],
+        emoji: parts.slice(2).join(":"),
+      };
+    });
+}
 
-  return {
-    id: doc._id,
-    messageId: doc.messageId,
-    senderId: doc.from,
-    recipientId: doc.to,
-    content: doc.content || "",
-    attachments: doc.attachments || [],
-    messageType: doc.messageType,
-    timestamp: doc.createdAt,
-    status: doc.status,
-    isRead: doc.isRead,
-    readAt: doc.readAt,
-    deliveredAt: doc.deliveredAt,
-    reactions: doc.reactions || [],
-    replyTo: doc.replyTo,
-    forwardedFrom: doc.forwardedFrom,
-    isStarred: doc.isStarred.includes(viewerId),
-    isPinned: doc.isPinned,
-    isEdited: doc.isEdited,
-    editHistory: doc.editHistory,
-    location: doc.location,
-    contact: doc.contact,
-  };
+function getAttachmentUrls(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .map((att) => {
+      if (typeof att === "string" && att.startsWith("/uploads/")) return att;
+      if (att && typeof att === "object" && att.url) return att.url;
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function isDeletedForViewer(doc, viewerId) {
+  const atts = doc.attachments;
+  if (!Array.isArray(atts)) return false;
+  return (
+    atts.includes(`deletedFor:${viewerId}`) || atts.includes("deletedForEveryone")
+  );
+}
+
+function getReplyFromAttachments(attachments) {
+  if (!Array.isArray(attachments)) return null;
+  const marker = attachments.find(
+    (att) => typeof att === "string" && att.startsWith("reply:")
+  );
+  if (!marker) return null;
+  const id = marker.split(":")[1];
+  return id ? { id } : null;
+}
+
+// Robust message parser that works with lean docs
+function parseMessage(doc, viewerId) {
+  try {
+    if (isDeletedForViewer(doc, viewerId)) return null;
+
+    const reactions = Array.isArray(doc.reactions)
+      ? doc.reactions
+      : parseReactionsFromAttachments(doc.attachments);
+
+    const isStarred = Array.isArray(doc.attachments)
+      ? doc.attachments.includes(`star:${viewerId}`)
+      : false;
+
+    const status = doc.isRead
+      ? "seen"
+      : doc.deliveredAt
+      ? "delivered"
+      : "sent";
+
+    return {
+      id: doc._id,
+      messageId: doc.messageId,
+      senderId: doc.from?._id || doc.from,
+      recipientId: doc.to?._id || doc.to,
+      content: doc.content || "",
+      attachments: getAttachmentUrls(doc.attachments),
+      messageType: doc.messageType,
+      timestamp: doc.createdAt,
+      status,
+      isRead: !!doc.isRead,
+      readAt: doc.readAt || null,
+      deliveredAt: doc.deliveredAt || null,
+      reactions,
+      replyTo: getReplyFromAttachments(doc.attachments),
+      isStarred,
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 // Get conversations with enhanced data
@@ -58,8 +113,6 @@ exports.getConversations = async (req, res) => {
     // Get all messages involving the user
     const messages = await Message.find({
       $or: [{ from: me }, { to: me }],
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
     })
       .populate("from to", "name username avatarUrl isOnline lastSeen")
       .sort({ createdAt: -1 })
@@ -80,15 +133,25 @@ exports.getConversations = async (req, res) => {
           from: otherId,
           to: me,
           isRead: false,
-          deletedForEveryone: false,
-          deletedFor: { $ne: me },
         });
 
-        const snippet = msg.content?.trim()
-          ? msg.content.trim().slice(0, 80)
-          : msg.attachments?.length > 0
-          ? getAttachmentSnippet(msg.attachments[0])
-          : "No messages yet";
+    const snippet = msg.content?.trim()
+      ? msg.content.trim().slice(0, 80)
+      : Array.isArray(msg.attachments) && msg.attachments.length > 0
+      ? getAttachmentSnippet(msg.attachments[0])
+      : "No messages yet";
+
+        // Try to get a thread id for this pair (optional)
+        let threadId = null;
+        try {
+          const participants = [String(me), String(otherId)].sort();
+          const thread = await Thread.findOne({
+            participants: { $all: participants, $size: 2 },
+          })
+            .select("_id")
+            .lean();
+          if (thread) threadId = String(thread._id);
+        } catch {}
 
         convMap.set(otherId, {
           _id: otherId,
@@ -96,6 +159,7 @@ exports.getConversations = async (req, res) => {
           lastMessage: snippet,
           lastMessageTime: msg.createdAt,
           unreadCount,
+          threadId,
           isPinned: false, // You can implement conversation pinning
           isMuted: false, // You can implement conversation muting
           isArchived: false, // You can implement conversation archiving
@@ -111,8 +175,6 @@ exports.getConversations = async (req, res) => {
     const totalUnread = await Message.countDocuments({
       to: me,
       isRead: false,
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
     });
 
     return res.json({
@@ -157,9 +219,7 @@ exports.getMessages = async (req, res) => {
         { from: me, to: other },
         { from: other, to: me },
       ],
-      deletedForEveryone: false,
     })
-      .populate("replyTo.messageId", "content from")
       .populate("from to", "name username avatarUrl")
       .sort({ createdAt: 1 })
       .lean();
@@ -192,8 +252,6 @@ exports.getMessages = async (req, res) => {
       const totalUnread = await Message.countDocuments({
         to: me,
         isRead: false,
-        deletedForEveryone: false,
-        deletedFor: { $ne: me },
       });
 
       req.io.to(String(me)).emit("unread:total", { total: totalUnread });
@@ -243,44 +301,28 @@ exports.sendMessage = async (req, res) => {
     const files = req.files || {};
 
     // Handle different file types
-    const fileFields = ["image", "media", "document", "audio"];
+    const fileFields = ["image", "media", "document", "audio", "video"];
     for (const field of fileFields) {
       if (files[field]) {
         const fileArray = Array.isArray(files[field])
           ? files[field]
           : [files[field]];
         for (const file of fileArray) {
-          const attachment = {
-            url: `/uploads/messages/${file.filename}`,
-            type: getFileType(file.mimetype),
-            filename: file.originalname,
-            size: file.size,
-            mimeType: file.mimetype,
-          };
-
-          // Generate thumbnail for videos
-          if (attachment.type === "video") {
-            attachment.thumbnail = await generateVideoThumbnail(file.path);
-          }
-
-          attachments.push(attachment);
+          // Build correct public URL from stored path
+          const uploadsRoot = path.join(__dirname, "../uploads");
+          const rel = path.relative(uploadsRoot, file.path).replace(/\\/g, "/");
+          const publicUrl = `/uploads/${rel}`; // e.g., /uploads/messages/images/<file>
+          attachments.push(publicUrl);
         }
       }
     }
 
-    // Handle reply
+    // Handle reply (store as marker in attachments)
     let replyTo = null;
     if (req.body.replyToId) {
-      const replyMessage = await Message.findById(req.body.replyToId).populate(
-        "from",
-        "name"
-      );
+      const replyMessage = await Message.findById(req.body.replyToId).select("_id");
       if (replyMessage) {
-        replyTo = {
-          messageId: replyMessage._id,
-          content: replyMessage.content || "Media message",
-          senderName: replyMessage.from.name,
-        };
+        attachments.push(`reply:${replyMessage._id}`);
       }
     }
 
@@ -303,14 +345,9 @@ exports.sendMessage = async (req, res) => {
       content,
       attachments,
       messageType,
-      replyTo,
-      forwardedFrom,
       messageId:
         clientKey ||
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      clientTimestamp: req.body.clientTimestamp
-        ? new Date(req.body.clientTimestamp)
-        : new Date(),
       deliveredAt: new Date(),
     };
 
@@ -326,14 +363,13 @@ exports.sendMessage = async (req, res) => {
 
     const message = await Message.create(messageData);
     const populatedMessage = await Message.findById(message._id)
-      .populate("from to", "name username avatarUrl")
-      .populate("replyTo.messageId", "content from");
+      .populate("from to", "name username avatarUrl");
 
-    const dto = parseMessage(populatedMessage, me);
+    const dto = parseMessage(populatedMessage.toObject(), me);
 
     // Update thread
     const participants = [String(me), String(to)].sort();
-    await Thread.findOneAndUpdate(
+    const thread = await Thread.findOneAndUpdate(
       { participants: { $all: participants, $size: 2 } },
       {
         $setOnInsert: { participants },
@@ -349,11 +385,13 @@ exports.sendMessage = async (req, res) => {
 
     // Real-time notifications
     if (req.io) {
-      // Send to recipient
+      // Send to recipient with normalized payload
       req.io.to(String(to)).emit("message:new", {
-        message: dto,
-        conversationId: `${me}_${to}`,
+        conversationId: String(thread?._id || `${me}_${to}`),
+        messageId: String(dto.id),
         senderId: String(me),
+        body: dto.content,
+        createdAt: dto.timestamp,
       });
 
       // Send delivery confirmation to sender
@@ -364,18 +402,11 @@ exports.sendMessage = async (req, res) => {
       });
 
       // Update unread counts
-      const unreadCount = await Message.countDocuments({
-        to,
-        isRead: false,
-        deletedForEveryone: false,
-        deletedFor: { $ne: to },
-      });
-
+      const unreadCount = await Message.countDocuments({ to, isRead: false });
       req.io.to(String(to)).emit("unread:update", {
-        conversationId: `${me}_${to}`,
-        count: unreadCount,
+        conversationId: String(thread?._id || `${me}_${to}`),
+        newCount: unreadCount,
       });
-
       req.io.to(String(to)).emit("unread:total", { total: unreadCount });
     }
 
@@ -409,19 +440,21 @@ exports.react = async (req, res) => {
     );
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-    await message.addReaction(me, emoji);
-
-    const updatedMessage = await Message.findById(messageId).populate(
-      "reactions.userId",
-      "name username avatarUrl"
+    // Toggle user's reaction: remove previous react marker then add new if provided
+    message.attachments = (message.attachments || []).filter(
+      (att) => !(typeof att === "string" && att.startsWith(`react:${me}:`))
     );
+    if (emoji && String(emoji).trim() !== "") {
+      message.attachments.push(`react:${me}:${emoji}`);
+    }
+    await message.save();
 
     if (req.io) {
       const participants = [String(message.from), String(message.to)];
       participants.forEach((userId) => {
         req.io.to(userId).emit("message:reacted", {
           messageId: String(messageId),
-          reactions: updatedMessage.reactions,
+          reactions: parseReactionsFromAttachments(message.attachments),
           reactedBy: String(me),
           emoji,
         });
@@ -430,7 +463,7 @@ exports.react = async (req, res) => {
 
     return res.json({
       messageId: String(messageId),
-      reactions: updatedMessage.reactions,
+      reactions: parseReactionsFromAttachments(message.attachments),
       success: true,
     });
   } catch (error) {
@@ -459,8 +492,16 @@ exports.starMessage = async (req, res) => {
     );
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-    await message.toggleStar(me);
-    const isStarred = message.isStarred.includes(me);
+    const marker = `star:${me}`;
+    message.attachments = message.attachments || [];
+    const has = message.attachments.includes(marker);
+    if (has) {
+      message.attachments = message.attachments.filter((a) => a !== marker);
+    } else {
+      message.attachments.push(marker);
+    }
+    await message.save();
+    const isStarred = message.attachments.includes(marker);
 
     if (req.io) {
       req.io.to(String(me)).emit("message:starred", {
@@ -500,15 +541,13 @@ exports.pinMessage = async (req, res) => {
     );
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-    message.isPinned = pin;
-    if (pin) {
-      message.pinnedBy = me;
-      message.pinnedAt = new Date();
-    } else {
-      message.pinnedBy = null;
-      message.pinnedAt = null;
-    }
-
+    // Track pin as per-user marker
+    const pinMarker = `pin:${me}`;
+    message.attachments = message.attachments || [];
+    const hasPin = message.attachments.includes(pinMarker);
+    if (pin && !hasPin) message.attachments.push(pinMarker);
+    if (!pin && hasPin)
+      message.attachments = message.attachments.filter((a) => a !== pinMarker);
     await message.save();
 
     if (req.io) {

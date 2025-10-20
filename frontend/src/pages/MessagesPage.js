@@ -274,13 +274,13 @@ const MessagesPage = () => {
                 status: "delivered",
               },
             ]);
-            if (s) s.emit("messages:markRead", { conversationId });
+            if (s && conversationId) s.emit("messages:markRead", { conversationId });
             return;
           }
 
           setUnreadByConversationId((prev) => {
             const next = { ...prev };
-            next[conversationId] = Math.min(
+            if (conversationId) next[conversationId] = Math.min(
               1000,
               (prev[conversationId] || 0) + 1
             );
@@ -319,7 +319,7 @@ const MessagesPage = () => {
       });
 
       // Reactions
-      s.on("messageReacted", ({ messageId, reactions }) => {
+      s.on("message:reacted", ({ messageId, reactions }) => {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId ? { ...m, reactions: reactions || [] } : m
@@ -469,13 +469,15 @@ const MessagesPage = () => {
         }
       );
 
-      const messageData = resp.data;
-
+      const payload = resp.data;
+      const serverMessage = payload && payload.message ? payload.message : null;
       if (!clientKey) {
-        const idStr = messageData?.id ? String(messageData.id) : null;
+        const idStr = serverMessage?.id ? String(serverMessage.id) : null;
         if (!idStr || !seenIdsRef.current.has(idStr)) {
           if (idStr) seenIdsRef.current.add(idStr);
-          setMessages((prev) => [...prev, { ...messageData, status: "sent" }]);
+          if (serverMessage) {
+            setMessages((prev) => [...prev, { ...serverMessage, status: "sent" }]);
+          }
         }
         setNewMessage("");
         setSelectedImage(null);

@@ -155,6 +155,7 @@ router.post(
   upload.fields([
     { name: "image", maxCount: 5 },
     { name: "video", maxCount: 3 },
+    { name: "video", maxCount: 3 },
     { name: "audio", maxCount: 3 },
     { name: "document", maxCount: 5 },
     { name: "media", maxCount: 10 }, // Generic media field

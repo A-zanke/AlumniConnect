@@ -191,7 +191,7 @@ export const userAPI = {
 export const fetchMessages = async (userId) => {
   try {
     const response = await apiClient.get(`/api/messages/${userId}`);
-    return response.data;
+    return response.data?.messages || [];
   } catch (error) {
     console.error('Error fetching messages:', error);
     throw error;

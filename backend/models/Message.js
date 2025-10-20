@@ -230,13 +230,16 @@ MessageSchema.statics.getUnreadCount = function (userId) {
   return this.countDocuments({
     to: userId,
     isRead: false,
-    attachments: { $not: { $in: [`deletedFor:${userId}`] } },
+    attachments: { $not: { $in: [`deletedFor:${userId}`, 'deletedForEveryone'] } },
   });
 };
 
 // Instance method to check if message is deleted for user
 MessageSchema.methods.isDeletedFor = function (userId) {
-  return this.attachments && this.attachments.includes(`deletedFor:${userId}`);
+  return (
+    (this.attachments && this.attachments.includes(`deletedFor:${userId}`)) ||
+    (this.attachments && this.attachments.includes('deletedForEveryone'))
+  );
 };
 
 // Instance method to get reactions
