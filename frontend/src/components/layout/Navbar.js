@@ -354,17 +354,19 @@ const Navbar = () => {
                     />
                     {msgUnreadTotal > 0 && (
                       <span
-                        className="absolute rounded-full text-white font-bold"
+                        className="absolute rounded-full text-white font-bold shadow-lg"
                         style={{
-                          top: '-4px',
-                          right: '-4px',
-                          width: '16px',
-                          height: '16px',
-                          lineHeight: '16px',
-                          background: '#F44336',
+                          top: '-6px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: '18px',
+                          height: '18px',
+                          lineHeight: '18px',
+                          background: 'linear-gradient(135deg, #F44336, #D32F2F)',
                           fontSize: '10px',
                           textAlign: 'center',
                           zIndex: 5,
+                          border: '2px solid white',
                         }}
                         aria-label={`${msgUnreadTotal} unread messages`}
                       >
