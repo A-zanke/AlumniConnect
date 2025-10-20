@@ -266,9 +266,9 @@ io.on("connection", (socket) => {
         Block.findOne({ blocker: to, blocked: from }).lean(),
       ]);
       if (ab || ba) return;
-      const participants = [from, to].sort();
+      const participants = [String(from), String(to)].sort();
       const threadId = `${participants[0]}_${participants[1]}`;
-      const messageData = { threadId, clientKey, from, to, content: content || "" };
+      const messageData = { threadId, clientKey, from, to, content: content || "", isRead: false };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
@@ -283,7 +283,6 @@ io.on("connection", (socket) => {
         msg = await Message.create(messageData);
       }
       // Update per-user unread in Thread (upsert)
-      const participants = [String(from), String(to)].sort();
       const thread = await Thread.findOneAndUpdate(
         { participants: { $all: participants, $size: 2 } },
         { $setOnInsert: { participants }, $set: { lastMessageAt: new Date(), lastMessage: msg._id }, $inc: { [`unreadCount.${to}`]: 1 } },
@@ -296,13 +295,19 @@ io.on("connection", (socket) => {
         body: msg.content,
         createdAt: msg.createdAt,
       };
-      socket.emit("message:ack", { id: msg._id, status: "sent" });
+      // Acknowledge to sender: sent (include clientKey if present)
+      socket.emit("message:ack", { id: String(msg._id), messageId: String(msg._id), status: "sent", clientKey: clientKey || null });
+      socket.emit("message:sent", { id: String(msg._id), messageId: String(msg._id), status: "sent", clientKey: clientKey || null });
       // Targeted delivery only to recipient
       io.to(to).emit("message:new", messagePayload);
       // Unread update to recipient
       const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
       io.to(to).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
-      io.to(from).emit("message:delivered", { id: msg._id });
+      // If recipient is currently online (in room), then it's delivered
+      const isRecipientOnline = !!io.sockets.adapter.rooms.get(String(to));
+      if (isRecipientOnline) {
+        io.to(from).emit("message:delivered", { id: String(msg._id), messageId: String(msg._id), clientKey: clientKey || null });
+      }
     } catch (e) {
       console.error("Socket chat error:", e);
     }
@@ -313,31 +318,37 @@ io.on("connection", (socket) => {
   socket.on("sendMessage", handleSend);
 
   // Messages markRead API via socket
-  socket.on("messages:markRead", async ({ conversationId, upToMessageId, timestamp }) => {
+  const handleMarkRead = async ({ conversationId, upToMessageId, timestamp }) => {
     try {
       const me = socket.userId;
       if (!conversationId) return;
       const thread = await Thread.findById(conversationId);
       if (!thread) return;
       const now = new Date();
-      thread.lastReadAt.set(String(me), now);
-      // recompute unread based on messages addressed to me after lastReadAt
-      const others = (thread.participants || []).map((p) => String(p)).filter((p) => p !== String(me));
-      if (others.length === 1) {
-        const other = others[0];
-        const unread = await Message.countDocuments({ from: other, to: me, createdAt: { $gt: now } });
-        thread.unreadCount.set(String(me), unread);
-      } else {
-        thread.unreadCount.set(String(me), 0);
+      // Mark all messages in this thread addressed to me as read
+      const participants = (thread.participants || []).map((p) => String(p));
+      const other = participants.find((p) => p !== String(me));
+      if (other) {
+        await Message.updateMany({ from: other, to: me, isRead: false }, { $set: { isRead: true, readAt: now } });
       }
+      thread.lastReadAt.set(String(me), now);
+      thread.unreadCount.set(String(me), 0);
       await thread.save();
-      io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: thread.unreadCount.get(String(me)) || 0 });
+      io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: 0 });
+      // emit total unread for navbar
+      try {
+        const total = await Message.countDocuments({ to: me, isRead: false });
+        io.to(String(me)).emit("unread:total", { total });
+      } catch {}
       // broadcast readReceipt to participants
       for (const p of thread.participants) {
         io.to(String(p)).emit("messages:readReceipt", { conversationId: String(thread._id), readerId: String(me), readUpTo: now });
       }
     } catch (e) { }
-  });
+  };
+  socket.on("messages:markRead", handleMarkRead);
+  // Alias accepting same payload
+  socket.on("messageSeen", handleMarkRead);
 
   // On connect or refresh: send unread snapshot
   (async () => {
@@ -345,6 +356,11 @@ io.on("connection", (socket) => {
       const threads = await Thread.find({ participants: { $all: [socket.userId] } }).select("unreadCount").lean();
       const snapshot = threads.map((t) => ({ conversationId: String(t._id), count: (t.unreadCount && (t.unreadCount[socket.userId] || (t.unreadCount.get && t.unreadCount.get(socket.userId)) || 0)) }));
       io.to(socket.id).emit("unread:snapshot", snapshot);
+      // Also emit navbar total unread count
+      try {
+        const total = await Message.countDocuments({ to: socket.userId, isRead: false });
+        io.to(socket.id).emit("unread:total", { total });
+      } catch {}
     } catch (e) {}
   })();
 

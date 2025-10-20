@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "../NotificationBell";
 import { getAvatarUrl } from "../utils/helpers";
 import { unreadAPI } from "../utils/api";
+import { io } from "socket.io-client";
 
 const Navbar = () => {
   const navRef = useRef(null);
@@ -31,6 +32,7 @@ const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [showEventsDropdown, setShowEventsDropdown] = useState(false);
   const [msgUnreadTotal, setMsgUnreadTotal] = useState(0);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -38,7 +40,10 @@ const Navbar = () => {
     };
     const handleResize = () => {
       if (navRef.current) {
-        const h = Math.max(1, Math.round(navRef.current.getBoundingClientRect().height));
+        const h = Math.max(
+          1,
+          Math.round(navRef.current.getBoundingClientRect().height)
+        );
         setNavHeight(h);
         document.documentElement.style.setProperty("--navbar-height", `${h}px`);
       }
@@ -52,9 +57,8 @@ const Navbar = () => {
     };
   }, []);
 
-  // Fetch total unread messages for navbar badge
+  // Fetch total unread + setup real-time socket updates for navbar badge
   useEffect(() => {
-    if (!user) { setMsgUnreadTotal(0); return; }
     let mounted = true;
     const refreshUnread = async () => {
       try {
@@ -65,11 +69,41 @@ const Navbar = () => {
         if (mounted) setMsgUnreadTotal(0);
       }
     };
+
+    if (!user) {
+      setMsgUnreadTotal(0);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      return;
+    }
+
     refreshUnread();
-    const interval = setInterval(refreshUnread, 15000);
-    const onFocus = () => refreshUnread();
-    window.addEventListener('focus', onFocus);
-    return () => { mounted = false; clearInterval(interval); window.removeEventListener('focus', onFocus); };
+
+    // Setup socket for real-time total updates
+    const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+    const s = io(baseURL, {
+      auth: { token: localStorage.getItem("token") },
+      withCredentials: true,
+      transports: ["websocket"],
+    });
+    socketRef.current = s;
+    s.on("unread:total", ({ total }) => {
+      if (typeof total === "number") setMsgUnreadTotal(total);
+    });
+    s.on("unread:snapshot", (rows) => {
+      try {
+        const total = (rows || []).reduce((sum, r) => sum + (r.count || 0), 0);
+        setMsgUnreadTotal(total);
+      } catch {}
+    });
+
+    return () => {
+      mounted = false;
+      try { s.disconnect(); } catch {}
+      socketRef.current = null;
+    };
   }, [user]);
 
   const toggleMenu = () => setIsOpen(!isOpen);
@@ -82,22 +116,36 @@ const Navbar = () => {
   const isStudent = user && (user.role || "").toLowerCase() === "student";
   const isPosterRole =
     user &&
-    (["teacher", "alumni", "admin"].includes((user.role || "").toLowerCase()));
+    ["teacher", "alumni", "admin"].includes((user.role || "").toLowerCase());
 
   // Build nav ensuring Home is always first for students
   const baseItems = [
     { to: "/", label: "Home", icon: FiHome },
     { to: "/about", label: "About", icon: FiUsers },
   ];
-  const postsItem = user ? [{ to: "/posts", label: "Posts", icon: FiFileText }] : [];
-  const forumItem = (user && (user.role || "").toLowerCase() !== "teacher" && (user.role || "").toLowerCase() !== "alumni") ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }] : [];
-  const netItem = user ? [{ to: "/network", label: "Network", icon: FiUsers }] : [];
-  const adminItem = (user && (user.role || "").toLowerCase() === "admin") ? [{ to: "/admin", label: "Admin", icon: FiUser }] : [];
+  const postsItem = user
+    ? [{ to: "/posts", label: "Posts", icon: FiFileText }]
+    : [];
+  const forumItem =
+    user &&
+    (user.role || "").toLowerCase() !== "teacher" &&
+    (user.role || "").toLowerCase() !== "alumni"
+      ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }]
+      : [];
+  const netItem = user
+    ? [{ to: "/network", label: "Network", icon: FiUsers }]
+    : [];
+  const adminItem =
+    user && (user.role || "").toLowerCase() === "admin"
+      ? [{ to: "/admin", label: "Admin", icon: FiUser }]
+      : [];
 
   const navItems = [
     ...baseItems,
     // Non-students get direct Events link
-    ...(!isStudent ? [{ to: "/events", label: "Events", icon: FiCalendar }] : []),
+    ...(!isStudent
+      ? [{ to: "/events", label: "Events", icon: FiCalendar }]
+      : []),
     // For students, Posts is in the Events dropdown, so exclude it here to avoid duplication
     ...(!isStudent ? postsItem : []),
     ...forumItem,
@@ -111,7 +159,7 @@ const Navbar = () => {
     <motion.nav
       ref={navRef}
       className="relative z-50 transition-all duration-500 backdrop-blur-md bg-transparent"
-      style={{ ['--navbar-height']: `${navHeight}px` }}
+      style={{ ["--navbar-height"]: `${navHeight}px` }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ type: "spring", stiffness: 200, damping: 20 }}
@@ -295,22 +343,34 @@ const Navbar = () => {
                 transition={{ delay: 0.3 }}
               >
                 {/* Messages */}
-                <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                >
+                <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}>
                   <Link
                     to="/messages"
-                    className="p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 transition-all duration-300 relative group"
+                    className="navbar-icon-btn group relative rounded-xl px-3 py-2 hover:bg-white/70 backdrop-blur border border-white/40 transition-colors"
                   >
-                    <FiMessageSquare size={20} />
+                    <FiMessageSquare
+                      size={20}
+                      className="icon transition-colors duration-300 text-slate-800 group-hover:text-indigo-700"
+                    />
                     {msgUnreadTotal > 0 && (
                       <span
-                        style={{ position: 'absolute', top: '-5px', right: '-5px', background: '#ef4444', color: '#fff', borderRadius: '9999px', padding: '2px 6px', fontSize: '11px', fontWeight: 600 }}
+                        className="absolute rounded-full text-white font-bold shadow-lg"
+                        style={{
+                          top: '-6px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: '18px',
+                          height: '18px',
+                          lineHeight: '18px',
+                          background: 'linear-gradient(135deg, #F44336, #D32F2F)',
+                          fontSize: '10px',
+                          textAlign: 'center',
+                          zIndex: 5,
+                          border: '2px solid white',
+                        }}
                         aria-label={`${msgUnreadTotal} unread messages`}
-                        className="shadow"
                       >
-                        {msgUnreadTotal > 999 ? '999+' : msgUnreadTotal}
+                        {msgUnreadTotal > 99 ? '99+' : msgUnreadTotal}
                       </span>
                     )}
                   </Link>
