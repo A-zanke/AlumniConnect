@@ -1,10 +1,12 @@
 const path = require("path");
+const fs = require("fs").promises;
 const User = require("../models/User");
 const Message = require("../models/Message");
 const Thread = require("../models/Thread");
 const Block = require("../models/Block");
 const NotificationService = require("../services/notificationService");
 
+// Helper functions
 async function isBlocked(userAId, userBId) {
   const [ab, ba] = await Promise.all([
     Block.findOne({ blocker: userAId, blocked: userBId }).lean(),
@@ -19,415 +21,869 @@ async function areConnected(userAId, userBId) {
   return user.connections.some((id) => id.toString() === String(userBId));
 }
 
+// Enhanced message parser
 function parseMessage(doc, viewerId) {
-  // hide if deleted for viewer
-  if ((doc.attachments || []).includes(`deletedFor:${viewerId}`)) return null;
-
-  const reactions = [];
-  const media = [];
-  let replyTo = null;
-  (doc.attachments || []).forEach((att) => {
-    if (typeof att !== "string") return;
-    if (att.startsWith("react:")) {
-      const parts = att.split(":");
-      const userId = parts[1];
-      const emoji = parts.slice(2).join(":");
-      if (userId && emoji) reactions.push({ userId, emoji });
-    } else if (att.startsWith("reply:")) {
-      const refId = att.split(":")[1];
-      if (refId) replyTo = { id: refId };
-    } else if (att.startsWith("/uploads/")) {
-      media.push(att);
-    }
-  });
+  if (doc.isDeletedFor(viewerId)) return null;
 
   return {
     id: doc._id,
+    messageId: doc.messageId,
     senderId: doc.from,
     recipientId: doc.to,
     content: doc.content || "",
-    attachments: media,
-    reactions,
-    replyTo,
+    attachments: doc.attachments || [],
+    messageType: doc.messageType,
     timestamp: doc.createdAt,
+    status: doc.status,
+    isRead: doc.isRead,
+    readAt: doc.readAt,
+    deliveredAt: doc.deliveredAt,
+    reactions: doc.reactions || [],
+    replyTo: doc.replyTo,
+    forwardedFrom: doc.forwardedFrom,
+    isStarred: doc.isStarred.includes(viewerId),
+    isPinned: doc.isPinned,
+    isEdited: doc.isEdited,
+    editHistory: doc.editHistory,
+    location: doc.location,
+    contact: doc.contact,
   };
 }
 
+// Get conversations with enhanced data
 exports.getConversations = async (req, res) => {
   try {
     const me = req.user._id;
-    // Build conversations from latest messages and include unread from Thread
-    const msgs = await Message.find({ $or: [{ from: me }, { to: me }] })
+
+    // Get all messages involving the user
+    const messages = await Message.find({
+      $or: [{ from: me }, { to: me }],
+      deletedForEveryone: false,
+      deletedFor: { $ne: me },
+    })
+      .populate("from to", "name username avatarUrl isOnline lastSeen")
       .sort({ createdAt: -1 })
       .lean();
+
     const convMap = new Map();
-    for (const m of msgs) {
-      if ((m.attachments || []).includes(`deletedFor:${me}`)) continue;
-      const other = String(m.from) === String(me) ? String(m.to) : String(m.from);
-      if (!convMap.has(other)) {
-        const snippet = m.content?.trim()
-          ? m.content.trim().slice(0, 80)
-          : (m.attachments || []).some((a) => typeof a === "string" && a.startsWith("/uploads/messages/"))
-          ? "Photo"
-          : "";
-        convMap.set(other, { lastMessage: snippet, lastMessageTime: m.createdAt });
+
+    for (const msg of messages) {
+      const otherId =
+        String(msg.from._id) === String(me)
+          ? String(msg.to._id)
+          : String(msg.from._id);
+      const otherUser = String(msg.from._id) === String(me) ? msg.to : msg.from;
+
+      if (!convMap.has(otherId)) {
+        // Get unread count for this conversation
+        const unreadCount = await Message.countDocuments({
+          from: otherId,
+          to: me,
+          isRead: false,
+          deletedForEveryone: false,
+          deletedFor: { $ne: me },
+        });
+
+        const snippet = msg.content?.trim()
+          ? msg.content.trim().slice(0, 80)
+          : msg.attachments?.length > 0
+          ? getAttachmentSnippet(msg.attachments[0])
+          : "No messages yet";
+
+        convMap.set(otherId, {
+          _id: otherId,
+          user: otherUser,
+          lastMessage: snippet,
+          lastMessageTime: msg.createdAt,
+          unreadCount,
+          isPinned: false, // You can implement conversation pinning
+          isMuted: false, // You can implement conversation muting
+          isArchived: false, // You can implement conversation archiving
+        });
       }
     }
-    const ids = Array.from(convMap.keys());
-    const [users, threads] = await Promise.all([
-      User.find({ _id: { $in: ids } })
-        .select("name username avatarUrl isOnline lastSeen")
-        .lean(),
-      Thread.find({ participants: { $all: [me] } })
-        .select("participants unreadCount lastMessageAt")
-        .lean(),
-    ]);
-    const userMap = new Map(users.map((u) => [String(u._id), u]));
-    const threadMap = new Map();
-    for (const th of threads) {
-      if ((th.participants || []).length === 2) {
-        const other = th.participants
-          .map((p) => String(p))
-          .find((p) => p !== String(me));
-        if (other) threadMap.set(other, th);
-      }
-    }
-    const conversations = ids
-      .map((id) => {
-        const th = threadMap.get(id);
-        const unread = th?.unreadCount?.get?.(String(me)) || th?.unreadCount?.[String(me)] || 0;
-        return {
-          _id: id,
-          user: userMap.get(id) || { _id: id },
-          lastMessage: convMap.get(id).lastMessage,
-          lastMessageTime: convMap.get(id).lastMessageTime,
-          unreadCount: unread,
-          threadId: th ? String(th._id) : null,
-        };
-      })
-      .sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
-    // Also compute total unread for navbar (only messages to me and not read)
-    const totalUnread = await Message.countDocuments({ to: me, isRead: false });
-    return res.json({ data: conversations, totalUnread });
+
+    const conversations = Array.from(convMap.values()).sort(
+      (a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
+    );
+
+    // Get total unread count
+    const totalUnread = await Message.countDocuments({
+      to: me,
+      isRead: false,
+      deletedForEveryone: false,
+      deletedFor: { $ne: me },
+    });
+
+    return res.json({
+      data: conversations,
+      totalUnread,
+      success: true,
+    });
   } catch (error) {
     console.error("Error fetching conversations:", error);
-    return res.status(500).json({ message: "Error fetching conversations" });
+    return res.status(500).json({
+      message: "Error fetching conversations",
+      success: false,
+    });
   }
 };
 
+// Get messages with enhanced features
 exports.getMessages = async (req, res) => {
   try {
     const me = req.user._id;
     const other = req.params.userId;
+
     if (!other) return res.status(400).json({ message: "Missing userId" });
+
     const [connected, blocked] = await Promise.all([
       areConnected(me, other),
       isBlocked(me, other),
     ]);
-    if (!connected) return res.status(403).json({ message: "You can only message connected users" });
-    if (blocked) return res.status(403).json({ message: "Messaging is blocked between these users" });
 
-    const docs = await Message.find({
+    if (!connected)
+      return res
+        .status(403)
+        .json({ message: "You can only message connected users" });
+    if (blocked)
+      return res
+        .status(403)
+        .json({ message: "Messaging is blocked between these users" });
+
+    // Get messages with populated reply references
+    const messages = await Message.find({
       $or: [
         { from: me, to: other },
         { from: other, to: me },
       ],
+      deletedForEveryone: false,
     })
+      .populate("replyTo.messageId", "content from")
+      .populate("from to", "name username avatarUrl")
       .sort({ createdAt: 1 })
       .lean();
-    const out = [];
-    for (const d of docs) {
-      const dto = parseMessage(d, me);
-      if (dto) out.push(dto);
-    }
-    // Mark as read server-side on fetch (WhatsApp-like: when opening chat)
-    const participants = [String(me), String(other)].sort();
-    const thread = await Thread.findOne({ participants: { $all: participants, $size: 2 } });
-    if (thread) {
-      const now = new Date();
-      // Mark all unseen messages to me as read
-      await Message.updateMany({ from: other, to: me, isRead: false }, { $set: { isRead: true, readAt: now } });
-      // Update thread counters/lastReadAt
-      thread.lastReadAt.set(String(me), now);
-      thread.unreadCount.set(String(me), 0);
-      await thread.save();
-      if (req.io) {
-        req.io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: 0 });
-        req.io.to(String(other)).emit("messages:readReceipt", { conversationId: String(thread._id), readerId: String(me), readUpTo: now });
-        // Also emit total unread for navbar
-        try {
-          const total = await Message.countDocuments({ to: me, isRead: false });
-          req.io.to(String(me)).emit("unread:total", { total });
-        } catch {}
+
+    const parsedMessages = messages
+      .map((msg) => parseMessage(msg, me))
+      .filter(Boolean);
+
+    // Mark messages as read and delivered
+    await Message.updateMany(
+      { from: other, to: me, isRead: false },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+          deliveredAt: new Date(),
+        },
       }
+    );
+
+    // Emit read receipts via socket
+    if (req.io) {
+      req.io.to(String(other)).emit("messages:readReceipt", {
+        conversationId: `${me}_${other}`,
+        readerId: String(me),
+        readAt: new Date(),
+      });
+
+      // Update total unread count
+      const totalUnread = await Message.countDocuments({
+        to: me,
+        isRead: false,
+        deletedForEveryone: false,
+        deletedFor: { $ne: me },
+      });
+
+      req.io.to(String(me)).emit("unread:total", { total: totalUnread });
     }
-    return res.json(out);
+
+    return res.json({
+      messages: parsedMessages,
+      success: true,
+    });
   } catch (error) {
     console.error("Error fetching messages:", error);
-    return res.status(500).json({ message: "Error fetching messages" });
+    return res.status(500).json({
+      message: "Error fetching messages",
+      success: false,
+    });
   }
 };
 
+// Enhanced send message with media support
 exports.sendMessage = async (req, res) => {
   try {
     const me = req.user._id;
     const to = req.params.userId || req.body.to;
+
     if (!to) return res.status(400).json({ message: "Missing recipient" });
+
     const [connected, blocked] = await Promise.all([
       areConnected(me, to),
       isBlocked(me, to),
     ]);
-    if (!connected) return res.status(403).json({ message: "You can only message connected users" });
-    if (blocked) return res.status(403).json({ message: "Messaging is blocked between these users" });
+
+    if (!connected)
+      return res
+        .status(403)
+        .json({ message: "You can only message connected users" });
+    if (blocked)
+      return res
+        .status(403)
+        .json({ message: "Messaging is blocked between these users" });
 
     const content = (req.body.content || "").toString();
+    const messageType = req.body.messageType || "text";
+    const clientKey = req.body.clientKey || null;
+
+    // Process attachments
     const attachments = [];
     const files = req.files || {};
-    const imageFile = (files?.image && files.image[0]) || (files?.media && files.media[0]) || (req.file || null);
-    if (imageFile) {
-      const rel = path.posix.join("/uploads/messages", imageFile.filename || imageFile); // keep compatibility
-      attachments.push(rel);
+
+    // Handle different file types
+    const fileFields = ["image", "media", "document", "audio"];
+    for (const field of fileFields) {
+      if (files[field]) {
+        const fileArray = Array.isArray(files[field])
+          ? files[field]
+          : [files[field]];
+        for (const file of fileArray) {
+          const attachment = {
+            url: `/uploads/messages/${file.filename}`,
+            type: getFileType(file.mimetype),
+            filename: file.originalname,
+            size: file.size,
+            mimeType: file.mimetype,
+          };
+
+          // Generate thumbnail for videos
+          if (attachment.type === "video") {
+            attachment.thumbnail = await generateVideoThumbnail(file.path);
+          }
+
+          attachments.push(attachment);
+        }
+      }
     }
+
+    // Handle reply
+    let replyTo = null;
     if (req.body.replyToId) {
-      attachments.push(`reply:${req.body.replyToId}`);
+      const replyMessage = await Message.findById(req.body.replyToId).populate(
+        "from",
+        "name"
+      );
+      if (replyMessage) {
+        replyTo = {
+          messageId: replyMessage._id,
+          content: replyMessage.content || "Media message",
+          senderName: replyMessage.from.name,
+        };
+      }
     }
 
-    const clientKey = (req.body?.clientKey || '').toString() || null;
-    const msg = await Message.create({ from: me, to, content, attachments, isRead: false });
-    const dto = parseMessage(msg.toObject(), me);
+    // Handle forward
+    let forwardedFrom = null;
+    if (req.body.forwardedFromId) {
+      const originalMessage = await Message.findById(req.body.forwardedFromId);
+      if (originalMessage) {
+        forwardedFrom = {
+          originalSender: originalMessage.from,
+          forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
+        };
+      }
+    }
 
-    // Upsert thread and increment unread for recipient (server authority)
+    // Create message
+    const messageData = {
+      from: me,
+      to,
+      content,
+      attachments,
+      messageType,
+      replyTo,
+      forwardedFrom,
+      messageId:
+        clientKey ||
+        `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      clientTimestamp: req.body.clientTimestamp
+        ? new Date(req.body.clientTimestamp)
+        : new Date(),
+      deliveredAt: new Date(),
+    };
+
+    // Handle location messages
+    if (messageType === "location" && req.body.location) {
+      messageData.location = req.body.location;
+    }
+
+    // Handle contact messages
+    if (messageType === "contact" && req.body.contact) {
+      messageData.contact = req.body.contact;
+    }
+
+    const message = await Message.create(messageData);
+    const populatedMessage = await Message.findById(message._id)
+      .populate("from to", "name username avatarUrl")
+      .populate("replyTo.messageId", "content from");
+
+    const dto = parseMessage(populatedMessage, me);
+
+    // Update thread
     const participants = [String(me), String(to)].sort();
-    const thread = await Thread.findOneAndUpdate(
+    await Thread.findOneAndUpdate(
       { participants: { $all: participants, $size: 2 } },
       {
         $setOnInsert: { participants },
-        $set: { lastMessageAt: new Date(), lastMessage: msg._id },
+        $set: {
+          lastMessageAt: new Date(),
+          lastMessage: message._id,
+          [`lastReadAt.${me}`]: new Date(),
+        },
         $inc: { [`unreadCount.${to}`]: 1 },
       },
       { upsert: true, new: true }
     );
 
+    // Real-time notifications
     if (req.io) {
-      const payload = {
-        conversationId: String(thread._id),
+      // Send to recipient
+      req.io.to(String(to)).emit("message:new", {
+        message: dto,
+        conversationId: `${me}_${to}`,
+        senderId: String(me),
+      });
+
+      // Send delivery confirmation to sender
+      req.io.to(String(me)).emit("message:delivered", {
         messageId: String(dto.id),
-        senderId: String(dto.senderId),
-        body: dto.content,
-        createdAt: dto.timestamp,
-      };
-      // New event contract: deliver only to recipient
-      req.io.to(String(to)).emit("message:new", payload);
-      // Notify unread update to recipient only
-      const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
-      req.io.to(String(to)).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
-      // Update navbar total for recipient
-      try {
-        const total = await Message.countDocuments({ to, isRead: false });
-        req.io.to(String(to)).emit("unread:total", { total });
-      } catch {}
-      // Status events to sender
-      req.io.to(String(me)).emit("message:sent", { id: String(dto.id), messageId: String(dto.id), status: "sent", clientKey });
-      // If recipient currently connected, mark delivered
-      try {
-        const isRecipientOnline = !!req.io.sockets?.adapter?.rooms?.get?.(String(to));
-        if (isRecipientOnline) {
-          req.io.to(String(me)).emit("message:delivered", { id: String(dto.id), messageId: String(dto.id), status: "delivered", clientKey });
-        }
-      } catch {}
+        clientKey,
+        status: "delivered",
+      });
+
+      // Update unread counts
+      const unreadCount = await Message.countDocuments({
+        to,
+        isRead: false,
+        deletedForEveryone: false,
+        deletedFor: { $ne: to },
+      });
+
+      req.io.to(String(to)).emit("unread:update", {
+        conversationId: `${me}_${to}`,
+        count: unreadCount,
+      });
+
+      req.io.to(String(to)).emit("unread:total", { total: unreadCount });
     }
 
-    return res.status(201).json(dto);
+    return res.status(201).json({
+      message: dto,
+      success: true,
+    });
   } catch (error) {
     console.error("Error sending message:", error);
-    return res.status(500).json({ message: "Error sending message" });
+    return res.status(500).json({
+      message: "Error sending message",
+      success: false,
+    });
   }
 };
 
+// Enhanced message reactions
+exports.react = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { messageId, emoji } = req.body || {};
+
+    if (!messageId)
+      return res.status(400).json({ message: "messageId required" });
+
+    const message = await Message.findById(messageId);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const isParticipant = [String(message.from), String(message.to)].includes(
+      String(me)
+    );
+    if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
+
+    await message.addReaction(me, emoji);
+
+    const updatedMessage = await Message.findById(messageId).populate(
+      "reactions.userId",
+      "name username avatarUrl"
+    );
+
+    if (req.io) {
+      const participants = [String(message.from), String(message.to)];
+      participants.forEach((userId) => {
+        req.io.to(userId).emit("message:reacted", {
+          messageId: String(messageId),
+          reactions: updatedMessage.reactions,
+          reactedBy: String(me),
+          emoji,
+        });
+      });
+    }
+
+    return res.json({
+      messageId: String(messageId),
+      reactions: updatedMessage.reactions,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error reacting to message:", error);
+    return res.status(500).json({
+      message: "Error reacting to message",
+      success: false,
+    });
+  }
+};
+
+// Star/unstar message
+exports.starMessage = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { messageId } = req.body || {};
+
+    if (!messageId)
+      return res.status(400).json({ message: "messageId required" });
+
+    const message = await Message.findById(messageId);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const isParticipant = [String(message.from), String(message.to)].includes(
+      String(me)
+    );
+    if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
+
+    await message.toggleStar(me);
+    const isStarred = message.isStarred.includes(me);
+
+    if (req.io) {
+      req.io.to(String(me)).emit("message:starred", {
+        messageId: String(messageId),
+        isStarred,
+      });
+    }
+
+    return res.json({
+      messageId: String(messageId),
+      isStarred,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error starring message:", error);
+    return res.status(500).json({
+      message: "Error starring message",
+      success: false,
+    });
+  }
+};
+
+// Pin/unpin message
+exports.pinMessage = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { messageId, pin = true } = req.body || {};
+
+    if (!messageId)
+      return res.status(400).json({ message: "messageId required" });
+
+    const message = await Message.findById(messageId);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const isParticipant = [String(message.from), String(message.to)].includes(
+      String(me)
+    );
+    if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
+
+    message.isPinned = pin;
+    if (pin) {
+      message.pinnedBy = me;
+      message.pinnedAt = new Date();
+    } else {
+      message.pinnedBy = null;
+      message.pinnedAt = null;
+    }
+
+    await message.save();
+
+    if (req.io) {
+      const participants = [String(message.from), String(message.to)];
+      participants.forEach((userId) => {
+        req.io.to(userId).emit("message:pinned", {
+          messageId: String(messageId),
+          isPinned: pin,
+          pinnedBy: String(me),
+        });
+      });
+    }
+
+    return res.json({
+      messageId: String(messageId),
+      isPinned: pin,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error pinning message:", error);
+    return res.status(500).json({
+      message: "Error pinning message",
+      success: false,
+    });
+  }
+};
+
+// Enhanced delete message
 exports.deleteMessage = async (req, res) => {
   try {
     const me = req.user._id;
     const { messageId } = req.params;
     const scope = (req.body?.for || req.query?.for || "me").toLowerCase();
-    const msg = await Message.findById(messageId);
-    if (!msg) return res.status(404).json({ message: "Message not found" });
-    const isParticipant = [String(msg.from), String(msg.to)].includes(String(me));
+
+    const message = await Message.findById(messageId);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const isParticipant = [String(message.from), String(message.to)].includes(
+      String(me)
+    );
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
     if (scope === "everyone") {
-      if (String(msg.from) !== String(me)) {
-        return res.status(403).json({ message: "Only sender can delete for everyone" });
+      if (String(message.from) !== String(me)) {
+        return res
+          .status(403)
+          .json({ message: "Only sender can delete for everyone" });
       }
-      await Message.deleteOne({ _id: messageId });
+
+      // Check if message is within delete time limit (e.g., 1 hour)
+      const deleteTimeLimit = 60 * 60 * 1000; // 1 hour
+      const messageAge = Date.now() - new Date(message.createdAt).getTime();
+
+      if (messageAge > deleteTimeLimit) {
+        return res
+          .status(403)
+          .json({ message: "Delete for everyone time limit exceeded" });
+      }
+
+      message.deletedForEveryone = true;
+      message.deletedAt = new Date();
+      await message.save();
+
       if (req.io) {
-        [String(msg.from), String(msg.to)].forEach((uid) =>
-          req.io.to(uid).emit("messageDeleted", { messageId, scope: "everyone" })
-        );
+        [String(message.from), String(message.to)].forEach((userId) => {
+          req.io.to(userId).emit("message:deleted", {
+            messageId: String(messageId),
+            scope: "everyone",
+          });
+        });
       }
-      return res.json({ ok: true });
+    } else {
+      // Delete for me only
+      if (!message.deletedFor.includes(me)) {
+        message.deletedFor.push(me);
+        await message.save();
+      }
+
+      if (req.io) {
+        req.io.to(String(me)).emit("message:deleted", {
+          messageId: String(messageId),
+          scope: "me",
+        });
+      }
     }
 
-    const marker = `deletedFor:${me}`;
-    const atts = msg.attachments || [];
-    if (!atts.includes(marker)) {
-      msg.attachments = [...atts, marker];
-      await msg.save();
-    }
-    if (req.io) req.io.to(String(me)).emit("messageDeleted", { messageId, scope: "me" });
-    return res.json({ ok: true });
+    return res.json({ success: true });
   } catch (error) {
     console.error("Error deleting message:", error);
-    return res.status(500).json({ message: "Error deleting message" });
+    return res.status(500).json({
+      message: "Error deleting message",
+      success: false,
+    });
   }
 };
 
+// Bulk delete messages
 exports.bulkDelete = async (req, res) => {
   try {
     const me = req.user._id;
-    const { messageIds = [], for: scopeRaw = "me" } = req.body || {};
-    const scope = (scopeRaw || "me").toLowerCase();
+    const { messageIds = [], for: scope = "me" } = req.body || {};
+
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
       return res.status(400).json({ message: "messageIds required" });
     }
-    const msgs = await Message.find({ _id: { $in: messageIds } });
-    const result = { updated: 0, deleted: 0 };
-    for (const msg of msgs) {
-      const isParticipant = [String(msg.from), String(msg.to)].includes(String(me));
-      if (!isParticipant) continue;
+
+    const messages = await Message.find({ _id: { $in: messageIds } });
+    const result = { updated: 0, deleted: 0, errors: [] };
+
+    for (const message of messages) {
+      const isParticipant = [String(message.from), String(message.to)].includes(
+        String(me)
+      );
+      if (!isParticipant) {
+        result.errors.push(`No permission for message ${message._id}`);
+        continue;
+      }
+
       if (scope === "everyone") {
-        if (String(msg.from) !== String(me)) continue;
-        await Message.deleteOne({ _id: msg._id });
+        if (String(message.from) !== String(me)) {
+          result.errors.push(
+            `Cannot delete message ${message._id} for everyone`
+          );
+          continue;
+        }
+
+        message.deletedForEveryone = true;
+        message.deletedAt = new Date();
+        await message.save();
         result.deleted += 1;
       } else {
-        const marker = `deletedFor:${me}`;
-        const atts = msg.attachments || [];
-        if (!atts.includes(marker)) {
-          msg.attachments = [...atts, marker];
-          await msg.save();
+        if (!message.deletedFor.includes(me)) {
+          message.deletedFor.push(me);
+          await message.save();
         }
         result.updated += 1;
       }
     }
-    if (req.io) req.io.to(String(me)).emit("messageDeleted", { messageIds, scope });
-    return res.json(result);
-  } catch (error) {
-    console.error("Error deleting messages:", error);
-    return res.status(500).json({ message: "Error deleting messages" });
-  }
-};
 
-exports.react = async (req, res) => {
-  try {
-    const me = req.user._id;
-    const { messageId, emoji } = req.body || {};
-    if (!messageId) return res.status(400).json({ message: "messageId required" });
-    const msg = await Message.findById(messageId);
-    if (!msg) return res.status(404).json({ message: "Message not found" });
-    const isParticipant = [String(msg.from), String(msg.to)].includes(String(me));
-    if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
-
-    let atts = msg.attachments || [];
-    atts = atts.filter((a) => !(typeof a === "string" && a.startsWith(`react:${me}:`)));
-    if (emoji) atts.push(`react:${me}:${emoji}`);
-    msg.attachments = atts;
-    await msg.save();
-
-    const reactions = [];
-    for (const a of atts) {
-      if (typeof a === "string" && a.startsWith("react:")) {
-        const parts = a.split(":");
-        const userId = parts[1];
-        const sym = parts.slice(2).join(":");
-        reactions.push({ userId, emoji: sym });
-      }
-    }
     if (req.io) {
-      [String(msg.from), String(msg.to)].forEach((uid) =>
-        req.io.to(uid).emit("messageReacted", { messageId: String(msg._id), reactions })
-      );
+      req.io.to(String(me)).emit("messages:bulkDeleted", {
+        messageIds,
+        scope,
+        result,
+      });
     }
-    return res.json({ messageId: String(msg._id), reactions });
+
+    return res.json({ ...result, success: true });
   } catch (error) {
-    console.error("Error reacting to message:", error);
-    return res.status(500).json({ message: "Error reacting to message" });
+    console.error("Error bulk deleting messages:", error);
+    return res.status(500).json({
+      message: "Error bulk deleting messages",
+      success: false,
+    });
   }
 };
 
-exports.deleteChat = async (req, res) => {
+// Get shared media
+exports.getMedia = async (req, res) => {
   try {
     const me = req.user._id;
     const other = req.params.userId;
-    const scope = (req.body?.for || req.query?.for || "me").toLowerCase();
+    const { type = "all", page = 1, limit = 50 } = req.query;
+
     if (!other) return res.status(400).json({ message: "Missing userId" });
 
-    if (scope === "everyone") {
-      await Message.deleteMany({
-        $or: [
-          { from: me, to: other },
-          { from: other, to: me },
-        ],
-      });
-      if (req.io) {
-        req.io.to(String(me)).emit("messageDeleted", { scope: "everyone", chatCleared: true, userId: other });
-        req.io.to(String(other)).emit("messageDeleted", { scope: "everyone", chatCleared: true, userId: String(me) });
-      }
-      return res.json({ ok: true });
-    }
-
-    const cursor = Message.find({
+    const query = {
       $or: [
         { from: me, to: other },
         { from: other, to: me },
       ],
-    }).cursor();
-    const marker = `deletedFor:${me}`;
-    for await (const msg of cursor) {
-      const atts = msg.attachments || [];
-      if (!atts.includes(marker)) {
-        msg.attachments = [...atts, marker];
-        await msg.save();
-      }
+      deletedForEveryone: false,
+      deletedFor: { $ne: me },
+      "attachments.0": { $exists: true },
+    };
+
+    // Filter by media type
+    if (type !== "all") {
+      query["attachments.type"] = type;
     }
-    if (req.io) req.io.to(String(me)).emit("messageDeleted", { scope: "me", chatCleared: true, userId: other });
-    return res.json({ ok: true });
+
+    const messages = await Message.find(query)
+      .populate("from", "name username avatarUrl")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .lean();
+
+    const media = [];
+    const links = [];
+
+    messages.forEach((msg) => {
+      msg.attachments.forEach((attachment) => {
+        const mediaItem = {
+          id: msg._id,
+          messageId: msg.messageId,
+          url: attachment.url,
+          type: attachment.type,
+          filename: attachment.filename,
+          size: attachment.size,
+          mimeType: attachment.mimeType,
+          thumbnail: attachment.thumbnail,
+          timestamp: msg.createdAt,
+          sender: msg.from,
+          isStarred: msg.isStarred.includes(me),
+        };
+
+        if (attachment.type === "link") {
+          links.push(mediaItem);
+        } else {
+          media.push(mediaItem);
+        }
+      });
+    });
+
+    // Extract links from message content
+    const linkRegex = /(https?:\/\/[^\s]+)/g;
+    messages.forEach((msg) => {
+      if (msg.content) {
+        const foundLinks = msg.content.match(linkRegex);
+        if (foundLinks) {
+          foundLinks.forEach((link) => {
+            links.push({
+              id: msg._id,
+              messageId: msg.messageId,
+              url: link,
+              type: "link",
+              title: extractLinkTitle(link),
+              timestamp: msg.createdAt,
+              sender: msg.from,
+              isStarred: msg.isStarred.includes(me),
+            });
+          });
+        }
+      }
+    });
+
+    const totalCount = await Message.countDocuments(query);
+
+    return res.json({
+      media: type === "link" ? links : media,
+      links: type === "all" ? links : [],
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalCount,
+        pages: Math.ceil(totalCount / limit),
+      },
+      success: true,
+    });
   } catch (error) {
-    console.error("Error deleting chat:", error);
-    return res.status(500).json({ message: "Error deleting chat" });
+    console.error("Error fetching media:", error);
+    return res.status(500).json({
+      message: "Error fetching media",
+      success: false,
+    });
   }
 };
 
-exports.report = async (req, res) => {
+// Get starred messages
+exports.getStarredMessages = async (req, res) => {
   try {
     const me = req.user._id;
-    const { targetUserId, reason } = req.body || {};
-    if (!targetUserId) return res.status(400).json({ message: "targetUserId required" });
-    const admins = await User.find({ role: "admin" }).select("_id");
-    await Promise.all(
-      admins.map((a) =>
-        NotificationService.createNotification({
-          recipientId: a._id,
-          senderId: me,
-          type: "message",
-          content: `Report: ${me} -> ${targetUserId}${reason ? ": " + reason : ""}`,
-          relatedId: targetUserId,
-        })
-      )
-    );
-    return res.status(201).json({ ok: true });
+    const { page = 1, limit = 20 } = req.query;
+
+    const messages = await Message.find({
+      $or: [{ from: me }, { to: me }],
+      isStarred: me,
+      deletedForEveryone: false,
+      deletedFor: { $ne: me },
+    })
+      .populate("from to", "name username avatarUrl")
+      .populate("replyTo.messageId", "content from")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
+
+    const parsedMessages = messages
+      .map((msg) => parseMessage(msg, me))
+      .filter(Boolean);
+    const totalCount = await Message.countDocuments({
+      $or: [{ from: me }, { to: me }],
+      isStarred: me,
+      deletedForEveryone: false,
+      deletedFor: { $ne: me },
+    });
+
+    return res.json({
+      messages: parsedMessages,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalCount,
+        pages: Math.ceil(totalCount / limit),
+      },
+      success: true,
+    });
   } catch (error) {
-    console.error("Error reporting user:", error);
-    return res.status(500).json({ message: "Error reporting user" });
+    console.error("Error fetching starred messages:", error);
+    return res.status(500).json({
+      message: "Error fetching starred messages",
+      success: false,
+    });
   }
 };
 
+// Search messages
+exports.searchMessages = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { query, userId, page = 1, limit = 20 } = req.query;
+
+    if (!query)
+      return res.status(400).json({ message: "Search query required" });
+
+    const searchQuery = {
+      $or: [{ from: me }, { to: me }],
+      deletedForEveryone: false,
+      deletedFor: { $ne: me },
+      $text: { $search: query },
+    };
+
+    // Filter by specific user if provided
+    if (userId) {
+      searchQuery.$or = [
+        { from: me, to: userId },
+        { from: userId, to: me },
+      ];
+    }
+
+    const messages = await Message.find(searchQuery)
+      .populate("from to", "name username avatarUrl")
+      .sort({ score: { $meta: "textScore" }, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
+
+    const parsedMessages = messages
+      .map((msg) => parseMessage(msg, me))
+      .filter(Boolean);
+    const totalCount = await Message.countDocuments(searchQuery);
+
+    return res.json({
+      messages: parsedMessages,
+      query,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalCount,
+        pages: Math.ceil(totalCount / limit),
+      },
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error searching messages:", error);
+    return res.status(500).json({
+      message: "Error searching messages",
+      success: false,
+    });
+  }
+};
+
+// Block/unblock user
 exports.block = async (req, res) => {
   try {
     const me = req.user._id;
     const { targetUserId, action } = req.body || {};
-    if (!targetUserId) return res.status(400).json({ message: "targetUserId required" });
+
+    if (!targetUserId)
+      return res.status(400).json({ message: "targetUserId required" });
     if (!action || !["block", "unblock"].includes(action)) {
-      return res.status(400).json({ message: "action must be 'block' or 'unblock'" });
+      return res
+        .status(400)
+        .json({ message: "action must be 'block' or 'unblock'" });
     }
+
     if (action === "block") {
       await Block.updateOne(
         { blocker: me, blocked: targetUserId },
@@ -437,53 +893,248 @@ exports.block = async (req, res) => {
     } else {
       await Block.deleteOne({ blocker: me, blocked: targetUserId });
     }
-    return res.json({ ok: true });
+
+    // Emit real-time update
+    if (req.io) {
+      req.io.to(String(me)).emit("user:blocked", {
+        userId: targetUserId,
+        action,
+        timestamp: new Date(),
+      });
+    }
+
+    return res.json({
+      action,
+      targetUserId,
+      success: true,
+    });
   } catch (error) {
     console.error("Error updating block:", error);
-    return res.status(500).json({ message: "Error updating block" });
+    return res.status(500).json({
+      message: "Error updating block",
+      success: false,
+    });
   }
 };
 
+// Report user
+exports.report = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { targetUserId, reason, messageId } = req.body || {};
+
+    if (!targetUserId)
+      return res.status(400).json({ message: "targetUserId required" });
+
+    // Create report notification for admins
+    const admins = await User.find({ role: "admin" }).select("_id");
+    const reportContent = `User report: ${me} reported ${targetUserId}${
+      reason ? ` - Reason: ${reason}` : ""
+    }${messageId ? ` - Message: ${messageId}` : ""}`;
+
+    await Promise.all(
+      admins.map((admin) =>
+        NotificationService.createNotification({
+          recipientId: admin._id,
+          senderId: me,
+          type: "report",
+          content: reportContent,
+          relatedId: targetUserId,
+          metadata: { messageId, reason },
+        })
+      )
+    );
+
+    return res.status(201).json({
+      message: "Report submitted successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error reporting user:", error);
+    return res.status(500).json({
+      message: "Error reporting user",
+      success: false,
+    });
+  }
+};
+
+// Get message info
+exports.getMessageInfo = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { messageId } = req.params;
+
+    const message = await Message.findById(messageId)
+      .populate("from to", "name username avatarUrl")
+      .populate("reactions.userId", "name username avatarUrl");
+
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const isParticipant = [
+      String(message.from._id),
+      String(message.to._id),
+    ].includes(String(me));
+    if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
+
+    const messageInfo = {
+      id: message._id,
+      content: message.content,
+      sender: message.from,
+      recipient: message.to,
+      timestamp: message.createdAt,
+      deliveredAt: message.deliveredAt,
+      readAt: message.readAt,
+      reactions: message.reactions,
+      isStarred: message.isStarred.includes(me),
+      isPinned: message.isPinned,
+      isEdited: message.isEdited,
+      editHistory: message.editHistory,
+      attachments: message.attachments,
+      messageType: message.messageType,
+    };
+
+    return res.json({
+      messageInfo,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error fetching message info:", error);
+    return res.status(500).json({
+      message: "Error fetching message info",
+      success: false,
+    });
+  }
+};
+
+// Delete entire chat
+exports.deleteChat = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const other = req.params.userId;
+    const scope = (req.body?.for || req.query?.for || "me").toLowerCase();
+
+    if (!other) return res.status(400).json({ message: "Missing userId" });
+
+    if (scope === "everyone") {
+      // Delete all messages between users
+      await Message.updateMany(
+        {
+          $or: [
+            { from: me, to: other },
+            { from: other, to: me },
+          ],
+        },
+        {
+          $set: {
+            deletedForEveryone: true,
+            deletedAt: new Date(),
+          },
+        }
+      );
+
+      if (req.io) {
+        req.io.to(String(me)).emit("chat:deleted", {
+          userId: other,
+          scope: "everyone",
+        });
+        req.io.to(String(other)).emit("chat:deleted", {
+          userId: String(me),
+          scope: "everyone",
+        });
+      }
+    } else {
+      // Mark as deleted for current user only
+      await Message.updateMany(
+        {
+          $or: [
+            { from: me, to: other },
+            { from: other, to: me },
+          ],
+        },
+        {
+          $addToSet: { deletedFor: me },
+        }
+      );
+
+      if (req.io) {
+        req.io.to(String(me)).emit("chat:deleted", {
+          userId: other,
+          scope: "me",
+        });
+      }
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting chat:", error);
+    return res.status(500).json({
+      message: "Error deleting chat",
+      success: false,
+    });
+  }
+};
+
+// Helper functions
+function getFileType(mimeType) {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+function getAttachmentSnippet(attachment) {
+  switch (attachment.type) {
+    case "image":
+      return "📷 Photo";
+    case "video":
+      return "🎥 Video";
+    case "audio":
+      return "🎵 Audio";
+    case "document":
+      return "📄 Document";
+    default:
+      return "📎 Attachment";
+  }
+}
+
+function extractLinkTitle(url) {
+  try {
+    const domain = new URL(url).hostname;
+    return domain.replace("www.", "");
+  } catch {
+    return "Link";
+  }
+}
+
+async function generateVideoThumbnail(videoPath) {
+  // Implement video thumbnail generation logic here
+  // You can use ffmpeg or similar library
+  return null;
+}
+
+// Get blocked users
 exports.getBlocks = async (req, res) => {
   try {
     const me = req.user._id;
     const [blocked, blockedBy] = await Promise.all([
-      Block.find({ blocker: me }).select("blocked").lean(),
-      Block.find({ blocked: me }).select("blocker").lean(),
+      Block.find({ blocker: me })
+        .populate("blocked", "name username avatarUrl")
+        .lean(),
+      Block.find({ blocked: me })
+        .populate("blocker", "name username avatarUrl")
+        .lean(),
     ]);
+
     return res.json({
-      blocked: blocked.map((b) => String(b.blocked)),
-      blockedBy: blockedBy.map((b) => String(b.blocker)),
+      blocked: blocked.map((b) => b.blocked),
+      blockedBy: blockedBy.map((b) => b.blocker),
+      success: true,
     });
   } catch (error) {
     console.error("Error fetching block list:", error);
-    return res.status(500).json({ message: "Error fetching block list" });
-  }
-};
-
-exports.getMedia = async (req, res) => {
-  try {
-    const me = req.user._id;
-    const other = req.params.userId;
-    if (!other) return res.status(400).json({ message: "Missing userId" });
-    const docs = await Message.find({
-      $or: [
-        { from: me, to: other },
-        { from: other, to: me },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .lean();
-    const media = [];
-    for (const d of docs) {
-      if ((d.attachments || []).includes(`deletedFor:${me}`)) continue;
-      (d.attachments || []).forEach((a) => {
-        if (typeof a === "string" && a.startsWith("/uploads/messages/")) media.push(a);
-      });
-    }
-    return res.json({ media });
-  } catch (error) {
-    console.error("Error fetching media:", error);
-    return res.status(500).json({ message: "Error fetching media" });
+    return res.status(500).json({
+      message: "Error fetching block list",
+      success: false,
+    });
   }
 };
