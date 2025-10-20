@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const MessageSchema = new mongoose.Schema(
   {
+    // Client-side identifiers for idempotency and mapping
+    messageId: { type: String, index: true, default: null },
+    clientKey: { type: String, index: true, default: null },
+    threadId: { type: String, index: true, default: null },
+
     from: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -136,6 +141,9 @@ const MessageSchema = new mongoose.Schema(
 MessageSchema.index({ from: 1, to: 1, createdAt: -1 });
 MessageSchema.index({ to: 1, isRead: 1, createdAt: -1 });
 MessageSchema.index({ createdAt: -1 });
+MessageSchema.index({ messageId: 1 });
+MessageSchema.index({ clientKey: 1 });
+MessageSchema.index({ threadId: 1 });
 
 // TTL index for auto-expiring messages
 MessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

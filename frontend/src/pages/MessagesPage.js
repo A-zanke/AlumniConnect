@@ -538,7 +538,7 @@ const MessagesPage = () => {
         )
       );
     } catch (e) {
-      toast.error("Failed to react");
+      // Silent failure: UX like WhatsApp (no blocking alert)
     }
   };
 
@@ -602,20 +602,17 @@ const MessagesPage = () => {
         { targetUserId: selectedUser._id, action: block ? "block" : "unblock" },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
       if (block) {
         setBlockedUsers((prev) => new Set([...prev, selectedUser._id]));
-        toast.success("User blocked");
       } else {
         setBlockedUsers((prev) => {
           const next = new Set(prev);
           next.delete(selectedUser._id);
           return next;
         });
-        toast.success("User unblocked");
       }
     } catch (e) {
-      toast.error("Failed to update block status");
+      // Silent failure as requested
     }
   };
 
@@ -628,9 +625,9 @@ const MessagesPage = () => {
         { targetUserId: selectedUser._id, reason },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success("Reported to admin");
+      // silent success
     } catch (e) {
-      toast.error("Failed to report");
+      // silent failure
     }
   };
 

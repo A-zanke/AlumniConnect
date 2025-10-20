@@ -432,7 +432,14 @@ exports.react = async (req, res) => {
     if (!messageId)
       return res.status(400).json({ message: "messageId required" });
 
-    const message = await Message.findById(messageId);
+    // Accept either Mongo _id or client messageId
+    let message = null;
+    if (messageId.match && messageId.match(/^[0-9a-fA-F]{24}$/)) {
+      message = await Message.findById(messageId);
+    }
+    if (!message) {
+      message = await Message.findOne({ messageId });
+    }
     if (!message) return res.status(404).json({ message: "Message not found" });
 
     const isParticipant = [String(message.from), String(message.to)].includes(
@@ -976,10 +983,10 @@ exports.report = async (req, res) => {
         NotificationService.createNotification({
           recipientId: admin._id,
           senderId: me,
-          type: "report",
+          type: "message",
           content: reportContent,
-          relatedId: targetUserId,
-          metadata: { messageId, reason },
+          relatedId: messageId || targetUserId,
+          onModel: messageId ? "Message" : undefined,
         })
       )
     );
