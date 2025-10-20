@@ -166,23 +166,7 @@ router.get("/media/:userId", protect, getMedia);
 // Get detailed message info
 router.get("/info/:messageId", protect, getMessageInfo);
 
-// Get messages between current user and another user
-router.get("/:userId", protect, getMessages);
-
-// Send a message with optional files (enhanced file support)
-router.post(
-  "/:userId",
-  protect,
-  upload.fields([
-    { name: "image", maxCount: 5 },
-    { name: "video", maxCount: 3 },
-    { name: "audio", maxCount: 3 },
-    { name: "document", maxCount: 5 },
-    { name: "media", maxCount: 10 }, // Generic media field
-  ]),
-  handleMulterError,
-  sendMessage
-);
+// NOTE: Dynamic :userId routes MUST be defined AFTER all fixed subpaths
 
 // React to message
 router.post("/react", protect, react);
@@ -370,9 +354,6 @@ router.post("/bulk", protect, async (req, res) => {
 // Bulk delete messages
 router.delete("/bulk-delete", protect, bulkDelete);
 
-// Delete single message
-router.delete("/:messageId", protect, deleteMessage);
-
 // Delete entire chat
 router.delete("/chat/:userId", protect, deleteChat);
 
@@ -381,9 +362,21 @@ router.post("/report", protect, report);
 
 // Block/unblock user
 router.post("/block", protect, block);
-router.post("/bulk-block", protect, require("../controllers/messagesController").bulkBlockUsers);
-router.delete("/bulk-delete-chats", protect, require("../controllers/messagesController").bulkDeleteChats);
-router.post("/bulk-report", protect, require("../controllers/messagesController").bulkReportUsers);
+router.post(
+  "/bulk-block",
+  protect,
+  require("../controllers/messagesController").bulkBlockUsers
+);
+router.delete(
+  "/bulk-delete-chats",
+  protect,
+  require("../controllers/messagesController").bulkDeleteChats
+);
+router.post(
+  "/bulk-report",
+  protect,
+  require("../controllers/messagesController").bulkReportUsers
+);
 
 // Mark messages as read
 router.post("/mark-read", protect, async (req, res) => {
