@@ -1,3 +1,4 @@
+// c:/Users/ASUS/Downloads/Telegram Desktop/AlumniConnect/AlumniConnect/backend/controllers/messagesController.js
 const path = require("path");
 const fs = require("fs").promises;
 const User = require("../models/User");
@@ -57,7 +58,8 @@ function isDeletedForViewer(doc, viewerId) {
   const atts = doc.attachments;
   if (!Array.isArray(atts)) return false;
   return (
-    atts.includes(`deletedFor:${viewerId}`) || atts.includes("deletedForEveryone")
+    atts.includes(`deletedFor:${viewerId}`) ||
+    atts.includes("deletedForEveryone")
   );
 }
 
@@ -82,11 +84,7 @@ function parseMessage(doc, viewerId) {
       ? doc.attachments.includes(`star:${viewerId}`)
       : false;
 
-    const status = doc.isRead
-      ? "seen"
-      : doc.deliveredAt
-      ? "delivered"
-      : "sent";
+    const status = doc.isRead ? "seen" : doc.deliveredAt ? "delivered" : "sent";
 
     return {
       id: doc._id,
@@ -140,11 +138,11 @@ exports.getConversations = async (req, res) => {
           isRead: false,
         });
 
-    const snippet = msg.content?.trim()
-      ? msg.content.trim().slice(0, 80)
-      : Array.isArray(msg.attachments) && msg.attachments.length > 0
-      ? getAttachmentSnippet(msg.attachments[0])
-      : "No messages yet";
+        const snippet = msg.content?.trim()
+          ? msg.content.trim().slice(0, 80)
+          : Array.isArray(msg.attachments) && msg.attachments.length > 0
+          ? getAttachmentSnippet(msg.attachments[0])
+          : "No messages yet";
 
         // Try to get a thread id for this pair (optional)
         let threadId = null;
@@ -323,23 +321,54 @@ exports.sendMessage = async (req, res) => {
     const messageType = req.body.messageType || "text";
     const clientKey = req.body.clientKey || null;
 
+    console.log("sendMessage called:", {
+      recipientId: req.params.userId,
+      hasContent: !!req.body.content,
+      files: req.files ? Object.keys(req.files) : [],
+      body: req.body,
+    });
+
+    // Health check: verify uploads directory exists and is writable
+    const uploadsDir = path.join(__dirname, "../uploads");
+    try {
+      await fs.access(uploadsDir, fs.constants.F_OK | fs.constants.W_OK);
+    } catch (err) {
+      console.error("Uploads directory not accessible:", err);
+      return res
+        .status(500)
+        .json({ message: "File upload system unavailable", success: false });
+    }
+
     // Process attachments
     const attachments = [];
     const files = req.files || {};
 
-    // Handle different file types
-    const fileFields = ["image", "media", "document", "audio", "video"];
-    for (const field of fileFields) {
-      if (files[field]) {
-        const fileArray = Array.isArray(files[field])
-          ? files[field]
-          : [files[field]];
-        for (const file of fileArray) {
-          // Build correct public URL from stored path
-          const uploadsRoot = path.join(__dirname, "../uploads");
-          const rel = path.relative(uploadsRoot, file.path).replace(/\\/g, "/");
-          const publicUrl = `/uploads/${rel}`; // e.g., /uploads/messages/images/<file>
-          attachments.push(publicUrl);
+    // Only check file validity IF files are present
+    if (req.files && Object.keys(req.files).length > 0) {
+      // Handle different file types
+      const fileFields = ["image", "media", "document", "audio", "video"];
+      for (const field of fileFields) {
+        if (files[field]) {
+          const fileArray = Array.isArray(files[field])
+            ? files[field]
+            : [files[field]];
+          for (const file of fileArray) {
+            try {
+              // Build correct public URL from stored path
+              const uploadsRoot = path.join(__dirname, "../uploads");
+              const rel = path
+                .relative(uploadsRoot, file.path)
+                .replace(/\\/g, "/");
+              const publicUrl = `/uploads/${rel}`; // e.g., /uploads/messages/images/<file>
+              attachments.push(publicUrl);
+            } catch (fileError) {
+              console.error("Error constructing file path:", fileError, {
+                filePath: file.path,
+                field,
+              });
+              // Skip this file and continue
+            }
+          }
         }
       }
     }
@@ -347,14 +376,17 @@ exports.sendMessage = async (req, res) => {
     // If no multer files came through but the frontend sent base64 or remote URLs, normalize them
     if (Array.isArray(req.body.attachments)) {
       for (const a of req.body.attachments) {
-        if (typeof a === 'string' && a.startsWith('/uploads/')) attachments.push(a);
+        if (typeof a === "string" && a.startsWith("/uploads/"))
+          attachments.push(a);
       }
     }
 
     // Handle reply (store as marker in attachments)
     let replyTo = null;
     if (req.body.replyToId) {
-      const replyMessage = await Message.findById(req.body.replyToId).select("_id");
+      const replyMessage = await Message.findById(req.body.replyToId).select(
+        "_id"
+      );
       if (replyMessage) {
         attachments.push(`reply:${replyMessage._id}`);
       }
@@ -370,6 +402,14 @@ exports.sendMessage = async (req, res) => {
           forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
         };
       }
+    }
+
+    // Validate at least one of content or attachments exists
+    if (!content.trim() && attachments.length === 0) {
+      return res.status(400).json({
+        message: "Message must have content or attachments",
+        success: false,
+      });
     }
 
     // Create message
@@ -396,8 +436,10 @@ exports.sendMessage = async (req, res) => {
     }
 
     const message = await Message.create(messageData);
-    const populatedMessage = await Message.findById(message._id)
-      .populate("from to", "name username avatarUrl");
+    const populatedMessage = await Message.findById(message._id).populate(
+      "from to",
+      "name username avatarUrl"
+    );
 
     const dto = parseMessage(populatedMessage.toObject(), me);
 
@@ -453,9 +495,26 @@ exports.sendMessage = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error("Error sending message:", error);
+    // Detailed error logging
+    console.error("Error sending message:", {
+      errorType: error.constructor.name,
+      errorMessage: error.message,
+      stack: error.stack,
+      requestBody: req.body,
+      filesReceived: req.files ? Object.keys(req.files) : null,
+      userIds: { from: req.user._id, to: req.params.userId || req.body.to },
+    });
+    // Specific error messages
+    let message = "Error sending message";
+    if (error.code === "LIMIT_FILE_SIZE") {
+      message = "File too large";
+    } else if (error.code === "LIMIT_UNEXPECTED_FILE") {
+      message = "Invalid file type";
+    } else if (error.message.includes("upload")) {
+      message = "File upload failed";
+    }
     return res.status(500).json({
-      message: "Error sending message",
+      message,
       success: false,
     });
   }
@@ -469,6 +528,16 @@ exports.react = async (req, res) => {
 
     if (!messageId)
       return res.status(400).json({ message: "messageId required" });
+
+    // Validate emoji: must be a single emoji (not empty or multiple characters)
+    if (
+      !emoji ||
+      typeof emoji !== "string" ||
+      emoji.length !== 1 ||
+      !/\p{Emoji}/u.test(emoji)
+    ) {
+      return res.status(400).json({ message: "Invalid emoji" });
+    }
 
     // Accept either Mongo _id or client messageId
     let message = null;
@@ -539,7 +608,20 @@ exports.react = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error("Error reacting to message:", error);
+    // Detailed logging before error response
+    console.error("Error reacting to message:", {
+      messageId: req.body?.messageId,
+      emoji: req.body?.emoji,
+      userId: req.user._id,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      messageIdFormat: req.body?.messageId
+        ? req.body.messageId.match(/^[0-9a-fA-F]{24}$/)
+          ? "MongoDB ObjectId"
+          : "Client messageId"
+        : "None",
+      findOneSucceeded: false, // Since we're in catch, assume not
+    });
     return res.status(500).json({
       message: "Error reacting to message",
       success: false,
@@ -777,6 +859,194 @@ exports.bulkDelete = async (req, res) => {
   }
 };
 
+// Bulk delete chats
+exports.bulkDeleteChats = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { chatIds = [] } = req.body || {};
+
+    if (!Array.isArray(chatIds) || chatIds.length === 0) {
+      return res.status(400).json({ message: "chatIds required" });
+    }
+
+    // Validation: ensure each chatId is a valid user ID
+    const invalidIds = chatIds.filter((id) => !id.match(/^[0-9a-fA-F]{24}$/));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        message: `Invalid chatIds: ${invalidIds.join(", ")}`,
+        success: false,
+      });
+    }
+
+    const results = [];
+
+    for (const userId of chatIds) {
+      try {
+        // Call existing deleteChat logic
+        const deleteResult = await exports.deleteChat(
+          {
+            user: { _id: me },
+            params: { userId },
+            body: { for: "me" },
+            io: req.io,
+          },
+          {
+            json: (data) => data,
+            status: (code) => ({ json: (data) => ({ ...data, status: code }) }),
+          }
+        );
+        results.push({ userId, success: true });
+        // Emit socket event for successful deletion
+        if (req.io) {
+          req.io.to(String(me)).emit("chat:deleted", {
+            userId,
+            scope: "me",
+          });
+        }
+      } catch (err) {
+        results.push({ userId, success: false, error: err.message });
+      }
+    }
+
+    const totalSuccess = results.filter((r) => r.success).length;
+    const totalFailed = results.length - totalSuccess;
+
+    return res.json({
+      results,
+      totalSuccess,
+      totalFailed,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error bulk deleting chats:", error);
+    return res.status(500).json({
+      message: "Error bulk deleting chats",
+      success: false,
+    });
+  }
+};
+
+// Bulk block users
+exports.bulkBlockUsers = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { userIds = [] } = req.body || {};
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds required" });
+    }
+
+    // Validation: ensure each userId is valid
+    const invalidIds = userIds.filter((id) => !id.match(/^[0-9a-fA-F]{24}$/));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        message: `Invalid userIds: ${invalidIds.join(", ")}`,
+        success: false,
+      });
+    }
+
+    const results = [];
+
+    for (const userId of userIds) {
+      try {
+        // Call existing block logic
+        const blockResult = await exports.block(
+          {
+            user: { _id: me },
+            body: { targetUserId: userId, action: "block" },
+            io: req.io,
+          },
+          {
+            json: (data) => data,
+            status: (code) => ({ json: (data) => ({ ...data, status: code }) }),
+          }
+        );
+        results.push({ userId, success: true });
+      } catch (err) {
+        results.push({ userId, success: false, error: err.message });
+      }
+    }
+
+    const totalSuccess = results.filter((r) => r.success).length;
+    const totalFailed = results.length - totalSuccess;
+
+    return res.json({
+      results,
+      totalSuccess,
+      totalFailed,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error bulk blocking users:", error);
+    return res.status(500).json({
+      message: "Error bulk blocking users",
+      success: false,
+    });
+  }
+};
+
+// Bulk report users
+exports.bulkReportUsers = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { userIds = [] } = req.body || {};
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds required" });
+    }
+
+    // Validation: ensure each userId is valid
+    const invalidIds = userIds.filter((id) => !id.match(/^[0-9a-fA-F]{24}$/));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        message: `Invalid userIds: ${invalidIds.join(", ")}`,
+        success: false,
+      });
+    }
+
+    const results = [];
+
+    for (const userId of userIds) {
+      try {
+        // Call existing report logic with reason
+        const reportResult = await exports.report(
+          {
+            user: { _id: me },
+            body: {
+              targetUserId: userId,
+              reason: req.body.reason || "Bulk report",
+            },
+            io: req.io,
+          },
+          {
+            json: (data) => data,
+            status: (code) => ({ json: (data) => ({ ...data, status: code }) }),
+          }
+        );
+        results.push({ userId, success: true });
+      } catch (err) {
+        results.push({ userId, success: false, error: err.message });
+      }
+    }
+
+    const totalSuccess = results.filter((r) => r.success).length;
+    const totalFailed = results.length - totalSuccess;
+
+    return res.json({
+      results,
+      totalSuccess,
+      totalFailed,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error bulk reporting users:", error);
+    return res.status(500).json({
+      message: "Error bulk reporting users",
+      success: false,
+    });
+  }
+};
+
 // Get shared media
 exports.getMedia = async (req, res) => {
   try {
@@ -987,22 +1257,49 @@ exports.block = async (req, res) => {
     const me = req.user._id;
     const { targetUserId, action } = req.body || {};
 
+    console.log("Block request:", { me, targetUserId, action });
+
     if (!targetUserId)
       return res.status(400).json({ message: "targetUserId required" });
+
+    // Validate targetUserId is a valid MongoDB ObjectId
+    if (!targetUserId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: "Invalid targetUserId format" });
+    }
+
+    // Prevent user from blocking themselves
+    if (String(me) === String(targetUserId)) {
+      return res.status(400).json({ message: "Cannot block yourself" });
+    }
+
     if (!action || !["block", "unblock"].includes(action)) {
       return res
         .status(400)
         .json({ message: "action must be 'block' or 'unblock'" });
     }
 
-    if (action === "block") {
-      await Block.updateOne(
-        { blocker: me, blocked: targetUserId },
-        { $setOnInsert: { blocker: me, blocked: targetUserId } },
-        { upsert: true }
-      );
-    } else {
-      await Block.deleteOne({ blocker: me, blocked: targetUserId });
+    console.log("Executing Block model query for:", {
+      blocker: me,
+      blocked: targetUserId,
+      action,
+    });
+
+    try {
+      if (action === "block") {
+        await Block.updateOne(
+          { blocker: me, blocked: targetUserId },
+          { $setOnInsert: { blocker: me, blocked: targetUserId } },
+          { upsert: true }
+        );
+      } else {
+        await Block.deleteOne({ blocker: me, blocked: targetUserId });
+      }
+    } catch (dbError) {
+      console.error("Database error in block operation:", dbError);
+      return res.status(500).json({
+        message: "Database error during block operation",
+        success: false,
+      });
     }
 
     // Emit real-time update
@@ -1020,7 +1317,7 @@ exports.block = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error("Error updating block:", error);
+    console.error("Error updating block:", error, error.stack);
     return res.status(500).json({
       message: "Error updating block",
       success: false,
@@ -1039,24 +1336,40 @@ exports.report = async (req, res) => {
 
     // Create report notification for admins
     const admins = await User.find({ role: "admin" }).select("_id");
+    if (admins.length === 0) {
+      console.warn("No admin users found to report to");
+      return res.json({
+        message: "Report submitted successfully",
+        success: true,
+      });
+    }
+
     const reportContent = `User report: ${me} reported ${targetUserId}${
       reason ? ` - Reason: ${reason}` : ""
     }${messageId ? ` - Message: ${messageId}` : ""}`;
 
-    await Promise.all(
-      admins.map((admin) =>
-        NotificationService.createNotification({
-          recipientId: admin._id,
-          senderId: me,
-          type: "message",
-          content: reportContent,
-          relatedId: messageId || targetUserId,
-          onModel: messageId ? "Message" : undefined,
-        })
-      )
-    );
+    try {
+      await Promise.allSettled(
+        admins.map((admin) =>
+          NotificationService.createNotification({
+            recipientId: admin._id,
+            senderId: me,
+            type: "message",
+            content: reportContent,
+            relatedId: messageId || targetUserId,
+            onModel: messageId ? "Message" : "User",
+          })
+        )
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating notifications for report:",
+        notificationError
+      );
+      // Continue and return success anyway, as the report intent was valid
+    }
 
-    return res.status(201).json({
+    return res.json({
       message: "Report submitted successfully",
       success: true,
     });
@@ -1064,6 +1377,7 @@ exports.report = async (req, res) => {
     console.error("Error reporting user:", error);
     return res.status(500).json({
       message: "Error reporting user",
+      error: error.message,
       success: false,
     });
   }
@@ -1094,6 +1408,34 @@ exports.getMessageInfo = async (req, res) => {
       ? message.attachments.includes(`pin:${me}`)
       : false;
 
+    // Reaction count summary
+    const reactionSummary = {};
+    if (Array.isArray(message.reactions)) {
+      message.reactions.forEach((r) => {
+        if (!r.userId || !r.userId._id) return; // Null check for userId
+        if (r.emoji) {
+          if (!reactionSummary[r.emoji]) {
+            reactionSummary[r.emoji] = { emoji: r.emoji, count: 0, users: [] };
+          }
+          reactionSummary[r.emoji].count += 1;
+          reactionSummary[r.emoji].users.push({
+            _id: r.userId._id,
+            name: r.userId.name,
+            username: r.userId.username,
+            avatarUrl: r.userId.avatarUrl || "/default-avatar.png", // Fallback avatar URL
+          });
+        }
+      });
+    }
+    const reactionsArray = Object.values(reactionSummary);
+
+    // My reaction
+    const myReaction = Array.isArray(message.reactions)
+      ? message.reactions.find(
+          (r) => r.userId && r.userId._id && String(r.userId._id) === String(me)
+        )?.emoji || null
+      : null;
+
     const messageInfo = {
       id: message._id,
       content: message.content,
@@ -1102,7 +1444,8 @@ exports.getMessageInfo = async (req, res) => {
       timestamp: message.createdAt,
       deliveredAt: message.deliveredAt,
       readAt: message.readAt,
-      reactions: message.reactions,
+      reactions: reactionsArray,
+      myReaction,
       isStarred,
       isPinned,
       isEdited: false,

@@ -1,143 +1,22 @@
-/* Sticky, animated, glassmorphism navbar */
-.navbar-root {
-  position: sticky;
-  top: 0;
-  width: 100vw;
-  background: rgba(20,20,20,0.95);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 32px;
-  height: 64px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  transition: background 0.3s, box-shadow 0.3s, border-radius 0.3s;
-}
-
-.navbar-title {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #fff;
-  margin-left: 12px;
-  letter-spacing: 1px;
-}
-
-.navbar-root.navbar-glass {
-  background: rgba(255,255,255,0.7);
-  box-shadow: 0 8px 32px 0 rgba(31,38,135,0.17);
-  backdrop-filter: blur(12px);
-  border-radius: 0 0 24px 24px;
-  transition: background 0.3s, box-shadow 0.3s, border-radius 0.3s;
-}
-
-.navbar-logo {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-
-.navbar-logo:hover {
-  transform: scale(1.05);
-}
-
-.navbar-links {
-  display: flex;
-  gap: 24px;
-}
-
-.navbar-link {
-  color: #fff;
-  font-weight: 500;
-  text-decoration: none;
-  font-size: 1.1rem;
-  padding: 8px 16px;
-  border-radius: 8px;
-  transition: background 0.2s, color 0.2s;
-}
-
-.navbar-link:hover {
-  background: rgba(255,255,255,0.12);
-  color: #ffd700;
-}
-
-.navbar-link.active {
-  color: #ffd700;
-  background: rgba(255,255,255,0.18);
-}
-
-/* ===== Generic icon tile base ===== */
-.navbar-icon-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px; /* matches the search button visual tile size */
-  width: 44px;
-  margin-left: 12px;
-  border-radius: 14px; /* pill-ish rounded square like your search */
-  background: transparent;
-  color: #4f46e5; /* indigo-600 base */
-  transition:
-    transform 180ms ease,
-    background-color 220ms ease,
-    color 220ms ease,
-    box-shadow 220ms ease;
-  outline: none;
-}
-/* Search icon specific glow */
-.search-icon:hover {
-  /* soft, glassy backdrop behind icon */
-  background: rgba(99,102,241,0.12); /* indigo at ~12% */
-  color: #7c3aed; /* purple-600 accent on hover */
-  transform: translateY(-1px) rotate(6deg) scale(1.06);
-  box-shadow:
-    0 6px 18px rgba(31,38,135,0.18),
-    inset 0 1px 0 rgba(255,255,255,0.38);
-  backdrop-filter: blur(6px);
-}
-
-.navbar-icon-btn:active {
-  transform: translateY(0) rotate(4deg) scale(0.98);
-}
-
-.navbar-icon-btn:focus-visible {
-  box-shadow:
-    0 0 0 4px rgba(99,102,241,0.20),
-    0 6px 18px rgba(31,38,135,0.18);
-  background: rgba(99,102,241,0.10);
-}
-
-/* icon wobble like the search hover */
-.navbar-icon-btn .icon {
-  transition: transform 200ms ease, color 220ms ease;
-}
-
-.search-icon:hover .icon {
-  transform: rotate(10deg);
-}
-
-/* Message icon and its badge are isolated */
-.message-icon {
-  position: relative;
-}
 .message-badge,
 .unread-badge {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 18px;
-  height: 18px;
-  line-height: 18px;
+  top: -8px;
+  right: -8px;
+  min-width: 24px;
+  height: 24px;
+  line-height: 24px;
   padding: 0 4px;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   color: #fff;
-  background: linear-gradient(135deg, #2563eb, #1e40af); /* blue badge */
+  background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
   border-radius: 9999px;
   text-align: center;
-  z-index: 5;
-  border: 2px solid #fff;
+  z-index: 10;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 211, 102, 0.5), 0 0 0 2px rgba(255, 255, 255, 0.9);
+  animation: badge-pulse 0.6s ease-out;
 }
 
 /* Respect prefers-reduced-motion */
@@ -154,4 +33,47 @@
 /* Optional: when navbar is in glass mode, keep icon color consistent */
 .navbar-root.navbar-glass .navbar-icon-btn {
   color: #4f46e5;
+}
+
+.message-icon {
+  position: relative;
+  display: inline-flex;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.message-icon:hover {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 8px rgba(37, 211, 102, 0.3));
+}
+
+.message-icon:active {
+  transform: scale(0.95);
+}
+
+.badge-new {
+  animation: badge-pulse-continuous 1s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes badge-pulse-continuous {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
 }

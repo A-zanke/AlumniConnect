@@ -1,3 +1,4 @@
+// c:/Users/ASUS/Downloads/Telegram Desktop/AlumniConnect/AlumniConnect/backend/routes/messagesRoutes.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
@@ -21,6 +22,9 @@ const {
   getBlocks,
   searchMessages,
   getStarredMessages,
+  bulkDeleteChats,
+  bulkBlockUsers,
+  bulkReportUsers,
 } = require("../controllers/messagesController");
 
 // Ensure upload directories exist
@@ -123,6 +127,23 @@ const handleMulterError = (error, req, res, next) => {
   }
 
   next(error);
+};
+
+// Validation middleware for bulk actions
+const validateBulkAction = (req, res, next) => {
+  const { action, userIds } = req.body;
+  if (!action || !["delete", "block", "report"].includes(action)) {
+    return res.status(400).json({
+      message: "Invalid action. Must be 'delete', 'block', or 'report'",
+      success: false,
+    });
+  }
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res
+      .status(400)
+      .json({ message: "userIds must be a non-empty array", success: false });
+  }
+  next();
 };
 
 // Routes
@@ -540,6 +561,101 @@ router.put("/settings/:userId", protect, async (req, res) => {
     console.error("Error updating conversation settings:", error);
     return res.status(500).json({
       message: "Error updating conversation settings",
+      success: false,
+    });
+  }
+});
+
+// Bulk actions route
+router.post("/bulk-actions", protect, validateBulkAction, async (req, res) => {
+  try {
+    const { action, userIds } = req.body;
+
+    let result;
+    switch (action) {
+      case "delete":
+        result = await bulkDeleteChats(req, res);
+        break;
+      case "block":
+        result = await bulkBlockUsers(req, res);
+        break;
+      case "report":
+        result = await bulkReportUsers(req, res);
+        break;
+    }
+
+    // Since the controller functions handle the response, we don't need to return here
+    // But to match the requirement, we can return the result if needed
+    // Actually, the controller functions call res.json, so we can just let them handle it
+  } catch (error) {
+    console.error("Error in bulk actions:", error);
+    return res.status(500).json({
+      message: "Error in bulk actions",
+      success: false,
+    });
+  }
+});
+
+// Bulk delete chats
+router.delete("/bulk-delete-chats", protect, bulkDeleteChats);
+
+// Bulk block users
+router.post("/bulk-block", protect, bulkBlockUsers);
+
+// Bulk report users
+router.post("/bulk-report", protect, bulkReportUsers);
+
+// Health check route
+router.get("/health", async (req, res) => {
+  try {
+    const healthStatus = {
+      fileSystem: false,
+      database: false,
+      socketIO: false,
+    };
+
+    // Check uploads directory
+    const uploadsDir = path.join(__dirname, "../uploads");
+    try {
+      await fs.promises.access(
+        uploadsDir,
+        fs.constants.F_OK | fs.constants.W_OK
+      );
+      healthStatus.fileSystem = true;
+    } catch (err) {
+      console.error("Uploads directory check failed:", err);
+    }
+
+    // Check database connection
+    try {
+      const mongoose = require("mongoose");
+      if (mongoose.connection.readyState === 1) {
+        healthStatus.database = true;
+      }
+    } catch (err) {
+      console.error("Database check failed:", err);
+    }
+
+    // Check socket.io
+    if (req.io) {
+      healthStatus.socketIO = true;
+    }
+
+    const overallStatus =
+      healthStatus.fileSystem && healthStatus.database && healthStatus.socketIO
+        ? "healthy"
+        : "unhealthy";
+
+    return res.json({
+      status: overallStatus,
+      checks: healthStatus,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error in health check:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Health check failed",
       success: false,
     });
   }

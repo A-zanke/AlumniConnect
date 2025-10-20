@@ -1,5 +1,5 @@
-const Notification = require('../models/Notification');
-const User = require('../models/User');
+const Notification = require("../models/Notification");
+const User = require("../models/User");
 
 class NotificationService {
   static async createNotification({
@@ -8,13 +8,42 @@ class NotificationService {
     type,
     content,
     relatedId = null,
-    onModel = null
+    onModel = null,
   }) {
     try {
+      // Validate required parameters
+      if (!recipientId || !senderId || !type || !content) {
+        console.error(
+          "Missing required parameters for notification creation:",
+          { recipientId, senderId, type, content }
+        );
+        return null;
+      }
+
+      // Validate onModel if provided
+      if (
+        onModel &&
+        ![
+          "Message",
+          "User",
+          "Post",
+          "Event",
+          "ForumPost",
+          "ForumComment",
+        ].includes(onModel)
+      ) {
+        console.error("Invalid onModel value:", onModel);
+        return null;
+      }
+
       // Check if recipient exists
       const recipient = await User.findById(recipientId);
       if (!recipient) {
-        throw new Error('Recipient not found');
+        console.error(
+          "Recipient not found for notification creation:",
+          recipientId
+        );
+        return null;
       }
 
       // Only include onModel and relatedId if provided
@@ -22,7 +51,7 @@ class NotificationService {
         recipient: recipientId,
         sender: senderId,
         type,
-        content
+        content,
       };
       if (relatedId && onModel) {
         notificationData.relatedId = relatedId;
@@ -33,12 +62,13 @@ class NotificationService {
       const notification = await Notification.create(notificationData);
 
       // Populate sender details
-      await notification.populate('sender', 'name username avatarUrl');
+      await notification.populate("sender", "name username avatarUrl");
 
       return notification;
     } catch (error) {
-      console.error('Error creating notification:', error);
-      throw error;
+      console.error("Error creating notification:", error);
+      // Fallback: log error but don't fail parent operation
+      return null;
     }
   }
 
@@ -46,10 +76,10 @@ class NotificationService {
     try {
       return await Notification.countDocuments({
         recipient: userId,
-        read: false
+        read: false,
       });
     } catch (error) {
-      console.error('Error getting unread count:', error);
+      console.error("Error getting unread count:", error);
       throw error;
     }
   }
@@ -63,12 +93,12 @@ class NotificationService {
       );
 
       if (!notification) {
-        throw new Error('Notification not found');
+        throw new Error("Notification not found");
       }
 
       return notification;
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      console.error("Error marking notification as read:", error);
       throw error;
     }
   }
@@ -80,7 +110,7 @@ class NotificationService {
         { read: true }
       );
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error("Error marking all notifications as read:", error);
       throw error;
     }
   }
@@ -89,19 +119,19 @@ class NotificationService {
     try {
       const notification = await Notification.findOneAndDelete({
         _id: notificationId,
-        recipient: userId
+        recipient: userId,
       });
 
       if (!notification) {
-        throw new Error('Notification not found');
+        throw new Error("Notification not found");
       }
 
       return notification;
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      console.error("Error deleting notification:", error);
       throw error;
     }
   }
 }
 
-module.exports = NotificationService; 
+module.exports = NotificationService;

@@ -1,21 +1,21 @@
-const Notification = require('../models/Notification');
+const Notification = require("../models/Notification");
 
 // Create notification
 exports.createNotification = async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(401).json({ message: "Not authorized" });
     }
 
     const { recipient, type, content, relatedId, onModel } = req.body;
 
     if (!recipient || !type) {
-      return res.status(400).json({ message: 'Recipient and type required' });
+      return res.status(400).json({ message: "Recipient and type required" });
     }
 
     // Ensure content is always string
     const safeContent =
-      typeof content === 'string' ? content : JSON.stringify(content);
+      typeof content === "string" ? content : JSON.stringify(content);
 
     const notification = await Notification.create({
       recipient,
@@ -24,13 +24,23 @@ exports.createNotification = async (req, res) => {
       content: safeContent,
       relatedId: relatedId || null,
       onModel: onModel || null,
-      status: 'pending', // NEW FIELD: pending, accepted, declined
+      status: "pending", // NEW FIELD: pending, accepted, declined
     });
+
+    // Populate sender data for emission
+    await notification.populate("sender", "name username avatarUrl");
+
+    // Emit socket event to recipient
+    if (req.io) {
+      req.io.to(String(recipient)).emit("notification:new", notification);
+    }
 
     res.json(notification);
   } catch (error) {
-    console.error('Error creating notification:', error);
-    res.status(500).json({ message: error.message || 'Failed to create notification' });
+    console.error("Error creating notification:", error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to create notification" });
   }
 };
 
@@ -39,13 +49,13 @@ exports.getNotifications = async (req, res) => {
   try {
     // Guard to avoid "Cannot read properties of null (reading '_id')"
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(401).json({ message: "Not authorized" });
     }
 
     const notifications = await Notification.find({
       recipient: req.user._id,
     })
-      .populate('sender', 'name username avatarUrl')
+      .populate("sender", "name username avatarUrl")
       .sort({ createdAt: -1 })
       .limit(50);
 
@@ -53,13 +63,15 @@ exports.getNotifications = async (req, res) => {
     const safe = notifications.map((n) => ({
       ...n.toObject(),
       content:
-        typeof n.content === 'string' ? n.content : JSON.stringify(n.content),
+        typeof n.content === "string" ? n.content : JSON.stringify(n.content),
     }));
 
     res.json({ data: safe });
   } catch (error) {
-    console.error('Error fetching notifications:', error);
-    res.status(500).json({ message: error.message || 'Failed to fetch notifications' });
+    console.error("Error fetching notifications:", error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to fetch notifications" });
   }
 };
 
@@ -67,7 +79,7 @@ exports.getNotifications = async (req, res) => {
 exports.markAsRead = async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(401).json({ message: "Not authorized" });
     }
 
     const notif = await Notification.findOneAndUpdate(
@@ -76,11 +88,22 @@ exports.markAsRead = async (req, res) => {
       { new: true }
     );
 
-    if (!notif) return res.status(404).json({ message: 'Notification not found' });
+    if (!notif)
+      return res.status(404).json({ message: "Notification not found" });
+
+    // Emit socket event for read status
+    if (req.io) {
+      req.io
+        .to(String(req.user._id))
+        .emit("notification:read", { notificationId: req.params.id });
+    }
+
     res.json(notif);
   } catch (error) {
-    console.error('Error marking notification as read:', error);
-    res.status(500).json({ message: error.message || 'Failed to update notification' });
+    console.error("Error marking notification as read:", error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to update notification" });
   }
 };
 
@@ -88,18 +111,31 @@ exports.markAsRead = async (req, res) => {
 exports.markAllAsRead = async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(401).json({ message: "Not authorized" });
     }
+
+    // Get count of unread notifications before marking
+    const count = await Notification.countDocuments({
+      recipient: req.user._id,
+      read: false,
+    });
 
     await Notification.updateMany(
       { recipient: req.user._id, read: false },
       { $set: { read: true, readAt: new Date() } }
     );
 
-    res.json({ message: 'All notifications marked as read' });
+    // Emit socket event with count
+    if (req.io) {
+      req.io.to(String(req.user._id)).emit("notification:read", { count });
+    }
+
+    res.json({ message: "All notifications marked as read" });
   } catch (error) {
-    console.error('Error marking all notifications read:', error);
-    res.status(500).json({ message: error.message || 'Failed to update notifications' });
+    console.error("Error marking all notifications read:", error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to update notifications" });
   }
 };
 
@@ -107,7 +143,7 @@ exports.markAllAsRead = async (req, res) => {
 exports.deleteNotification = async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(401).json({ message: "Not authorized" });
     }
 
     const notif = await Notification.findOneAndDelete({
@@ -115,11 +151,14 @@ exports.deleteNotification = async (req, res) => {
       recipient: req.user._id,
     });
 
-    if (!notif) return res.status(404).json({ message: 'Notification not found' });
-    res.json({ message: 'Notification deleted' });
+    if (!notif)
+      return res.status(404).json({ message: "Notification not found" });
+    res.json({ message: "Notification deleted" });
   } catch (error) {
-    console.error('Error deleting notification:', error);
-    res.status(500).json({ message: error.message || 'Failed to delete notification' });
+    console.error("Error deleting notification:", error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to delete notification" });
   }
 };
 
@@ -127,7 +166,7 @@ exports.deleteNotification = async (req, res) => {
 exports.respondToRequest = async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(401).json({ message: "Not authorized" });
     }
 
     const { action } = req.body; // "accept" or "decline"
@@ -135,31 +174,38 @@ exports.respondToRequest = async (req, res) => {
     const notif = await Notification.findOne({
       _id: req.params.id,
       recipient: req.user._id,
-      type: 'connection_request',
-      status: 'pending',
+      type: "connection_request",
+      status: "pending",
     });
 
-    if (!notif) return res.status(404).json({ message: 'Request not found or already handled' });
+    if (!notif)
+      return res
+        .status(404)
+        .json({ message: "Request not found or already handled" });
 
-    if (action === 'accept') {
-      notif.status = 'accepted';
+    if (action === "accept") {
+      notif.status = "accepted";
       notif.read = true;
       notif.readAt = new Date();
-      notif.type = 'connection_accepted'; // change type for history
-      notif.content = `You are now connected with ${notif.sender.name || 'someone'}`;
+      notif.type = "connection_accepted"; // change type for history
+      notif.content = `You are now connected with ${
+        notif.sender.name || "someone"
+      }`;
       await notif.save();
 
-      return res.json({ message: 'Request accepted', notification: notif });
+      return res.json({ message: "Request accepted", notification: notif });
     }
 
-    if (action === 'decline') {
+    if (action === "decline") {
       await Notification.deleteOne({ _id: notif._id });
-      return res.json({ message: 'Request declined and removed' });
+      return res.json({ message: "Request declined and removed" });
     }
 
-    res.status(400).json({ message: 'Invalid action' });
+    res.status(400).json({ message: "Invalid action" });
   } catch (error) {
-    console.error('Error responding to request:', error);
-    res.status(500).json({ message: error.message || 'Failed to respond to request' });
+    console.error("Error responding to request:", error);
+    res
+      .status(500)
+      .json({ message: error.message || "Failed to respond to request" });
   }
 };

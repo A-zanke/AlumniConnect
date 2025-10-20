@@ -101,7 +101,9 @@ const Navbar = () => {
 
     return () => {
       mounted = false;
-      try { s.disconnect(); } catch {}
+      try {
+        s.disconnect();
+      } catch {}
       socketRef.current = null;
     };
   }, [user]);
@@ -343,18 +345,24 @@ const Navbar = () => {
                 transition={{ delay: 0.3 }}
               >
                 {/* Messages */}
-                <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}>
+                <motion.div
+                  whileHover={{ scale: 1.06 }}
+                  whileTap={{ scale: 0.94 }}
+                >
                   <Link
                     to="/messages"
-                    className="navbar-icon-btn message-icon group relative rounded-xl px-3 py-2 backdrop-blur border border-white/40 transition-colors"
+                    className="navbar-icon-btn message-icon group relative inline-flex items-center justify-center rounded-xl px-3 py-2 backdrop-blur border border-white/40 transition-colors"
                   >
                     <FiMessageSquare
                       size={20}
                       className="icon transition-colors duration-300 text-slate-800 group-hover:text-indigo-700"
                     />
                     {msgUnreadTotal > 0 && (
-                      <span className="message-badge" aria-label={`${msgUnreadTotal} unread messages`}>
-                        {msgUnreadTotal > 99 ? '99+' : msgUnreadTotal}
+                      <span
+                        className="message-badge"
+                        aria-label={`${msgUnreadTotal} unread messages`}
+                      >
+                        {msgUnreadTotal > 99 ? "99+" : msgUnreadTotal}
                       </span>
                     )}
                   </Link>

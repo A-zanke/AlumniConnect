@@ -121,6 +121,11 @@ const MessagesPage = () => {
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [reactionsModalFor, setReactionsModalFor] = useState(null);
   const [reactionsModalItems, setReactionsModalItems] = useState([]);
+  const [reactionsModalData, setReactionsModalData] = useState(null);
+  const [showSidebarMenu, setShowSidebarMenu] = useState(false);
+  const [chatSelectionMode, setChatSelectionMode] = useState(false);
+  const [showUnblockDialog, setShowUnblockDialog] = useState(false);
+  const [showUnblockSuccess, setShowUnblockSuccess] = useState(false);
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
@@ -283,16 +288,18 @@ const MessagesPage = () => {
                 status: "delivered",
               },
             ]);
-            if (s && conversationId) s.emit("messages:markRead", { conversationId });
+            if (s && conversationId)
+              s.emit("messages:markRead", { conversationId });
             return;
           }
 
           setUnreadByConversationId((prev) => {
             const next = { ...prev };
-            if (conversationId) next[conversationId] = Math.min(
-              1000,
-              (prev[conversationId] || 0) + 1
-            );
+            if (conversationId)
+              next[conversationId] = Math.min(
+                1000,
+                (prev[conversationId] || 0) + 1
+              );
             return next;
           });
         }
@@ -334,6 +341,22 @@ const MessagesPage = () => {
             m.id === messageId ? { ...m, reactions: reactions || [] } : m
           )
         );
+        // Update connections' last message preview if applicable
+        setConnections((prev) =>
+          prev.map((conn) => {
+            if (conn.lastMessage && conn.lastMessage.id === messageId) {
+              const updatedPreview = getLastMessagePreview({
+                ...conn,
+                lastMessage: {
+                  ...conn.lastMessage,
+                  reactions: reactions || [],
+                },
+              });
+              return { ...conn, lastMessage: updatedPreview };
+            }
+            return conn;
+          })
+        );
       });
 
       // Unread counters updates
@@ -365,7 +388,11 @@ const MessagesPage = () => {
       // Typing indicators
       s.on("typing:update", ({ from, typing }) => {
         const currentSelected = selectedUserRef.current;
-        if (from !== user._id && currentSelected && from === currentSelected._id) {
+        if (
+          from !== user._id &&
+          currentSelected &&
+          from === currentSelected._id
+        ) {
           setTypingUser(currentSelected.name);
           setIsTyping(!!typing);
           if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -497,7 +524,10 @@ const MessagesPage = () => {
         if (!idStr || !seenIdsRef.current.has(idStr)) {
           if (idStr) seenIdsRef.current.add(idStr);
           if (serverMessage) {
-            setMessages((prev) => [...prev, { ...serverMessage, status: "sent" }]);
+            setMessages((prev) => [
+              ...prev,
+              { ...serverMessage, status: "sent" },
+            ]);
           }
         }
         setNewMessage("");
@@ -542,16 +572,19 @@ const MessagesPage = () => {
       const token = localStorage.getItem("token");
       const resp = await axios.post(
         `${baseURL}/api/messages/react`,
-        { messageId, emoji },
+        { messageId: String(messageId), emoji },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === messageId ? { ...m, reactions: resp.data.reactions } : m
+          String(m.id) === String(messageId)
+            ? { ...m, reactions: resp.data.reactions }
+            : m
         )
       );
     } catch (e) {
-      // Silent failure: UX like WhatsApp (no blocking alert)
+      console.error("Reaction error:", e.response?.data || e.message);
+      toast.error("Failed to react to message");
     }
   };
 
@@ -623,9 +656,12 @@ const MessagesPage = () => {
           next.delete(selectedUser._id);
           return next;
         });
+        setShowUnblockSuccess(true);
       }
+      toast.success(block ? "User blocked" : "User unblocked");
     } catch (e) {
-      // Silent failure as requested
+      console.error("Block error:", e.response?.data || e.message);
+      toast.error(e.response?.data?.message || "Failed to block/unblock user");
     }
   };
 
@@ -638,9 +674,10 @@ const MessagesPage = () => {
         { targetUserId: selectedUser._id, reason },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // silent success
+      toast.success("Report submitted successfully");
     } catch (e) {
-      // silent failure
+      console.error("Report error:", e.response?.data || e.message);
+      toast.error(e.response?.data?.message || "Failed to submit report");
     }
   };
 
@@ -659,6 +696,71 @@ const MessagesPage = () => {
     setImagePreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  const toggleChatSelection = (id) => {
+    setSelectedChatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDeleteChats = async () => {
+    try {
+      const ids = Array.from(selectedChatIds);
+      if (ids.length === 0) return;
+      const token = localStorage.getItem("token");
+      await axios.delete(`${baseURL}/api/messages/bulk-delete-chats`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { chatIds: ids },
+      });
+      setConnections((prev) => prev.filter((c) => !ids.includes(c._id)));
+      setSelectedChatIds(new Set());
+      setChatSelectionMode(false);
+      toast.success(`${ids.length} chats deleted`);
+    } catch (e) {
+      toast.error("Failed to delete chats");
+    }
+  };
+
+  const handleBulkBlockUsers = async () => {
+    try {
+      const ids = Array.from(selectedChatIds);
+      if (ids.length === 0) return;
+      const token = localStorage.getItem("token");
+      await axios.post(
+        `${baseURL}/api/messages/bulk-block`,
+        { userIds: ids },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setBlockedUsers((prev) => new Set([...prev, ...ids]));
+      setSelectedChatIds(new Set());
+      setChatSelectionMode(false);
+      toast.success(`${ids.length} users blocked`);
+    } catch (e) {
+      toast.error("Failed to block users");
+    }
+  };
+
+  const handleBulkReportUsers = async () => {
+    try {
+      const ids = Array.from(selectedChatIds);
+      if (ids.length === 0) return;
+      const reason = prompt("Report reason?") || "";
+      const token = localStorage.getItem("token");
+      await axios.post(
+        `${baseURL}/api/messages/bulk-report`,
+        { userIds: ids, reason },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSelectedChatIds(new Set());
+      setChatSelectionMode(false);
+      toast.success(`${ids.length} users reported`);
+    } catch (e) {
+      toast.error("Failed to report users");
     }
   };
 
@@ -713,6 +815,48 @@ const MessagesPage = () => {
     return <div className="whitespace-pre-wrap break-words">{text}</div>;
   };
 
+  // Helper function for reaction preview
+  const getLastMessagePreview = (connection) => {
+    if (!connection.lastMessage) return "";
+    const lastMsg = connection.lastMessage;
+    const userReaction = Array.isArray(lastMsg.reactions)
+      ? lastMsg.reactions.find((r) => String(r.userId) === String(user._id))
+      : null;
+    if (userReaction) {
+      const emoji = userReaction.emoji;
+      if (lastMsg.attachments && lastMsg.attachments.length > 0) {
+        const attachment = lastMsg.attachments[0];
+        const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment);
+        const preview = isImage ? "📷 Photo" : "📄 Document";
+        return `You reacted ${emoji} to ${preview}`;
+      } else {
+        const content = lastMsg.content || "";
+        const truncated =
+          content.length > 30 ? content.substring(0, 30) + "..." : content;
+        return `You reacted ${emoji} to "${truncated}"`;
+      }
+    }
+    return lastMsg.content || "";
+  };
+
+  // Function to open reactions modal
+  const openReactionsModal = async (messageId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const resp = await axios.get(
+        `${baseURL}/api/messages/info/${messageId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setReactionsModalData(resp.data.messageInfo);
+      setReactionsModalFor(messageId);
+    } catch (e) {
+      console.error("Failed to fetch reactions:", e);
+      toast.error("Failed to load reactions");
+    }
+  };
+
   // Close menus on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -720,11 +864,19 @@ const MessagesPage = () => {
       setOpenHeaderMenu(false);
       setActiveReactionFor(null);
       setShowEmojiPicker(false);
+      setShowSidebarMenu(false);
     };
 
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, []);
+
+  useEffect(() => {
+    if (showUnblockSuccess) {
+      const timer = setTimeout(() => setShowUnblockSuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showUnblockSuccess]);
 
   if (loading && connections.length === 0) {
     return (
@@ -740,16 +892,55 @@ const MessagesPage = () => {
       <div
         className={`${
           showSidebar ? "flex" : "hidden"
-        } lg:flex w-full lg:w-80 flex-col bg-white border-r border-gray-200`}
+        } lg:flex w-full lg:w-80 flex-col bg-white border-r border-gray-200 ${
+          chatSelectionMode ? "bg-green-50" : ""
+        }`}
       >
         {/* Header */}
         <div className="p-4 bg-gray-50 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-gray-800">Chats</h1>
             <div className="flex items-center gap-2">
-              <button className="p-2 rounded-full hover:bg-gray-200">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSidebarMenu(!showSidebarMenu);
+                }}
+                className="p-2 rounded-full hover:bg-gray-200"
+              >
                 <FiMoreVertical className="text-gray-600" />
               </button>
+              {showSidebarMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  <button
+                    onClick={() => {
+                      setChatSelectionMode(true);
+                      setShowSidebarMenu(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
+                  >
+                    <FiCheckSquare /> Select chats
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Settings action
+                      setShowSidebarMenu(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
+                  >
+                    <FiSettings /> Settings
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Archived action
+                      setShowSidebarMenu(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
+                  >
+                    <FiArchive /> Archived
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -793,20 +984,36 @@ const MessagesPage = () => {
                     selectedUser?._id === connection.user?._id
                       ? "bg-green-50 border-l-4 border-l-green-500"
                       : ""
+                  } ${
+                    chatSelectionMode && selectedChatIds.has(connection._id)
+                      ? "bg-green-100"
+                      : ""
                   }`}
                   onClick={() => {
-                    setSelectedUser(connection.user);
-                    setShowSidebar(false);
-                    // Optimistically clear unread count for this conversation
-                    if (connection.threadId) {
-                      setUnreadByConversationId((prev) => ({
-                        ...prev,
-                        [connection.threadId]: 0,
-                      }));
+                    if (chatSelectionMode) {
+                      toggleChatSelection(connection._id);
+                    } else {
+                      setSelectedUser(connection.user);
+                      setShowSidebar(false);
+                      // Optimistically clear unread count for this conversation
+                      if (connection.threadId) {
+                        setUnreadByConversationId((prev) => ({
+                          ...prev,
+                          [connection.threadId]: 0,
+                        }));
+                      }
                     }
                   }}
                 >
                   <div className="flex items-center gap-3">
+                    {chatSelectionMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedChatIds.has(connection._id)}
+                        onChange={() => toggleChatSelection(connection._id)}
+                        className="w-4 h-4 text-green-600 rounded"
+                      />
+                    )}
                     <div className="relative">
                       <img
                         src={
@@ -836,7 +1043,7 @@ const MessagesPage = () => {
 
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-600 truncate">
-                          {connection.lastMessage || "No messages yet"}
+                          {getLastMessagePreview(connection)}
                         </p>
 
                         {/* Unread badge */}
@@ -846,14 +1053,26 @@ const MessagesPage = () => {
                             ? unreadByConversationId[threadId] || 0
                             : 0;
                           const hide =
-                            selectedUser?._id === connection.user?._id;
+                            selectedUser?._id === connection.user?._id ||
+                            count <= 0;
 
-                          if (!count || count <= 0 || hide) return null;
+                          if (hide) return null;
 
                           return (
-                            <span className="bg-green-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                            <motion.span
+                              initial={{ scale: 1 }}
+                              animate={{ scale: count > 0 ? 1 : 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="bg-green-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center font-bold"
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, #25d366 0%, #128c7e 100%)",
+                                boxShadow:
+                                  "0 3px 10px rgba(37, 211, 102, 0.5), 0 0 0 3px rgba(255, 255, 255, 1)",
+                              }}
+                            >
                               {count > 99 ? "99+" : count}
-                            </span>
+                            </motion.span>
                           );
                         })()}
                       </div>
@@ -863,6 +1082,44 @@ const MessagesPage = () => {
               ))
           )}
         </div>
+
+        {/* Bulk Actions Bar */}
+        {chatSelectionMode && selectedChatIds.size > 0 && (
+          <div className="p-4 bg-white border-t-2 border-green-500 flex flex-col gap-4 z-100 shadow-lg">
+            <div className="text-sm font-semibold text-green-700">
+              {selectedChatIds.size} selected
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={handleBulkDeleteChats}
+                className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-semibold"
+              >
+                Delete
+              </button>
+              <button
+                onClick={handleBulkBlockUsers}
+                className="px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm font-semibold"
+              >
+                Block
+              </button>
+              <button
+                onClick={handleBulkReportUsers}
+                className="px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-sm font-semibold"
+              >
+                Report
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedChatIds(new Set());
+                  setChatSelectionMode(false);
+                }}
+                className="px-3 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 text-sm font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Chat Area */}
@@ -948,7 +1205,7 @@ const MessagesPage = () => {
                           setSelectionMode(!selectionMode);
                           setOpenHeaderMenu(false);
                         }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
+                        className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
                       >
                         <FiCheckSquare /> Select messages
                       </button>
@@ -1090,19 +1347,29 @@ const MessagesPage = () => {
                                           /\.(jpg|jpeg|png|gif|webp)$/i.test(
                                             attachment
                                           );
-                                        const filename = attachment.split('/').pop();
+                                        const filename = attachment
+                                          .split("/")
+                                          .pop();
 
                                         if (isImage) {
                                           return (
-                                            <img
-                                              key={idx}
-                                              src={attachment}
-                                              alt="attachment"
-                                              className="max-w-full h-auto rounded-lg cursor-pointer"
-                                              onClick={() =>
-                                                setLightboxSrc(attachment)
-                                              }
-                                            />
+                                            <div key={idx} className="relative">
+                                              <img
+                                                src={attachment}
+                                                alt="attachment"
+                                                className="max-w-full h-auto rounded-lg cursor-pointer"
+                                                onClick={() =>
+                                                  setLightboxSrc(attachment)
+                                                }
+                                              />
+                                              <a
+                                                href={attachment}
+                                                download
+                                                className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
+                                              >
+                                                <FiDownload size={16} />
+                                              </a>
+                                            </div>
                                           );
                                         }
 
@@ -1118,12 +1385,12 @@ const MessagesPage = () => {
                                               className="text-blue-600 hover:underline flex items-center gap-2"
                                             >
                                               <FiPaperclip />
-                                              {filename || 'Attachment'}
+                                              {filename || "Attachment"}
                                             </a>
                                             <a
                                               href={attachment}
                                               download
-                                              className="ml-3 text-gray-700 hover:text-gray-900 px-2 py-1 border rounded"
+                                              className="ml-3 text-gray-700 hover:text-gray-900 px-2 py-1 border rounded hover:bg-gray-200"
                                             >
                                               <FiDownload className="inline-block" />
                                             </a>
@@ -1157,29 +1424,18 @@ const MessagesPage = () => {
                                 return (
                                   <button
                                     type="button"
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      try {
-                                        const token = localStorage.getItem("token");
-                                        const resp = await axios.get(
-                                          `${baseURL}/api/messages/info/${message.id}`,
-                                          { headers: { Authorization: `Bearer ${token}` } }
-                                        );
-                                        const list = Array.isArray(resp?.data?.messageInfo?.reactions)
-                                          ? resp.data.messageInfo.reactions
-                                          : [];
-                                        setReactionsModalItems(list);
-                                        setReactionsModalFor(message);
-                                      } catch {
-                                        // ignore
-                                      }
-                                    }}
+                                    onClick={() =>
+                                      openReactionsModal(message.id)
+                                    }
                                     className={`absolute -bottom-2 ${
                                       isMine ? "right-2" : "left-2"
                                     } flex gap-1 bg-white/90 rounded-full border border-gray-200 px-1 py-[1px] shadow-sm`}
                                   >
                                     {entries.map(([emoji, count]) => (
-                                      <span key={emoji} className="text-sm px-1">
+                                      <span
+                                        key={emoji}
+                                        className="text-sm px-1"
+                                      >
                                         {emoji} {count}
                                       </span>
                                     ))}
@@ -1383,130 +1639,137 @@ const MessagesPage = () => {
 
             {/* Message Input */}
             <div className="p-4 bg-white border-t border-gray-200">
+              {showUnblockSuccess && (
+                <div className="p-3 bg-green-50 border-t border-green-200 text-center text-sm text-green-700 mb-4">
+                  You unblocked this contact
+                </div>
+              )}
               {blockedUsers.has(selectedUser._id) ? (
-                <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-center justify-between">
-                  <div className="text-sm text-red-700">
-                    You blocked this contact. You won’t receive messages or calls.
-                  </div>
+                <div className="p-6 text-center bg-gray-50 border-t border-gray-200">
+                  <p className="text-sm text-gray-700 mb-2">
+                    You blocked this contact.
+                  </p>
                   <button
-                    onClick={() => handleBlock(false)}
-                    className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    onClick={() => setShowUnblockDialog(true)}
+                    className="text-green-600 hover:text-green-700 font-medium text-sm"
                   >
-                    Unblock
+                    Select to unblock
                   </button>
                 </div>
               ) : (
-              <>
-              {/* Image preview */}
-              {imagePreview && (
-                <div className="mb-3 relative inline-block">
-                  <img
-                    src={imagePreview}
-                    alt="Preview"
-                    className="h-20 object-cover rounded-lg"
-                  />
-                  <button
-                    onClick={removeImage}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm"
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-
-              {/* Reply preview */}
-              {replyTo && (
-                <div className="mb-3 p-3 bg-gray-50 border-l-4 border-green-500 rounded-lg flex items-start justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-green-600 mb-1">
-                      Replying to {selectedUser.name}
-                    </div>
-                    <div className="text-sm text-gray-700 truncate">
-                      {messages.find((m) => m.id === replyTo.id)?.content ||
-                        "Message"}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setReplyTo(null)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <FiX />
-                  </button>
-                </div>
-              )}
-
-              {/* Input form */}
-              <form
-                onSubmit={handleSendMessage}
-                className="flex items-end gap-2"
-              >
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={handleTyping}
-                    placeholder="Type a message"
-                    className="w-full px-4 py-3 pr-20 border border-gray-300 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-
-                  {/* Input actions */}
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
-                    >
-                      <FiPaperclip size={18} />
-                    </button>
-
-                    <div className="relative">
+                <>
+                  {/* Image preview */}
+                  {imagePreview && (
+                    <div className="mb-3 relative inline-block">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="h-20 object-cover rounded-lg"
+                      />
                       <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowEmojiPicker(!showEmojiPicker);
-                        }}
-                        className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                        onClick={removeImage}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm"
                       >
-                        <BsEmojiSmile size={18} />
+                        ×
                       </button>
-
-                      {/* Emoji picker */}
-                      {showEmojiPicker && (
-                        <div className="absolute bottom-full right-0 mb-2 z-50">
-                          <Picker
-                            onEmojiClick={(emojiData) => {
-                              setNewMessage((prev) => prev + emojiData.emoji);
-                            }}
-                            skinTonesDisabled
-                            searchDisabled
-                            previewConfig={{ showPreview: false }}
-                          />
-                        </div>
-                      )}
                     </div>
-                  </div>
+                  )}
 
-                  {/* File input */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,video/*,.pdf,.doc,.docx"
-                    onChange={handleImageSelect}
-                    className="hidden"
-                  />
-                </div>
+                  {/* Reply preview */}
+                  {replyTo && (
+                    <div className="mb-3 p-3 bg-gray-50 border-l-4 border-green-500 rounded-lg flex items-start justify-between">
+                      <div>
+                        <div className="text-sm font-medium text-green-600 mb-1">
+                          Replying to {selectedUser.name}
+                        </div>
+                        <div className="text-sm text-gray-700 truncate">
+                          {messages.find((m) => m.id === replyTo.id)?.content ||
+                            "Message"}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setReplyTo(null)}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <FiX />
+                      </button>
+                    </div>
+                  )}
 
-                {/* Send button */}
-                <button
-                  type="submit"
-                  disabled={!newMessage.trim() && !selectedImage}
-                  className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <FiSend size={18} />
-                </button>
-              </form>
-              </>
+                  {/* Input form */}
+                  <form
+                    onSubmit={handleSendMessage}
+                    className="flex items-end gap-2"
+                  >
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={handleTyping}
+                        placeholder="Type a message"
+                        className="w-full px-4 py-3 pr-20 border border-gray-300 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      />
+
+                      {/* Input actions */}
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                        >
+                          <FiPaperclip size={18} />
+                        </button>
+
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowEmojiPicker(!showEmojiPicker);
+                            }}
+                            className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                          >
+                            <BsEmojiSmile size={18} />
+                          </button>
+
+                          {/* Emoji picker */}
+                          {showEmojiPicker && (
+                            <div className="absolute bottom-full right-0 mb-2 z-50">
+                              <Picker
+                                onEmojiClick={(emojiData) => {
+                                  setNewMessage(
+                                    (prev) => prev + emojiData.emoji
+                                  );
+                                }}
+                                skinTonesDisabled
+                                searchDisabled
+                                previewConfig={{ showPreview: false }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* File input */}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,video/*,.pdf,.doc,.docx"
+                        onChange={handleImageSelect}
+                        className="hidden"
+                      />
+                    </div>
+
+                    {/* Send button */}
+                    <button
+                      type="submit"
+                      disabled={!newMessage.trim() && !selectedImage}
+                      className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <FiSend size={18} />
+                    </button>
+                  </form>
+                </>
               )}
             </div>
           </>
@@ -1546,19 +1809,28 @@ const MessagesPage = () => {
         <div className="fixed inset-y-0 right-0 w-full sm:w-[380px] bg-white border-l border-gray-200 shadow-2xl z-50 flex flex-col">
           <div className="p-4 border-b flex items-center justify-between">
             <div className="font-semibold">Contact info</div>
-            <button onClick={() => setShowRightPanel(false)} className="text-gray-400 hover:text-gray-600">
+            <button
+              onClick={() => setShowRightPanel(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
               <FiX />
             </button>
           </div>
           <div className="p-4 flex items-center gap-3 border-b">
             <img
-              src={selectedUser.avatarUrl ? getAvatarUrl(selectedUser.avatarUrl) : "/default-avatar.png"}
+              src={
+                selectedUser.avatarUrl
+                  ? getAvatarUrl(selectedUser.avatarUrl)
+                  : "/default-avatar.png"
+              }
               alt={selectedUser.name}
               className="w-12 h-12 rounded-full object-cover"
             />
             <div>
               <div className="font-medium">{selectedUser.name}</div>
-              <div className="text-sm text-gray-500">@{selectedUser.username}</div>
+              <div className="text-sm text-gray-500">
+                @{selectedUser.username}
+              </div>
             </div>
           </div>
           <div className="px-4 pt-2 flex gap-2">
@@ -1570,7 +1842,11 @@ const MessagesPage = () => {
               <button
                 key={t.key}
                 onClick={() => setRightPanelTab(t.key)}
-                className={`px-3 py-1 rounded-full text-sm ${rightPanelTab === t.key ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}
+                className={`px-3 py-1 rounded-full text-sm ${
+                  rightPanelTab === t.key
+                    ? "bg-green-100 text-green-700"
+                    : "bg-gray-100 text-gray-600"
+                }`}
               >
                 {t.label}
               </button>
@@ -1582,7 +1858,12 @@ const MessagesPage = () => {
                 {sharedMedia
                   .filter((m) => m.type !== "link")
                   .map((m) => (
-                    <img key={m.id + String(m.url)} src={m.url} alt="" className="w-full h-24 object-cover rounded" />
+                    <img
+                      key={m.id + String(m.url)}
+                      src={m.url}
+                      alt=""
+                      className="w-full h-24 object-cover rounded"
+                    />
                   ))}
               </div>
             )}
@@ -1591,7 +1872,15 @@ const MessagesPage = () => {
                 {sharedMedia
                   .filter((m) => m.type === "document")
                   .map((m) => (
-                    <a key={m.id + String(m.url)} href={m.url} target="_blank" rel="noreferrer" className="block p-2 bg-gray-50 rounded border hover:bg-gray-100">Document</a>
+                    <a
+                      key={m.id + String(m.url)}
+                      href={m.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block p-2 bg-gray-50 rounded border hover:bg-gray-100"
+                    >
+                      Document
+                    </a>
                   ))}
               </div>
             )}
@@ -1600,18 +1889,41 @@ const MessagesPage = () => {
                 {sharedMedia
                   .filter((m) => m.type === "link")
                   .map((m) => (
-                    <a key={m.id + String(m.url)} href={m.url} target="_blank" rel="noreferrer" className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate">{m.url}</a>
+                    <a
+                      key={m.id + String(m.url)}
+                      href={m.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate"
+                    >
+                      {m.url}
+                    </a>
                   ))}
               </div>
             )}
           </div>
           <div className="p-4 border-t flex gap-2">
             {blockedUsers.has(selectedUser._id) ? (
-              <button onClick={() => handleBlock(false)} className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white">Unblock</button>
+              <button
+                onClick={() => setShowUnblockDialog(true)}
+                className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white"
+              >
+                Unblock
+              </button>
             ) : (
-              <button onClick={() => handleBlock(true)} className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white">Block</button>
+              <button
+                onClick={() => handleBlock(true)}
+                className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white"
+              >
+                Block
+              </button>
             )}
-            <button onClick={handleReport} className="px-3 py-2 rounded-lg bg-orange-500 text-white">Report</button>
+            <button
+              onClick={handleReport}
+              className="px-3 py-2 rounded-lg bg-orange-500 text-white"
+            >
+              Report
+            </button>
           </div>
         </div>
       )}
@@ -1775,37 +2087,134 @@ const MessagesPage = () => {
       )}
 
       {/* Reactions Modal */}
-      {reactionsModalFor && (
+      {reactionsModalFor && reactionsModalData && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Reactions</h3>
               <button
-                onClick={() => setReactionsModalFor(null)}
+                onClick={() => {
+                  setReactionsModalFor(null);
+                  setReactionsModalData(null);
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <FiX />
               </button>
             </div>
 
-            <div className="p-4 max-h-80 overflow-y-auto">
-              {reactionsModalItems.length === 0 ? (
-                <div className="text-center text-gray-500">No reactions yet</div>
-              ) : (
-                reactionsModalItems.map((r, idx) => (
-                  <div key={idx} className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={getAvatarUrl(r.userId?.avatarUrl || r.userId?.avatar)}
-                        alt={r.userId?.name || "User"}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                      <div className="text-sm">{r.userId?.name || r.userId?.username || 'User'}</div>
+            <div className="p-4">
+              {/* Tab bar */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() =>
+                    setReactionsModalData({
+                      ...reactionsModalData,
+                      activeTab: "all",
+                    })
+                  }
+                  className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                    reactionsModalData.activeTab === "all" ||
+                    !reactionsModalData.activeTab
+                      ? "bg-green-100 text-green-700 border-b-2 border-green-500"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  All {reactionsModalData.reactions?.length || 0}
+                </button>
+                {Object.entries(
+                  (reactionsModalData.reactions || []).reduce((acc, r) => {
+                    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                    return acc;
+                  }, {})
+                ).map(([emoji, count]) => (
+                  <button
+                    key={emoji}
+                    onClick={() =>
+                      setReactionsModalData({
+                        ...reactionsModalData,
+                        activeTab: emoji,
+                      })
+                    }
+                    className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                      reactionsModalData.activeTab === emoji
+                        ? "bg-green-100 text-green-700 border-b-2 border-green-500"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {emoji} {count}
+                  </button>
+                ))}
+              </div>
+
+              {/* User list */}
+              <div className="max-h-80 overflow-y-auto space-y-2">
+                {(reactionsModalData.reactions || [])
+                  .filter((r) =>
+                    reactionsModalData.activeTab === "all" ||
+                    !reactionsModalData.activeTab
+                      ? true
+                      : r.emoji === reactionsModalData.activeTab
+                  )
+                  .map((r, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between py-2 hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={getAvatarUrl(
+                            r.userId?.avatarUrl || r.userId?.avatar
+                          )}
+                          alt={r.userId?.name || "User"}
+                          className="w-8 h-8 rounded-full object-cover"
+                        />
+                        <div className="text-sm">
+                          {r.userId?.name || r.userId?.username || "User"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{r.emoji}</span>
+                        {String(r.userId?._id) === String(user._id) && (
+                          <button
+                            onClick={() => handleReact(reactionsModalFor, null)}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            Tap to remove
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-lg">{r.emoji}</div>
-                  </div>
-                ))
-              )}
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unblock Confirmation Dialog */}
+      {showUnblockDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
+            <h3 className="text-lg font-semibold mb-4 text-center">
+              Unblock {selectedUser.name}?
+            </h3>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => {
+                  handleBlock(false);
+                  setShowUnblockDialog(false);
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Unblock
+              </button>
+              <button
+                onClick={() => setShowUnblockDialog(false)}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
