@@ -31,6 +31,11 @@ const MessageSchema = new mongoose.Schema(
       },
     ],
 
+    // Soft-delete flags
+    deletedForEveryone: { type: Boolean, default: false, index: true },
+    deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    deletedAt: { type: Date, default: null },
+
     // Per-message emoji reactions
     reactions: [
       {
@@ -70,24 +75,12 @@ const MessageSchema = new mongoose.Schema(
       default: "text",
     },
 
-    // Reactions (normalized)
-    reactions: [
-      {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        emoji: { type: String, required: true },
-        reactedAt: { type: Date, default: Date.now },
-      },
-    ],
+    // Note: reactions array is already defined above (deduped)
 
-    // For forwarded messages
-    isForwarded: {
-      type: Boolean,
-      default: false,
-    },
-    originalMessageId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Message",
-      default: null,
+    // For forwarded messages (normalized)
+    forwardedFrom: {
+      originalSender: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      forwardCount: { type: Number, default: 0 },
     },
 
     // Message metadata
@@ -159,7 +152,7 @@ const MessageSchema = new mongoose.Schema(
 MessageSchema.index({ from: 1, to: 1, createdAt: -1 });
 MessageSchema.index({ to: 1, isRead: 1, createdAt: -1 });
 MessageSchema.index({ createdAt: -1 });
-MessageSchema.index({ messageId: 1 }, { sparse: true });
+MessageSchema.index({ messageId: 1 }, { sparse: true, unique: false });
 MessageSchema.index({ clientKey: 1 }, { sparse: true });
 MessageSchema.index({ threadId: 1 }, { sparse: true });
 MessageSchema.index({ "reactions.userId": 1 });
@@ -259,16 +252,16 @@ MessageSchema.statics.getUnreadCount = function (userId) {
   return this.countDocuments({
     to: userId,
     isRead: false,
-    attachments: { $not: { $in: [`deletedFor:${userId}`, 'deletedForEveryone'] } },
+    deletedForEveryone: { $ne: true },
+    deletedFor: { $ne: userId },
   });
 };
 
 // Instance method to check if message is deleted for user
 MessageSchema.methods.isDeletedFor = function (userId) {
-  return (
-    (this.attachments && this.attachments.includes(`deletedFor:${userId}`)) ||
-    (this.attachments && this.attachments.includes('deletedForEveryone'))
-  );
+  if (this.deletedForEveryone) return true;
+  if (!Array.isArray(this.deletedFor)) return false;
+  return this.deletedFor.some((id) => String(id) === String(userId));
 };
 
 // Instance method to get reactions
@@ -345,7 +338,7 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
     replyTo: this.getReplyTo(),
     isStarred: this.isStarredBy(viewerId),
     isPinned: this.isPinnedBy(viewerId),
-    isForwarded: this.isForwarded,
+    isForwarded: !!(this.forwardedFrom && this.forwardedFrom.originalSender),
     timestamp: this.createdAt,
     readAt: this.readAt,
     deliveredAt: this.deliveredAt,
