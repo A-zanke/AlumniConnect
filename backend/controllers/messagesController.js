@@ -258,12 +258,15 @@ exports.getMessages = async (req, res) => {
     // Also clear unread count on Thread map for this user if the thread exists
     try {
       const participants = [String(me), String(other)].sort();
-      await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
-        {
-          $set: { [`unreadCount.${me}`]: 0, [`lastReadAt.${me}`]: new Date() },
-        }
-      );
+      const thread = await Thread.findOne({
+        participants: { $all: participants, $size: 2 }
+      });
+      
+      if (thread) {
+        thread.unreadCount.set(String(me), 0);
+        thread.lastReadAt.set(String(me), new Date());
+        await thread.save();
+      }
     } catch {}
 
     // Emit read receipts via socket
@@ -327,10 +330,10 @@ exports.sendMessage = async (req, res) => {
       return res
         .status(403)
         .json({ message: "You can only message connected users" });
-    if (blocked)
-      return res
-        .status(403)
-        .json({ message: "Messaging is blocked between these users" });
+    
+    // Check if the sender is blocked by the recipient
+    const isSenderBlocked = await Block.findOne({ blocker: to, blocked: me });
+    const shouldQueue = !!isSenderBlocked;
 
     const content = (req.body.content || "").toString();
     const messageType = req.body.messageType || "text";
@@ -443,7 +446,8 @@ exports.sendMessage = async (req, res) => {
       messageId:
         clientKey ||
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      deliveredAt: new Date(),
+      deliveredAt: shouldQueue ? null : new Date(),
+      queuedDuringBlock: shouldQueue,
     };
 
     // Handle location messages
@@ -456,15 +460,28 @@ exports.sendMessage = async (req, res) => {
       messageData.contact = req.body.contact;
     }
 
+    // Ensure message is saved to database before proceeding
     const message = await Message.create(messageData);
+    
+    // Verify message was actually saved
+    if (!message._id) {
+      throw new Error("Failed to save message to database");
+    }
+    
     const populatedMessage = await Message.findById(message._id).populate(
       "from to",
       "name username avatarUrl"
     );
 
+    if (!populatedMessage) {
+      throw new Error("Failed to retrieve saved message from database");
+    }
+
     const dto = parseMessage(populatedMessage.toObject(), me);
 
-    // Update thread
+    // Update thread - ensure message is saved before updating thread
+    await message.save();
+    
     const participants = [String(me), String(to)].sort();
     // Avoid "participants matched twice" by first finding thread
     let thread = await Thread.findOne({
@@ -473,7 +490,7 @@ exports.sendMessage = async (req, res) => {
     if (!thread) {
       thread = await Thread.create({ participants });
     }
-    // Now update fields separately
+    // Now update fields separately to avoid duplicate field updates
     thread.lastMessageAt = new Date();
     thread.lastMessage = message._id;
     thread.lastReadAt.set(String(me), new Date());
@@ -483,21 +500,30 @@ exports.sendMessage = async (req, res) => {
 
     // Real-time notifications
     if (req.io) {
-      // Send to recipient with normalized payload
-      req.io.to(String(to)).emit("message:new", {
-        conversationId: String(thread?._id || `${me}_${to}`),
-        messageId: String(dto.id),
-        senderId: String(me),
-        body: dto.content,
-        createdAt: dto.timestamp,
-      });
+      if (!shouldQueue) {
+        // Send to recipient with normalized payload
+        req.io.to(String(to)).emit("message:new", {
+          conversationId: String(thread?._id || `${me}_${to}`),
+          messageId: String(dto.id),
+          senderId: String(me),
+          body: dto.content,
+          createdAt: dto.timestamp,
+        });
 
-      // Send delivery confirmation to sender
-      req.io.to(String(me)).emit("message:delivered", {
-        messageId: String(dto.id),
-        clientKey,
-        status: "delivered",
-      });
+        // Send delivery confirmation to sender
+        req.io.to(String(me)).emit("message:delivered", {
+          messageId: String(dto.id),
+          clientKey,
+          status: "delivered",
+        });
+      } else {
+        // Send queued confirmation to sender only
+        req.io.to(String(me)).emit("message:queued", {
+          messageId: String(dto.id),
+          clientKey,
+          status: "queued",
+        });
+      }
 
       // Update unread counts for the conversation and total for recipient
       const [threadDoc, totalUnread] = await Promise.all([
@@ -515,6 +541,7 @@ exports.sendMessage = async (req, res) => {
     return res.status(201).json({
       message: dto,
       success: true,
+      queued: shouldQueue,
     });
   } catch (error) {
     // Detailed error logging
@@ -526,6 +553,16 @@ exports.sendMessage = async (req, res) => {
       filesReceived: req.files ? Object.keys(req.files) : null,
       userIds: { from: req.user._id, to: req.params.userId || req.body.to },
     });
+    
+    // Check for database connection issues
+    if (error.name === 'MongoNetworkError' || error.name === 'MongoTimeoutError') {
+      console.error("Database connection error:", error);
+      return res.status(503).json({
+        message: "Database temporarily unavailable. Please try again.",
+        success: false,
+      });
+    }
+    
     // Specific error messages
     let message = "Error sending message";
     if (error.code === "LIMIT_FILE_SIZE") {
@@ -534,6 +571,8 @@ exports.sendMessage = async (req, res) => {
       message = "Invalid file type";
     } else if (error.message.includes("upload")) {
       message = "File upload failed";
+    } else if (error.message.includes("database") || error.message.includes("Database")) {
+      message = "Database error. Please try again.";
     }
     return res.status(500).json({
       message,
@@ -1322,6 +1361,9 @@ exports.block = async (req, res) => {
         );
       } else {
         await Block.deleteOne({ blocker: blockerId, blocked: blockedId });
+        
+        // When unblocking, deliver any queued messages
+        await deliverQueuedMessages(blockerId, blockedId, req.io);
       }
     } catch (dbError) {
       console.error("Database error in block operation:", dbError);
@@ -1350,6 +1392,79 @@ exports.block = async (req, res) => {
     return res.status(500).json({
       message: "Error updating block",
       success: false,
+    });
+  }
+};
+
+// Helper function to deliver queued messages when unblocking
+async function deliverQueuedMessages(blockerId, blockedId, io) {
+  try {
+    // Find messages that were queued during the block
+    const queuedMessages = await Message.find({
+      $or: [
+        { from: blockerId, to: blockedId, queuedDuringBlock: true },
+        { from: blockedId, to: blockerId, queuedDuringBlock: true }
+      ]
+    }).populate('from to', 'name username avatarUrl');
+
+    // Update messages to remove queued flag and mark as delivered
+    if (queuedMessages.length > 0) {
+      await Message.updateMany(
+        { _id: { $in: queuedMessages.map(m => m._id) } },
+        { 
+          $unset: { queuedDuringBlock: 1 },
+          $set: { deliveredAt: new Date() }
+        }
+      );
+
+      // Emit messages to both users
+      if (io) {
+        queuedMessages.forEach(message => {
+          io.to(String(message.from._id)).emit("message:delivered", {
+            messageId: String(message._id),
+            status: "delivered"
+          });
+          io.to(String(message.to._id)).emit("message:new", {
+            messageId: String(message._id),
+            senderId: String(message.from._id),
+            body: message.content,
+            createdAt: message.createdAt,
+            conversationId: `${message.from._id}_${message.to._id}`
+          });
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error delivering queued messages:", error);
+  }
+}
+
+// Get queued messages for a user
+exports.getQueuedMessages = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: "Invalid userId format" });
+    }
+
+    const queuedMessages = await Message.find({
+      $or: [
+        { from: me, to: userId, queuedDuringBlock: true },
+        { from: userId, to: me, queuedDuringBlock: true }
+      ]
+    }).populate('from to', 'name username avatarUrl').sort({ createdAt: 1 });
+
+    return res.json({
+      messages: queuedMessages.map(msg => parseMessage(msg, me)).filter(Boolean),
+      success: true
+    });
+  } catch (error) {
+    console.error("Error fetching queued messages:", error);
+    return res.status(500).json({
+      message: "Error fetching queued messages",
+      success: false
     });
   }
 };

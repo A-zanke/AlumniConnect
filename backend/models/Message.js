@@ -141,6 +141,13 @@ const MessageSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    // Queued during block
+    queuedDuringBlock: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,
