@@ -4,7 +4,9 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const mongoose = require("mongoose");
 const { protect } = require("../middleware/authMiddleware");
+const { body, param, query, validationResult } = require("express-validator");
 const {
   getMessages,
   sendMessage,
@@ -146,6 +148,51 @@ const validateBulkAction = (req, res, next) => {
   next();
 };
 
+// Validation middleware for MongoDB ObjectId
+const validateObjectId = (paramName) => {
+  return param(paramName).custom((value) => {
+    if (!mongoose.Types.ObjectId.isValid(value)) {
+      throw new Error(`Invalid ${paramName} format`);
+    }
+    return true;
+  });
+};
+
+// Validation middleware for message content
+const validateMessageContent = [
+  body('content').optional().isString().trim().isLength({ max: 4096 }),
+  body('messageType').optional().isIn(['text', 'image', 'video', 'audio', 'document', 'location', 'contact']),
+  body('clientKey').optional().isString().trim().isLength({ max: 100 }),
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: errors.array(),
+        success: false
+      });
+    }
+    next();
+  }
+];
+
+// Validation middleware for reaction
+const validateReaction = [
+  body('messageId').notEmpty().withMessage('messageId is required'),
+  body('emoji').optional().isString().trim().isLength({ max: 16 }),
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: errors.array(),
+        success: false
+      });
+    }
+    next();
+  }
+];
+
 // Routes
 
 // Get conversations list with unread counts
@@ -169,13 +216,40 @@ router.get("/info/:messageId", protect, getMessageInfo);
 // NOTE: Fixed subpaths are defined above. Define dynamic routes at the bottom.
 
 // React to message
-router.post("/react", protect, react);
+router.post("/react", protect, validateReaction, react);
 
 // Star/unstar message
-router.post("/star", protect, starMessage);
+router.post("/star", protect, [
+  body('messageId').notEmpty().withMessage('messageId is required'),
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: errors.array(),
+        success: false
+      });
+    }
+    next();
+  }
+], starMessage);
 
 // Pin/unpin message
-router.post("/pin", protect, pinMessage);
+router.post("/pin", protect, [
+  body('messageId').notEmpty().withMessage('messageId is required'),
+  body('pin').optional().isBoolean(),
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: errors.array(),
+        success: false
+      });
+    }
+    next();
+  }
+], pinMessage);
 
 // Forward message
 router.post("/forward", protect, async (req, res) => {
@@ -602,12 +676,14 @@ router.post("/bulk-block", protect, bulkBlockUsers);
 router.post("/bulk-report", protect, bulkReportUsers);
 
 // Get messages between current user and another user (dynamic)
-router.get("/:userId", protect, getMessages);
+router.get("/:userId", protect, validateObjectId('userId'), getMessages);
 
 // Send a message with optional files (dynamic) — MUST BE LAST POST route
 router.post(
   "/:userId",
   protect,
+  validateObjectId('userId'),
+  validateMessageContent,
   upload.fields([
     { name: "image", maxCount: 5 },
     { name: "video", maxCount: 3 },

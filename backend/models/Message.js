@@ -31,15 +31,6 @@ const MessageSchema = new mongoose.Schema(
       },
     ],
 
-    // Per-message emoji reactions
-    reactions: [
-      {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        emoji: { type: String, required: true, maxlength: 16 },
-        reactedAt: { type: Date, default: Date.now },
-      },
-    ],
-
     // Enhanced message status tracking
     isRead: {
       type: Boolean,
@@ -70,11 +61,11 @@ const MessageSchema = new mongoose.Schema(
       default: "text",
     },
 
-    // Reactions (normalized)
+    // Per-message emoji reactions (single definition)
     reactions: [
       {
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        emoji: { type: String, required: true },
+        emoji: { type: String, required: true, maxlength: 16 },
         reactedAt: { type: Date, default: Date.now },
       },
     ],
@@ -235,6 +226,34 @@ MessageSchema.statics.findConversation = function (userA, userB, options = {}) {
     .limit(options.limit || 100)
     .populate("from to", "name username avatarUrl")
     .lean();
+};
+
+// Static method to create message with proper validation
+MessageSchema.statics.createMessage = async function(messageData) {
+  try {
+    // Validate required fields
+    if (!messageData.from || !messageData.to) {
+      throw new Error('Message must have from and to fields');
+    }
+    
+    // Ensure content or attachments exist
+    if (!messageData.content && (!messageData.attachments || messageData.attachments.length === 0)) {
+      throw new Error('Message must have content or attachments');
+    }
+    
+    // Set default values
+    const message = new this({
+      ...messageData,
+      deliveredAt: messageData.deliveredAt || new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    
+    return await message.save();
+  } catch (error) {
+    console.error('Error creating message:', error);
+    throw error;
+  }
 };
 
 // Static method to mark messages as read

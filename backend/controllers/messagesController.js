@@ -121,6 +121,14 @@ function parseMessage(doc, viewerId) {
 exports.getConversations = async (req, res) => {
   try {
     const me = req.user._id;
+    
+    // Validate user ID
+    if (!me || !mongoose.Types.ObjectId.isValid(me)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+        success: false,
+      });
+    }
 
     // Get all messages involving the user
     const messages = await Message.find({
@@ -209,6 +217,10 @@ exports.getMessages = async (req, res) => {
     const me = req.user._id;
     const other = req.params.userId;
 
+    // Validate user IDs
+    if (!me || !mongoose.Types.ObjectId.isValid(me)) {
+      return res.status(400).json({ message: "Invalid authenticated user ID" });
+    }
     if (!other) return res.status(400).json({ message: "Missing userId" });
     if (!mongoose.Types.ObjectId.isValid(other)) {
       return res.status(400).json({ message: "Invalid user ID" });
@@ -244,54 +256,69 @@ exports.getMessages = async (req, res) => {
       .filter(Boolean);
 
     // Mark messages as read and delivered
-    const readResult = await Message.updateMany(
-      { from: other, to: me, isRead: false },
-      {
-        $set: {
-          isRead: true,
-          readAt: new Date(),
-          deliveredAt: new Date(),
-        },
-      }
-    );
+    let readResult;
+    try {
+      readResult = await Message.updateMany(
+        { from: other, to: me, isRead: false },
+        {
+          $set: {
+            isRead: true,
+            readAt: new Date(),
+            deliveredAt: new Date(),
+          },
+        }
+      );
+    } catch (readError) {
+      console.error('Error marking messages as read:', readError);
+      readResult = { modifiedCount: 0 };
+    }
 
     // Also clear unread count on Thread map for this user if the thread exists
     try {
-      const participants = [String(me), String(other)].sort();
-      await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
-        {
-          $set: { [`unreadCount.${me}`]: 0, [`lastReadAt.${me}`]: new Date() },
-        }
-      );
-    } catch {}
+      const thread = await Thread.findOrCreateThread(me, other);
+      if (thread) {
+        thread.unreadCount.set(String(me), 0);
+        thread.lastReadAt.set(String(me), new Date());
+        await thread.save();
+      }
+    } catch (threadError) {
+      console.error('Error updating thread in getMessages:', threadError);
+    }
 
     // Emit read receipts via socket
     if (req.io) {
-      req.io.to(String(other)).emit("messages:readReceipt", {
-        conversationId: `${me}_${other}`,
-        readerId: String(me),
-        readAt: new Date(),
-      });
+      try {
+        req.io.to(String(other)).emit("messages:readReceipt", {
+          conversationId: `${me}_${other}`,
+          readerId: String(me),
+          readAt: new Date(),
+        });
 
-      // Emit conversation cleared count and updated total for the viewer
-      const [participantsA, totalUnread] = await Promise.all([
-        (async () => {
-          const participants = [String(me), String(other)].sort();
-          const thread = await Thread.findOne({
-            participants: { $all: participants, $size: 2 },
-          }).select("_id");
-          if (thread) {
-            req.io.to(String(me)).emit("unread:update", {
-              conversationId: String(thread._id),
-              newCount: 0,
-            });
-          }
-        })(),
-        Message.countDocuments({ to: me, isRead: false }),
-      ]);
+        // Emit conversation cleared count and updated total for the viewer
+        const [participantsA, totalUnread] = await Promise.all([
+          (async () => {
+            try {
+              const participants = [String(me), String(other)].sort();
+              const thread = await Thread.findOne({
+                participants: { $all: participants, $size: 2 },
+              }).select("_id");
+              if (thread) {
+                req.io.to(String(me)).emit("unread:update", {
+                  conversationId: String(thread._id),
+                  newCount: 0,
+                });
+              }
+            } catch (threadError) {
+              console.error('Error updating thread in getMessages:', threadError);
+            }
+          })(),
+          Message.countDocuments({ to: me, isRead: false }),
+        ]);
 
-      req.io.to(String(me)).emit("unread:total", { total: totalUnread });
+        req.io.to(String(me)).emit("unread:total", { total: totalUnread });
+      } catch (socketError) {
+        console.error('Error sending socket notifications in getMessages:', socketError);
+      }
     }
 
     return res.json({
@@ -313,6 +340,10 @@ exports.sendMessage = async (req, res) => {
     const me = req.user._id;
     const to = req.params.userId || req.body.to;
 
+    // Validate user IDs
+    if (!me || !mongoose.Types.ObjectId.isValid(me)) {
+      return res.status(400).json({ message: "Invalid authenticated user ID" });
+    }
     if (!to) return res.status(400).json({ message: "Missing recipient" });
     if (!mongoose.Types.ObjectId.isValid(to)) {
       return res.status(400).json({ message: "Invalid recipient user ID" });
@@ -456,7 +487,7 @@ exports.sendMessage = async (req, res) => {
       messageData.contact = req.body.contact;
     }
 
-    const message = await Message.create(messageData);
+    const message = await Message.createMessage(messageData);
     const populatedMessage = await Message.findById(message._id).populate(
       "from to",
       "name username avatarUrl"
@@ -464,52 +495,64 @@ exports.sendMessage = async (req, res) => {
 
     const dto = parseMessage(populatedMessage.toObject(), me);
 
-    // Update thread
+    // Update thread using the new static method
     const participants = [String(me), String(to)].sort();
-    // Avoid "participants matched twice" by first finding thread
-    let thread = await Thread.findOne({
-      participants: { $all: participants, $size: 2 },
-    });
-    if (!thread) {
-      thread = await Thread.create({ participants });
+    let thread;
+    
+    try {
+      thread = await Thread.findOrCreateThread(me, to);
+      
+      if (thread) {
+        // Update thread fields
+        thread.lastMessageAt = new Date();
+        thread.lastMessage = message._id;
+        thread.lastReadAt.set(String(me), new Date());
+        
+        // Update unread count safely
+        const currentUnread = thread.unreadCount.get(String(to)) || 0;
+        thread.unreadCount.set(String(to), currentUnread + 1);
+        
+        await thread.save();
+      }
+    } catch (threadError) {
+      console.error('Error updating thread:', threadError);
+      // Continue with message creation even if thread update fails
     }
-    // Now update fields separately
-    thread.lastMessageAt = new Date();
-    thread.lastMessage = message._id;
-    thread.lastReadAt.set(String(me), new Date());
-    const currentUnread = thread.unreadCount.get(String(to)) || 0;
-    thread.unreadCount.set(String(to), currentUnread + 1);
-    await thread.save();
 
     // Real-time notifications
     if (req.io) {
-      // Send to recipient with normalized payload
-      req.io.to(String(to)).emit("message:new", {
-        conversationId: String(thread?._id || `${me}_${to}`),
-        messageId: String(dto.id),
-        senderId: String(me),
-        body: dto.content,
-        createdAt: dto.timestamp,
-      });
+      try {
+        // Send to recipient with normalized payload
+        req.io.to(String(to)).emit("message:new", {
+          conversationId: String(thread?._id || `${me}_${to}`),
+          messageId: String(dto.id),
+          senderId: String(me),
+          body: dto.content,
+          createdAt: dto.timestamp,
+        });
 
-      // Send delivery confirmation to sender
-      req.io.to(String(me)).emit("message:delivered", {
-        messageId: String(dto.id),
-        clientKey,
-        status: "delivered",
-      });
+        // Send delivery confirmation to sender
+        req.io.to(String(me)).emit("message:delivered", {
+          messageId: String(dto.id),
+          clientKey,
+          status: "delivered",
+        });
 
-      // Update unread counts for the conversation and total for recipient
-      const [threadDoc, totalUnread] = await Promise.all([
-        Thread.findById(thread?._id).select("unreadCount"),
-        Message.countDocuments({ to, isRead: false }),
-      ]);
-      const convCount = threadDoc?.unreadCount?.get(String(to)) || 0;
-      req.io.to(String(to)).emit("unread:update", {
-        conversationId: String(thread?._id || `${me}_${to}`),
-        newCount: convCount,
-      });
-      req.io.to(String(to)).emit("unread:total", { total: totalUnread });
+        // Update unread counts for the conversation and total for recipient
+        const [threadDoc, totalUnread] = await Promise.all([
+          Thread.findById(thread?._id).select("unreadCount"),
+          Message.countDocuments({ to, isRead: false }),
+        ]);
+        const convCount = threadDoc?.unreadCount?.get(String(to)) || 0;
+        req.io.to(String(to)).emit("unread:update", {
+          conversationId: String(thread?._id || `${me}_${to}`),
+          newCount: convCount,
+        });
+        req.io.to(String(to)).emit("unread:total", { total: totalUnread });
+      } catch (socketError) {
+        console.error('Error sending socket notifications:', socketError);
+        // Continue with response even if socket fails
+      }
     }
 
     return res.status(201).json({

@@ -4,6 +4,7 @@ const path = require("path");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
+const mongoose = require("mongoose");
 const connectDB = require("./config/db");
 const { errorHandler } = require("./middleware/errorHandler");
 const helmet = require("helmet");
@@ -13,7 +14,39 @@ const Notification = require("./models/Notification"); // Add at top if missing
 // Load environment variables
 dotenv.config();
 
-connectDB();
+// Ensure MongoDB connection before starting server
+let dbConnection;
+const startServer = async () => {
+  try {
+    console.log('🚀 Starting AlumniConnect Backend...');
+    
+    // Connect to database first
+    console.log('📡 Connecting to MongoDB...');
+    dbConnection = await connectDB();
+    
+    // Verify database is ready
+    if (!dbConnection || mongoose.connection.readyState !== 1) {
+      throw new Error('Database connection not established');
+    }
+    
+    console.log('✅ Database connection verified');
+    
+    // Start HTTP server only after DB is connected
+    const PORT = process.env.PORT || 5000;
+    http.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📊 Database: ${mongoose.connection.name}@${mongoose.connection.host}`);
+    });
+    
+  } catch (error) {
+    console.error('💥 Failed to start server:', error.message);
+    process.exit(1);
+  }
+};
+
+// Start the server
+startServer();
 
 // Initialize Express
 const app = express();
@@ -176,11 +209,7 @@ if (process.env.NODE_ENV === "production") {
 // Error handling middleware
 app.use(errorHandler);
 
-// Start server
-const PORT = process.env.PORT || 5000;
-http.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Server startup is now handled in startServer() function above
 
 // Socket.IO basic chat
 const jwt = require("jsonwebtoken");
@@ -276,11 +305,30 @@ io.on("connection", (socket) => {
     try {
       const from = socket.userId;
       const { to, content, attachments, clientKey } = payload || {};
-      if (!to || (!content && !attachments)) return;
+      
+      // Validate input
+      if (!to || (!content && !attachments)) {
+        console.log('Invalid message payload:', { to, hasContent: !!content, hasAttachments: !!attachments });
+        return;
+      }
+      
+      // Validate user IDs
+      if (!mongoose.Types.ObjectId.isValid(from) || !mongoose.Types.ObjectId.isValid(to)) {
+        console.log('Invalid user IDs:', { from, to });
+        return;
+      }
+      
       const me = await User.findById(from).select("connections");
-      if (!me) return;
+      if (!me) {
+        console.log('User not found:', from);
+        return;
+      }
+      
       const isConnected = me.connections.some((id) => id.toString() === to);
-      if (!isConnected) return;
+      if (!isConnected) {
+        console.log('Users not connected:', { from, to });
+        return;
+      }
       // Block checks
       // Validate ObjectIds to avoid casting errors if payloads are wrong
       const isValidFrom = /^[0-9a-fA-F]{24}$/.test(String(from));
@@ -303,30 +351,57 @@ io.on("connection", (socket) => {
         to,
         content: content || "",
         isRead: false,
+        deliveredAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
+      
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
+      
       let msg;
-      if (clientKey) {
-        msg = await Message.findOneAndUpdate(
-          { threadId, clientKey },
-          { $setOnInsert: messageData },
-          { upsert: true, new: true }
-        );
-      } else {
-        msg = await Message.create(messageData);
+      try {
+        if (clientKey) {
+          msg = await Message.findOneAndUpdate(
+            { threadId, clientKey },
+            { $setOnInsert: messageData },
+            { upsert: true, new: true }
+          );
+        } else {
+          msg = await Message.createMessage(messageData);
+        }
+        
+        if (!msg) {
+          console.error('Failed to create message');
+          return;
+        }
+      } catch (messageError) {
+        console.error('Error creating message in socket:', messageError);
+        return; // Exit early if message creation fails
       }
-      // Update per-user unread in Thread (upsert)
-      const thread = await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
-        {
-          $setOnInsert: { participants },
-          $set: { lastMessageAt: new Date(), lastMessage: msg._id },
-          $inc: { [`unreadCount.${to}`]: 1 },
-        },
-        { upsert: true, new: true }
-      );
+      // Update per-user unread in Thread using safe method
+      let thread;
+      try {
+        thread = await Thread.findOrCreateThread(from, to);
+        if (thread) {
+          thread.lastMessageAt = new Date();
+          thread.lastMessage = msg._id;
+          
+          // Update unread count safely
+          const currentUnread = thread.unreadCount.get(String(to)) || 0;
+          thread.unreadCount.set(String(to), currentUnread + 1);
+          
+          await thread.save();
+        } else {
+          console.error('Failed to create or find thread');
+          thread = { _id: `${participants[0]}_${participants[1]}` };
+        }
+      } catch (threadError) {
+        console.error('Error updating thread in socket:', threadError);
+        // Create a minimal thread object for socket events
+        thread = { _id: `${participants[0]}_${participants[1]}` };
+      }
       const messagePayload = {
         conversationId: String(thread._id),
         messageId: String(msg._id),
@@ -335,37 +410,49 @@ io.on("connection", (socket) => {
         createdAt: msg.createdAt,
       };
       // Acknowledge to sender: sent (include clientKey if present)
-      socket.emit("message:ack", {
-        id: String(msg._id),
-        messageId: String(msg._id),
-        status: "sent",
-        clientKey: clientKey || null,
-      });
-      socket.emit("message:sent", {
-        id: String(msg._id),
-        messageId: String(msg._id),
-        status: "sent",
-        clientKey: clientKey || null,
-      });
-      // Targeted delivery only to recipient
-      io.to(to).emit("message:new", messagePayload);
-      // Unread update to recipient
-      const newUnread =
-        thread.unreadCount?.get?.(String(to)) ||
-        thread.unreadCount?.[String(to)] ||
-        0;
-      io.to(to).emit("unread:update", {
-        conversationId: String(thread._id),
-        newCount: newUnread,
-      });
-      // If recipient is currently online (in room), then it's delivered
-      const isRecipientOnline = !!io.sockets.adapter.rooms.get(String(to));
-      if (isRecipientOnline) {
-        io.to(from).emit("message:delivered", {
+      try {
+        socket.emit("message:ack", {
           id: String(msg._id),
           messageId: String(msg._id),
+          status: "sent",
           clientKey: clientKey || null,
         });
+        socket.emit("message:sent", {
+          id: String(msg._id),
+          messageId: String(msg._id),
+          status: "sent",
+          clientKey: clientKey || null,
+        });
+        // Targeted delivery only to recipient
+        io.to(to).emit("message:new", messagePayload);
+      } catch (ackError) {
+        console.error('Error sending message acknowledgments:', ackError);
+      }
+      // Unread update to recipient
+      try {
+        const newUnread =
+          thread.unreadCount?.get?.(String(to)) ||
+          thread.unreadCount?.[String(to)] ||
+          0;
+        io.to(to).emit("unread:update", {
+          conversationId: String(thread._id),
+          newCount: newUnread,
+        });
+      } catch (unreadError) {
+        console.error('Error sending unread update:', unreadError);
+      }
+      // If recipient is currently online (in room), then it's delivered
+      try {
+        const isRecipientOnline = !!io.sockets.adapter.rooms.get(String(to));
+        if (isRecipientOnline) {
+          io.to(from).emit("message:delivered", {
+            id: String(msg._id),
+            messageId: String(msg._id),
+            clientKey: clientKey || null,
+          });
+        }
+      } catch (deliveryError) {
+        console.error('Error sending delivery confirmation:', deliveryError);
       }
     } catch (e) {
       console.error("Socket chat error:", e);
@@ -397,40 +484,57 @@ io.on("connection", (socket) => {
           { $set: { isRead: true, readAt: now } }
         );
       }
-      thread.lastReadAt.set(String(me), now);
-      thread.unreadCount.set(String(me), 0);
-      await thread.save();
+      // Update thread safely
+      try {
+        thread.lastReadAt.set(String(me), now);
+        thread.unreadCount.set(String(me), 0);
+        await thread.save();
+      } catch (threadError) {
+        console.error('Error updating thread in markRead:', threadError);
+      }
       io.to(String(me)).emit("unread:update", {
         conversationId: String(thread._id),
         newCount: 0,
       });
       // emit total unread for navbar with debouncing
-      const userId = String(me);
-      if (unreadTotalDebounce.has(userId)) {
-        clearTimeout(unreadTotalDebounce.get(userId));
+      try {
+        const userId = String(me);
+        if (unreadTotalDebounce.has(userId)) {
+          clearTimeout(unreadTotalDebounce.get(userId));
+        }
+        unreadTotalDebounce.set(
+          userId,
+          setTimeout(async () => {
+            try {
+              const total = await Message.countDocuments({
+                to: me,
+                isRead: false,
+              });
+              io.to(userId).emit("unread:total", { total });
+            } catch (totalError) {
+              console.error('Error getting total unread count:', totalError);
+            }
+            unreadTotalDebounce.delete(userId);
+          }, 500)
+        );
+      } catch (debounceError) {
+        console.error('Error setting up unread total debounce:', debounceError);
       }
-      unreadTotalDebounce.set(
-        userId,
-        setTimeout(async () => {
-          try {
-            const total = await Message.countDocuments({
-              to: me,
-              isRead: false,
-            });
-            io.to(userId).emit("unread:total", { total });
-          } catch {}
-          unreadTotalDebounce.delete(userId);
-        }, 500)
-      );
       // broadcast readReceipt to participants
-      for (const p of thread.participants) {
-        io.to(String(p)).emit("messages:readReceipt", {
-          conversationId: String(thread._id),
-          readerId: String(me),
-          readUpTo: now,
-        });
+      try {
+        for (const p of thread.participants) {
+          io.to(String(p)).emit("messages:readReceipt", {
+            conversationId: String(thread._id),
+            readerId: String(me),
+            readUpTo: now,
+          });
+        }
+      } catch (socketError) {
+        console.error('Error broadcasting read receipts:', socketError);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error in handleMarkRead:', e);
+    }
   };
   socket.on("messages:markRead", handleMarkRead);
   // Alias accepting same payload
@@ -460,8 +564,12 @@ io.on("connection", (socket) => {
           isRead: false,
         });
         io.to(socket.id).emit("unread:total", { total });
-      } catch {}
-    } catch (e) {}
+      } catch (totalError) {
+        console.error('Error getting total unread count on connect:', totalError);
+      }
+    } catch (e) {
+      console.error('Error sending unread snapshot:', e);
+    }
   })();
 
   socket.join(socket.userId);
