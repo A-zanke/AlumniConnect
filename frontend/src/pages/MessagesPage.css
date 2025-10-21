@@ -49,6 +49,12 @@
   --green-700: #15803d;
   --green-800: #166534;
   --green-900: #14532d;
+
+  /* Chat bubble variables */
+  --bubble-out: linear-gradient(135deg, rgba(79,70,229,0.85), rgba(124,58,237,0.85));
+  --bubble-in: #f8fafc;
+  --bubble-radius: 18px;
+  --tile-radius: 14px;
 }
 
 /* Global styles with enhanced typography */
@@ -292,6 +298,8 @@ body {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .message-time {
