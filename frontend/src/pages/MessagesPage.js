@@ -127,6 +127,9 @@ const MessagesPage = () => {
   const [chatSelectionMode, setChatSelectionMode] = useState(false);
   const [showUnblockDialog, setShowUnblockDialog] = useState(false);
   const [showUnblockSuccess, setShowUnblockSuccess] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
@@ -143,6 +146,73 @@ const MessagesPage = () => {
 
   const generateClientKey = () =>
     `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  // Create system message for blocking/unblocking
+  const createSystemMessage = (type, user, timestamp) => {
+    const systemMessage = {
+      id: `system-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      senderId: 'system',
+      recipientId: user._id,
+      content: type === 'blocked' 
+        ? `You blocked ${user.name} on ${new Date(timestamp).toLocaleString()}`
+        : `You unblocked ${user.name} on ${new Date(timestamp).toLocaleString()}`,
+      attachments: [],
+      timestamp: timestamp || new Date().toISOString(),
+      status: 'sent',
+      isSystemMessage: true,
+      messageType: 'system'
+    };
+    return systemMessage;
+  };
+
+  // Group consecutive messages from the same sender
+  const groupMessages = (messages) => {
+    if (!messages || messages.length === 0) return [];
+    
+    const groups = [];
+    let currentGroup = [];
+    
+    messages.forEach((message, index) => {
+      const isMine = message.senderId === user._id;
+      const prevMessage = index > 0 ? messages[index - 1] : null;
+      const prevIsMine = prevMessage ? prevMessage.senderId === user._id : null;
+      
+      // Start new group if:
+      // - First message
+      // - Different sender
+      // - More than 5 minutes gap
+      // - Different date
+      const shouldStartNewGroup = 
+        index === 0 ||
+        isMine !== prevIsMine ||
+        (prevMessage && new Date(message.timestamp).getTime() - new Date(prevMessage.timestamp).getTime() > 5 * 60 * 1000) ||
+        (prevMessage && new Date(message.timestamp).toDateString() !== new Date(prevMessage.timestamp).toDateString());
+      
+      if (shouldStartNewGroup) {
+        if (currentGroup.length > 0) {
+          groups.push({
+            messages: [...currentGroup],
+            isMine: currentGroup[0].senderId === user._id,
+            timestamp: currentGroup[0].timestamp
+          });
+        }
+        currentGroup = [message];
+      } else {
+        currentGroup.push(message);
+      }
+    });
+    
+    // Add the last group
+    if (currentGroup.length > 0) {
+      groups.push({
+        messages: [...currentGroup],
+        isMine: currentGroup[0].senderId === user._id,
+        timestamp: currentGroup[0].timestamp
+      });
+    }
+    
+    return groups;
+  };
 
   // Load conversations + merge with connections
   useEffect(() => {
@@ -469,6 +539,7 @@ const MessagesPage = () => {
     if ((!newMessage.trim() && !selectedImage) || !selectedUser) return;
 
     try {
+      setIsUploading(true);
       const formData = new FormData();
       formData.append("content", newMessage);
       if (selectedImage) {
@@ -523,31 +594,62 @@ const MessagesPage = () => {
 
       const payload = resp.data;
       const serverMessage = payload && payload.message ? payload.message : null;
+      
+      // Always reset composer after successful send
+      setNewMessage("");
+      setSelectedImage(null);
+      setImagePreview(null);
+      setReplyTo(null);
+      
       if (!clientKey) {
+        // For media uploads, add message to UI immediately
         const idStr = serverMessage?.id ? String(serverMessage.id) : null;
         if (!idStr || !seenIdsRef.current.has(idStr)) {
           if (idStr) seenIdsRef.current.add(idStr);
           if (serverMessage) {
             setMessages((prev) => [
               ...prev,
-              { ...serverMessage, status: "sent" },
+              { ...serverMessage, status: payload.queued ? "queued" : "sent" },
             ]);
           }
         }
-        setNewMessage("");
-        setSelectedImage(null);
-        setImagePreview(null);
-        setReplyTo(null);
-      } else {
-        setSelectedImage(null);
-        setImagePreview(null);
       }
 
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error("Error sending message:", error);
-      toast.error("Failed to send message. Please try again.");
+      
+      // Check if it's a network error that can be retried
+      if ((error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) && retryCount < 2) {
+        setIsRetrying(true);
+        setRetryCount(prev => prev + 1);
+        toast.error(`Network error. Retrying... (${retryCount + 1}/2)`);
+        
+        // Retry after a short delay
+        setTimeout(() => {
+          handleSendMessage(e);
+        }, 2000);
+        return;
+      }
+      
+      // Reset retry state on final failure
+      setRetryCount(0);
+      setIsRetrying(false);
+      
+      // Check if it's a file upload error
+      if (error.response?.status === 413) {
+        toast.error("File too large. Please choose a smaller file.");
+      } else if (error.response?.status === 415) {
+        toast.error("File type not supported. Please choose a different file.");
+      } else if (error.response?.status === 503) {
+        toast.error("Server temporarily unavailable. Please try again later.");
+      } else {
+        toast.error("Failed to send message. Please try again.");
+      }
+      
       // Keep input and selected media so user can retry
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -631,39 +733,108 @@ const MessagesPage = () => {
     });
   };
 
-  const toggleStar = (messageId) => {
-    setStarredMessages((prev) => {
-      const next = new Set(prev);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-        toast.success("Message unstarred");
-      } else {
-        next.add(messageId);
-        toast.success("Message starred");
-      }
-      return next;
-    });
+  const toggleStar = async (messageId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const isStarred = starredMessages.has(messageId);
+      
+      await axios.post(
+        `${baseURL}/api/messages/star`,
+        { messageId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      setStarredMessages((prev) => {
+        const next = new Set(prev);
+        if (isStarred) {
+          next.delete(messageId);
+          toast.success("Message unstarred");
+        } else {
+          next.add(messageId);
+          toast.success("Message starred");
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error("Error toggling star:", error);
+      toast.error("Failed to update star status");
+    }
+  };
+
+  const togglePin = async (messageId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const isPinned = pinnedMessages.has(messageId);
+      
+      await axios.post(
+        `${baseURL}/api/messages/pin`,
+        { messageId, pin: !isPinned },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      setPinnedMessages((prev) => {
+        const next = new Set(prev);
+        if (isPinned) {
+          next.delete(messageId);
+          toast.success("Message unpinned");
+        } else {
+          next.add(messageId);
+          toast.success("Message pinned");
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error("Error toggling pin:", error);
+      toast.error("Failed to update pin status");
+    }
   };
 
   const handleBlock = async (block = true) => {
     try {
       const token = localStorage.getItem("token");
-      await axios.post(
+      const response = await axios.post(
         `${baseURL}/api/messages/block`,
         { targetUserId: selectedUser._id, action: block ? "block" : "unblock" },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      
       if (block) {
         setBlockedUsers((prev) => new Set([...prev, selectedUser._id]));
+        
+        // Add system message for blocking
+        const systemMessage = createSystemMessage('blocked', selectedUser, new Date().toISOString());
+        setMessages((prev) => [...prev, systemMessage]);
+        
+        toast.success("User blocked");
       } else {
         setBlockedUsers((prev) => {
           const next = new Set(prev);
           next.delete(selectedUser._id);
           return next;
         });
+        
+        // Add system message for unblocking
+        const systemMessage = createSystemMessage('unblocked', selectedUser, new Date().toISOString());
+        setMessages((prev) => [...prev, systemMessage]);
+        
         setShowUnblockSuccess(true);
+        toast.success("User unblocked");
+        
+        // Fetch and deliver any queued messages
+        try {
+          const queuedResponse = await axios.get(
+            `${baseURL}/api/messages/queued/${selectedUser._id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          
+          if (queuedResponse.data.messages && queuedResponse.data.messages.length > 0) {
+            setMessages((prev) => [...prev, ...queuedResponse.data.messages]);
+            toast.info(`${queuedResponse.data.messages.length} messages delivered`);
+          }
+        } catch (queuedError) {
+          console.error("Error fetching queued messages:", queuedError);
+        }
       }
-      toast.success(block ? "User blocked" : "User unblocked");
     } catch (e) {
       console.error("Block error:", e.response?.data || e.message);
       toast.error(e.response?.data?.message || "Failed to block/unblock user");
@@ -1238,33 +1409,40 @@ const MessagesPage = () => {
                 </div>
               ) : (
                 <AnimatePresence>
-                  {messages.map((message, index) => {
-                    const isMine = message.senderId === user._id;
+                  {groupMessages(messages).map((group, groupIndex) => {
                     const showDateSeparator =
-                      index === 0 ||
-                      new Date(messages[index - 1].timestamp).toDateString() !==
-                        new Date(message.timestamp).toDateString();
+                      groupIndex === 0 ||
+                      new Date(groupMessages(messages)[groupIndex - 1].timestamp).toDateString() !==
+                        new Date(group.timestamp).toDateString();
 
                     return (
-                      <div key={message.id}>
+                      <div key={`group-${groupIndex}`}>
                         {/* Date separator */}
                         {showDateSeparator && (
                           <div className="flex justify-center my-4">
                             <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-                              {new Date(message.timestamp).toLocaleDateString()}
+                              {new Date(group.timestamp).toLocaleDateString()}
                             </span>
                           </div>
                         )}
 
-                        {/* Message */}
-                        <motion.div
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
-                          className={`flex ${
-                            isMine ? "justify-end" : "justify-start"
-                          } group`}
-                        >
+                        {/* Message Group */}
+                        <div className={`message-group ${group.isMine ? 'own' : 'other'}`}>
+                          {group.messages.map((message, messageIndex) => {
+                            const isMine = message.senderId === user._id;
+                            const isFirstInGroup = messageIndex === 0;
+                            const isLastInGroup = messageIndex === group.messages.length - 1;
+
+                            return (
+                              <motion.div
+                                key={message.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -20 }}
+                                className={`flex ${
+                                  isMine ? "justify-end" : "justify-start"
+                                } group`}
+                              >
                           <div
                             className={`max-w-xs lg:max-w-md relative ${
                               isMine ? "order-2" : "order-1"
@@ -1311,11 +1489,19 @@ const MessagesPage = () => {
 
                             {/* Message bubble */}
                             <div
-                              className={`relative px-4 py-2 rounded-2xl ${
-                                isMine
-                                  ? "bg-green-500 text-white rounded-br-sm"
-                                  : "bg-white text-gray-900 rounded-bl-sm border border-gray-200"
-                              } shadow-sm`}
+                              className={`message-bubble ${
+                                message.isSystemMessage ? "system" : (isMine ? "own" : "other")
+                              } ${
+                                !message.isSystemMessage && isFirstInGroup ? "first-in-group" : ""
+                              } ${
+                                !message.isSystemMessage && isLastInGroup ? "last-in-group" : ""
+                              } ${
+                                !message.isSystemMessage && !isFirstInGroup && !isLastInGroup ? "middle-in-group" : ""
+                              } ${
+                                pinnedMessages.has(message.id) ? "message-pinned" : ""
+                              } ${
+                                starredMessages.has(message.id) ? "message-starred" : ""
+                              }`}
                             >
                               {/* Message content */}
                               {message.content &&
@@ -1349,7 +1535,7 @@ const MessagesPage = () => {
                                               <a
                                                 href={attachment}
                                                 download
-                                                className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
+                                                className="absolute top-2 right-2 bg-gray-800 bg-opacity-80 text-white p-2 rounded-full hover:scale-110 transition-transform"
                                               >
                                                 <FiDownload size={16} />
                                               </a>
@@ -1385,15 +1571,13 @@ const MessagesPage = () => {
                                   </div>
                                 )}
 
-                              {/* Message time and status */}
-                              <div
-                                className={`flex items-center justify-end gap-1 mt-1 text-xs ${
-                                  isMine ? "text-green-100" : "text-gray-500"
-                                }`}
-                              >
-                                <span>{formatTime(message.timestamp)}</span>
-                                {getMessageStatusIcon(message.status, isMine)}
-                              </div>
+                              {/* Message time and status - only show on last message of group */}
+                              {isLastInGroup && (
+                                <div className="message-time">
+                                  <span>{formatTime(message.timestamp)}</span>
+                                  {getMessageStatusIcon(message.status, isMine)}
+                                </div>
+                              )}
 
                               {/* Reactions */}
                               {(() => {
@@ -1533,6 +1717,22 @@ const MessagesPage = () => {
                                     </button>
                                     <button
                                       onClick={() => {
+                                        togglePin(message.id);
+                                        setOpenMessageMenuFor(null);
+                                      }}
+                                      className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                                    >
+                                      {pinnedMessages.has(message.id) ? (
+                                        <FiCheckSquare className="text-blue-500" />
+                                      ) : (
+                                        <FiCheckSquare />
+                                      )}
+                                      {pinnedMessages.has(message.id)
+                                        ? "Unpin"
+                                        : "Pin"}
+                                    </button>
+                                    <button
+                                      onClick={() => {
                                         navigator.clipboard.writeText(
                                           message.content || ""
                                         );
@@ -1582,6 +1782,9 @@ const MessagesPage = () => {
                             </div>
                           </div>
                         </motion.div>
+                              );
+                            })}
+                        </div>
                       </div>
                     );
                   })}
@@ -1629,15 +1832,21 @@ const MessagesPage = () => {
                 </div>
               )}
               {blockedUsers.has(selectedUser._id) ? (
-                <div className="p-6 text-center bg-gray-50 border-t border-gray-200">
-                  <p className="text-sm text-gray-700 mb-2">
-                    You blocked this contact.
+                <div className="p-6 text-center bg-red-50 border-t border-red-200">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <FiUserX className="text-red-600" size={20} />
+                    <p className="text-sm text-red-700 font-medium">
+                      You blocked this contact
+                    </p>
+                  </div>
+                  <p className="text-xs text-red-600 mb-3">
+                    You cannot send messages to this person while they are blocked.
                   </p>
                   <button
                     onClick={() => setShowUnblockDialog(true)}
-                    className="text-green-600 hover:text-green-700 font-medium text-sm"
+                    className="text-green-600 hover:text-green-700 font-medium text-sm px-4 py-2 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
                   >
-                    Select to unblock
+                    Unblock Contact
                   </button>
                 </div>
               ) : (
@@ -1747,10 +1956,14 @@ const MessagesPage = () => {
                     {/* Send button */}
                     <button
                       type="submit"
-                      disabled={!newMessage.trim() && !selectedImage}
+                      disabled={(!newMessage.trim() && !selectedImage) || isUploading || isRetrying}
                       className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <FiSend size={18} />
+                      {isUploading || isRetrying ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <FiSend size={18} />
+                      )}
                     </button>
                   </form>
                 </>
@@ -1777,7 +1990,7 @@ const MessagesPage = () => {
       {/* Lightbox */}
       {lightboxSrc && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50"
           onClick={() => setLightboxSrc(null)}
         >
           <img
@@ -1914,7 +2127,7 @@ const MessagesPage = () => {
 
       {/* Forward Dialog */}
       {showForwardDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold">Forward message</h3>
@@ -2009,7 +2222,7 @@ const MessagesPage = () => {
 
       {/* Message Info Dialog */}
       {showMessageInfo && messageInfo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Message info</h3>
@@ -2072,7 +2285,7 @@ const MessagesPage = () => {
 
       {/* Reactions Modal */}
       {reactionsModalFor && reactionsModalData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Reactions</h3>
@@ -2140,36 +2353,42 @@ const MessagesPage = () => {
                       ? true
                       : r.emoji === reactionsModalData.activeTab
                   )
-                  .map((r, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between py-2 hover:bg-gray-50 rounded-lg transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={getAvatarUrl(
-                            r.userId?.avatarUrl || r.userId?.avatar
+                  .map((r, idx) => {
+                    // Handle both old and new data structures
+                    const userData = r.userId || r.user;
+                    const displayName = userData?.name || userData?.username || "User";
+                    const avatarUrl = userData?.avatarUrl || userData?.avatar;
+                    const userId = userData?._id || userData?.id;
+                    
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between py-2 hover:bg-gray-50 rounded-lg transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={getAvatarUrl(avatarUrl)}
+                            alt={displayName}
+                            className="w-8 h-8 rounded-full object-cover"
+                          />
+                          <div className="text-sm font-medium">
+                            {displayName}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{r.emoji}</span>
+                          {String(userId) === String(user._id) && (
+                            <button
+                              onClick={() => handleReact(reactionsModalFor, null)}
+                              className="text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              Tap to remove
+                            </button>
                           )}
-                          alt={r.userId?.name || "User"}
-                          className="w-8 h-8 rounded-full object-cover"
-                        />
-                        <div className="text-sm">
-                          {r.userId?.name || r.userId?.username || "User"}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{r.emoji}</span>
-                        {String(r.userId?._id) === String(user._id) && (
-                          <button
-                            onClick={() => handleReact(reactionsModalFor, null)}
-                            className="text-xs text-gray-500 hover:text-gray-700"
-                          >
-                            Tap to remove
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           </div>
@@ -2178,7 +2397,7 @@ const MessagesPage = () => {
 
       {/* Unblock Confirmation Dialog */}
       {showUnblockDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
             <h3 className="text-lg font-semibold mb-4 text-center">
               Unblock {selectedUser.name}?

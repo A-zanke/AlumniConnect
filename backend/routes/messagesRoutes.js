@@ -166,6 +166,9 @@ router.get("/media/:userId", protect, getMedia);
 // Get detailed message info
 router.get("/info/:messageId", protect, getMessageInfo);
 
+// Get queued messages for a user
+router.get("/queued/:userId", protect, require("../controllers/messagesController").getQueuedMessages);
+
 // NOTE: Fixed subpaths are defined above. Define dynamic routes at the bottom.
 
 // React to message
