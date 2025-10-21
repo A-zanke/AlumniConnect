@@ -4,7 +4,7 @@ const path = require("path");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
-const connectDB = require("./config/db");
+const { connectDB, isDbConnected, getConnectionState } = require("./config/db");
 const { errorHandler } = require("./middleware/errorHandler");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -13,7 +13,16 @@ const Notification = require("./models/Notification"); // Add at top if missing
 // Load environment variables
 dotenv.config();
 
-connectDB();
+// Enforce verified MongoDB connection before starting app
+// If DB is not connected, do not start HTTP server or Socket.IO
+(async () => {
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error("Fatal: could not connect to MongoDB. Exiting.", err);
+    process.exit(1);
+  }
+})();
 
 // Initialize Express
 const app = express();
@@ -42,6 +51,18 @@ app.use(
   })
 );
 app.use(helmet());
+
+// If DB is not connected, block API routes gracefully (except health and auth)
+app.use((req, res, next) => {
+  const pathStr = req.path || "";
+  const isHealth = pathStr === "/api/messages/health" || pathStr === "/health";
+  const isAuth = pathStr.startsWith("/api/auth");
+  if (!isHealth && !isAuth && !isDbConnected()) {
+    console.error("Rejecting request while DB disconnected:", req.method, pathStr);
+    return res.status(503).json({ message: "Service unavailable: database disconnected" });
+  }
+  next();
+});
 
 // Whitelist auth/OTP/search + event writes + ALL admin routes
 const AUTH_OTP_PATHS = new Set([
@@ -176,11 +197,19 @@ if (process.env.NODE_ENV === "production") {
 // Error handling middleware
 app.use(errorHandler);
 
-// Start server
+// Start server only when DB is connected
 const PORT = process.env.PORT || 5000;
-http.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const startServerWhenDbReady = () => {
+  if (isDbConnected()) {
+    http.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } else {
+    console.error("Waiting for MongoDB connection... state:", getConnectionState());
+    setTimeout(startServerWhenDbReady, 500);
+  }
+};
+startServerWhenDbReady();
 
 // Socket.IO basic chat
 const jwt = require("jsonwebtoken");
@@ -191,7 +220,11 @@ const Block = require("./models/Block");
 
 const unreadTotalDebounce = new Map();
 
+// Disallow sockets when MongoDB is not connected
 io.use(async (socket, next) => {
+  if (!isDbConnected()) {
+    return next(new Error("DatabaseNotConnected"));
+  }
   try {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("No token"));
@@ -206,6 +239,10 @@ io.use(async (socket, next) => {
 });
 
 io.on("connection", (socket) => {
+  if (!isDbConnected()) {
+    socket.disconnect(true);
+    return;
+  }
   // Join personal room for notifications
   socket.join(socket.userId);
 
@@ -295,7 +332,8 @@ io.on("connection", (socket) => {
       }
       if (ab || ba) return;
       const participants = [String(from), String(to)].sort();
-      const threadId = `${participants[0]}_${participants[1]}`;
+      const threadId = `${participants[0]}_${participants[1]}`; // keep for Message.threadId
+      const threadKey = threadId; // deterministic key for Thread
       const messageData = {
         threadId,
         clientKey,
@@ -317,15 +355,15 @@ io.on("connection", (socket) => {
       } else {
         msg = await Message.create(messageData);
       }
-      // Update per-user unread in Thread (upsert)
+      // Update per-user unread in Thread using deterministic key (avoids $size upsert errors)
       const thread = await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
+        { key: threadKey },
         {
-          $setOnInsert: { participants },
+          $setOnInsert: { participants, key: threadKey },
           $set: { lastMessageAt: new Date(), lastMessage: msg._id },
           $inc: { [`unreadCount.${to}`]: 1 },
         },
-        { upsert: true, new: true }
+        { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       const messagePayload = {
         conversationId: String(thread._id),

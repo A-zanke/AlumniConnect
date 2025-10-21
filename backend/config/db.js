@@ -1,40 +1,37 @@
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+
+let isConnected = false;
 
 const connectDB = async () => {
-  try {
-    const mongoUri = process.env.MONGO_URI;
-    let uriToUse = mongoUri;
-    if (!mongoUri) {
-      const mem = await MongoMemoryServer.create();
-      uriToUse = mem.getUri();
-      console.log('Using in-memory MongoDB instance');
-    }
-    const conn = await mongoose.connect(uriToUse, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`Mongo connection error: ${error.message}`);
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        const mem = await MongoMemoryServer.create();
-        const uri = mem.getUri();
-        const conn = await mongoose.connect(uri, {
-          useNewUrlParser: true,
-          useUnifiedTopology: true,
-        });
-        console.log('Fallback: Using in-memory MongoDB instance');
-        console.log(`MongoDB Connected: ${conn.connection.host}`);
-        return;
-      } catch (memErr) {
-        console.error('In-memory MongoDB start failed:', memErr.message);
-      }
-    }
+  const mongoUri = process.env.MONGO_URI;
+  if (!mongoUri) {
+    console.error('Mongo connection error: MONGO_URI is not set');
     process.exit(1);
   }
+
+  // Connection state logging
+  mongoose.connection.on('connected', () => {
+    isConnected = true;
+    console.log(`MongoDB Connected: ${mongoose.connection.host}`);
+  });
+  mongoose.connection.on('error', (err) => {
+    isConnected = false;
+    console.error('MongoDB connection error:', err);
+  });
+  mongoose.connection.on('disconnected', () => {
+    isConnected = false;
+    console.error('MongoDB disconnected');
+  });
+
+  // Initiate connection
+  await mongoose.connect(mongoUri, {
+    // Mongoose v7 uses sane defaults; options kept minimal
+  });
+
+  return mongoose.connection;
 };
 
-module.exports = connectDB;
+const getConnectionState = () => mongoose.connection.readyState; // 0: disconnected, 1: connected, 2: connecting, 3: disconnecting
+const isDbConnected = () => isConnected || mongoose.connection.readyState === 1;
+
+module.exports = { connectDB, getConnectionState, isDbConnected };

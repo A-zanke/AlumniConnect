@@ -145,6 +145,8 @@ exports.getConversations = async (req, res) => {
           from: otherId,
           to: me,
           isRead: false,
+          deletedForEveryone: { $ne: true },
+          deletedFor: { $ne: me },
         });
 
         const snippet = msg.content?.trim()
@@ -157,11 +159,8 @@ exports.getConversations = async (req, res) => {
         let threadId = null;
         try {
           const participants = [String(me), String(otherId)].sort();
-          const thread = await Thread.findOne({
-            participants: { $all: participants, $size: 2 },
-          })
-            .select("_id")
-            .lean();
+          const key = `${participants[0]}_${participants[1]}`;
+          const thread = await Thread.findOne({ key }).select("_id").lean();
           if (thread) threadId = String(thread._id);
         } catch {}
 
@@ -234,6 +233,8 @@ exports.getMessages = async (req, res) => {
         { from: me, to: other },
         { from: other, to: me },
       ],
+      deletedForEveryone: { $ne: true },
+      deletedFor: { $ne: me },
     })
       .populate("from to", "name username avatarUrl")
       .sort({ createdAt: 1 })
@@ -259,7 +260,7 @@ exports.getMessages = async (req, res) => {
     try {
       const participants = [String(me), String(other)].sort();
       await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
+        { key: `${participants[0]}_${participants[1]}` },
         {
           $set: { [`unreadCount.${me}`]: 0, [`lastReadAt.${me}`]: new Date() },
         }
@@ -278,9 +279,8 @@ exports.getMessages = async (req, res) => {
       const [participantsA, totalUnread] = await Promise.all([
         (async () => {
           const participants = [String(me), String(other)].sort();
-          const thread = await Thread.findOne({
-            participants: { $all: participants, $size: 2 },
-          }).select("_id");
+          const key = `${participants[0]}_${participants[1]}`;
+          const thread = await Thread.findOne({ key }).select("_id");
           if (thread) {
             req.io.to(String(me)).emit("unread:update", {
               conversationId: String(thread._id),
@@ -464,22 +464,18 @@ exports.sendMessage = async (req, res) => {
 
     const dto = parseMessage(populatedMessage.toObject(), me);
 
-    // Update thread
+    // Update thread using deterministic key to avoid findAndModify errors
     const participants = [String(me), String(to)].sort();
-    // Avoid "participants matched twice" by first finding thread
-    let thread = await Thread.findOne({
-      participants: { $all: participants, $size: 2 },
-    });
-    if (!thread) {
-      thread = await Thread.create({ participants });
-    }
-    // Now update fields separately
-    thread.lastMessageAt = new Date();
-    thread.lastMessage = message._id;
-    thread.lastReadAt.set(String(me), new Date());
-    const currentUnread = thread.unreadCount.get(String(to)) || 0;
-    thread.unreadCount.set(String(to), currentUnread + 1);
-    await thread.save();
+    const threadKey = `${participants[0]}_${participants[1]}`;
+    const thread = await Thread.findOneAndUpdate(
+      { key: threadKey },
+      {
+        $setOnInsert: { participants, key: threadKey },
+        $set: { lastMessageAt: new Date(), lastMessage: message._id },
+        $inc: { [`unreadCount.${to}`]: 1 },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     // Real-time notifications
     if (req.io) {
@@ -502,9 +498,9 @@ exports.sendMessage = async (req, res) => {
       // Update unread counts for the conversation and total for recipient
       const [threadDoc, totalUnread] = await Promise.all([
         Thread.findById(thread?._id).select("unreadCount"),
-        Message.countDocuments({ to, isRead: false }),
+        Message.countDocuments({ to, isRead: false, deletedForEveryone: { $ne: true }, deletedFor: { $ne: to } }),
       ]);
-      const convCount = threadDoc?.unreadCount?.get(String(to)) || 0;
+      const convCount = (threadDoc?.unreadCount?.get && threadDoc.unreadCount.get(String(to))) || threadDoc?.unreadCount?.[String(to)] || 0;
       req.io.to(String(to)).emit("unread:update", {
         conversationId: String(thread?._id || `${me}_${to}`),
         newCount: convCount,

@@ -619,6 +619,19 @@ router.post(
   sendMessage
 );
 
+// Guard: block this router entirely if DB disconnected
+router.use((req, res, next) => {
+  try {
+    const { isDbConnected } = require("../config/db");
+    if (isDbConnected && !isDbConnected()) {
+      return res
+        .status(503)
+        .json({ message: "Service unavailable: database disconnected" });
+    }
+  } catch {}
+  next();
+});
+
 // Health check route
 router.get("/health", async (req, res) => {
   try {
@@ -642,10 +655,8 @@ router.get("/health", async (req, res) => {
 
     // Check database connection
     try {
-      const mongoose = require("mongoose");
-      if (mongoose.connection.readyState === 1) {
-        healthStatus.database = true;
-      }
+      const { isDbConnected } = require("../config/db");
+      if (isDbConnected && isDbConnected()) healthStatus.database = true;
     } catch (err) {
       console.error("Database check failed:", err);
     }
