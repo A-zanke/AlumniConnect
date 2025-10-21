@@ -1,6 +1,6 @@
 import React from "react";
 import Chatbot from "./components/ui/Chatbot";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import PrivateRoute from "./components/PrivateRoute";
@@ -28,14 +28,25 @@ import AdminUserList from "./admin/AdminUserList.jsx";
 import AdminEventList from "./admin/AdminEventList.jsx";
 import AdminEventDetail from "./admin/AdminEventDetail.jsx";
 
+function RouteAwareLayout({ children }) {
+  const location = useLocation();
+  const isMessagesRoute = location.pathname.startsWith("/messages");
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Navbar />
+      <main className="flex-grow">{children}</main>
+      {!isMessagesRoute && <Footer />}
+      {!isMessagesRoute && <Chatbot />}
+    </div>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
         <Router>
-          <div className="flex flex-col min-h-screen">
-            <Navbar />
-            <main className="flex-grow">
+          <RouteAwareLayout>
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/login" element={<LoginPage />} />
@@ -154,12 +165,7 @@ function App() {
                 />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
-            </main>
-            {/* Render Footer on all routes except /messages */}
-            {window.location.pathname !== "/messages" && <Footer />}
-            {/* Hide Chatbot on /messages route without touching the component itself */}
-            {window.location.pathname !== "/messages" && <Chatbot />}
-          </div>
+          </RouteAwareLayout>
         </Router>
       </NotificationProvider>
     </AuthProvider>

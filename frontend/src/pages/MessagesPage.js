@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../context/AuthContext";
+import { Link, useNavigate } from "react-router-dom";
 import Spinner from "../components/ui/Spinner";
 import { toast } from "react-toastify";
 import { connectionAPI, fetchMessages, userAPI } from "../components/utils/api";
@@ -71,6 +72,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const MessagesPage = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [connections, setConnections] = useState([]);
   const [unreadByConversationId, setUnreadByConversationId] = useState({});
@@ -240,6 +242,23 @@ const MessagesPage = () => {
     };
 
     fetchConversations();
+  }, [user]);
+
+  // Fetch initial block list so history stays visible but input is disabled
+  useEffect(() => {
+    const fetchBlocks = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const resp = await axios.get(`${baseURL}/api/messages/blocks`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const blocked = (resp?.data?.blocked || []).map((u) => String(u._id));
+        setBlockedUsers(new Set(blocked));
+      } catch (e) {
+        // ignore silently
+      }
+    };
+    if (user) fetchBlocks();
   }, [user]);
 
   // Keep a ref of selected user for event handlers
@@ -541,13 +560,15 @@ const MessagesPage = () => {
       } else {
         setSelectedImage(null);
         setImagePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
 
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error("Failed to send message. Please try again.");
-      // Keep input and selected media so user can retry
+      // Reset file input to avoid stuck state after background upload success
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -725,6 +746,7 @@ const MessagesPage = () => {
 
   const handleBulkDeleteChats = async () => {
     try {
+      if (!window.confirm("Delete all selected chats and their history for you?")) return;
       const ids = Array.from(selectedChatIds);
       if (ids.length === 0) return;
       const token = localStorage.getItem("token");
@@ -785,6 +807,20 @@ const MessagesPage = () => {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  const formatDateLabel = (timestamp) => {
+    const d = new Date(timestamp);
+    const now = new Date();
+    const isSameDay = (a, b) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (isSameDay(d, now)) return "Today";
+    if (isSameDay(d, yesterday)) return "Yesterday";
+    return d.toLocaleDateString();
   };
 
   const formatLastSeen = (lastSeen) => {
@@ -1135,8 +1171,15 @@ const MessagesPage = () => {
                 <div>
                   <button
                     onClick={() => setShowRightPanel(true)}
+                    onDoubleClick={() =>
+                      navigate(
+                        selectedUser.username
+                          ? `/profile/${selectedUser.username}`
+                          : `/profile/id/${selectedUser._id}`
+                      )
+                    }
                     className="font-semibold text-gray-900 hover:underline text-left"
-                    title="View contact info"
+                    title="View profile"
                   >
                     {selectedUser.name}
                   </button>
@@ -1218,6 +1261,38 @@ const MessagesPage = () => {
                   )}
                 </div>
               </div>
+
+            {/* Pinned message header */}
+            {pinnedMessages.size > 0 && (
+              <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center gap-3">
+                <BsStarFill className="text-yellow-500" />
+                {(() => {
+                  const firstId = Array.from(pinnedMessages)[0];
+                  const pm = messages.find((m) => String(m.id) === String(firstId));
+                  const preview = pm?.content || (pm?.attachments?.length ? "Media" : "Pinned");
+                  return (
+                    <div className="flex-1 truncate text-sm text-gray-800">{preview}</div>
+                  );
+                })()}
+                <button
+                  onClick={async () => {
+                    const id = Array.from(pinnedMessages)[0];
+                    try {
+                      const token = localStorage.getItem("token");
+                      await axios.post(
+                        `${baseURL}/api/messages/pin`,
+                        { messageId: id, pin: false },
+                        { headers: { Authorization: `Bearer ${token}` } }
+                      );
+                    } catch {}
+                    setPinnedMessages(new Set());
+                  }}
+                  className="text-xs text-gray-600 hover:text-gray-800"
+                >
+                  Unpin
+                </button>
+              </div>
+            )}
             </div>
 
             {/* Messages */}
@@ -1249,9 +1324,9 @@ const MessagesPage = () => {
                       <div key={message.id}>
                         {/* Date separator */}
                         {showDateSeparator && (
-                          <div className="flex justify-center my-4">
-                            <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-                              {new Date(message.timestamp).toLocaleDateString()}
+                          <div className="flex justify-center my-4 sticky top-2 z-10">
+                            <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full shadow">
+                              {formatDateLabel(message.timestamp)}
                             </span>
                           </div>
                         )}
@@ -1554,6 +1629,40 @@ const MessagesPage = () => {
                                       <FiInfo /> Info
                                     </button>
                                     <button
+                                      onClick={async () => {
+                                        const isPinned = pinnedMessages.has(message.id);
+                                        try {
+                                          const token = localStorage.getItem("token");
+                                          await axios.post(
+                                            `${baseURL}/api/messages/pin`,
+                                            { messageId: message.id, pin: !isPinned },
+                                            { headers: { Authorization: `Bearer ${token}` } }
+                                          );
+                                          setPinnedMessages((prev) => {
+                                            const next = new Set(prev);
+                                            if (isPinned) next.delete(message.id);
+                                            else {
+                                              next.clear();
+                                              next.add(message.id);
+                                            }
+                                            return next;
+                                          });
+                                        } catch {}
+                                        setOpenMessageMenuFor(null);
+                                      }}
+                                      className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                                    >
+                                      {pinnedMessages.has(message.id) ? (
+                                        <>
+                                          <BsStarFill className="text-yellow-500" /> Unpin
+                                        </>
+                                      ) : (
+                                        <>
+                                          <BsStar /> Pin
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
                                       onClick={() => {
                                         handleDeleteSingle(message.id, "me");
                                         setOpenMessageMenuFor(null);
@@ -1602,12 +1711,21 @@ const MessagesPage = () => {
                   >
                     Delete for me
                   </button>
-                  <button
-                    onClick={() => handleBulkDelete("everyone")}
-                    className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                  >
-                    Delete for everyone
-                  </button>
+                  {(() => {
+                    const allMine = Array.from(selectedMessageIds).every((id) => {
+                      const m = messages.find((mm) => String(mm.id) === String(id));
+                      return m && String(m.senderId) === String(user._id);
+                    });
+                    if (!allMine) return null;
+                    return (
+                      <button
+                        onClick={() => handleBulkDelete("everyone")}
+                        className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                      >
+                        Delete for everyone
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={() => {
                       setSelectedMessageIds(new Set());
@@ -1790,9 +1908,16 @@ const MessagesPage = () => {
 
       {/* Right side panel: contact info + media/links/docs + actions */}
       {selectedUser && showRightPanel && (
-        <div className="fixed inset-y-0 right-0 w-full sm:w-[380px] bg-white border-l border-gray-200 shadow-2xl z-50 flex flex-col">
+        <div
+          className="fixed inset-0 bg-black/30 z-50 flex justify-end"
+          onClick={() => setShowRightPanel(false)}
+        >
+          <div
+            className="h-full w-full sm:w-[380px] bg-white border-l border-gray-200 shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
           <div className="p-4 border-b flex items-center justify-between">
-            <div className="font-semibold">Contact info</div>
+            <div className="font-semibold">Chat details</div>
             <button
               onClick={() => setShowRightPanel(false)}
               className="text-gray-400 hover:text-gray-600"
@@ -1814,6 +1939,18 @@ const MessagesPage = () => {
               <div className="font-medium">{selectedUser.name}</div>
               <div className="text-sm text-gray-500">
                 @{selectedUser.username}
+              </div>
+              <div className="mt-1">
+                <Link
+                  to={
+                    selectedUser.username
+                      ? `/profile/${selectedUser.username}`
+                      : `/profile/id/${selectedUser._id}`
+                  }
+                  className="text-sm text-indigo-600 hover:underline"
+                >
+                  View profile
+                </Link>
               </div>
             </div>
           </div>
@@ -1909,6 +2046,7 @@ const MessagesPage = () => {
               Report
             </button>
           </div>
+        </div>
         </div>
       )}
 
@@ -2106,60 +2244,56 @@ const MessagesPage = () => {
                 >
                   All {reactionsModalData.reactions?.length || 0}
                 </button>
-                {Object.entries(
-                  (reactionsModalData.reactions || []).reduce((acc, r) => {
-                    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                    return acc;
-                  }, {})
-                ).map(([emoji, count]) => (
+                {(reactionsModalData.reactions || []).map((group) => (
                   <button
-                    key={emoji}
+                    key={group.emoji}
                     onClick={() =>
                       setReactionsModalData({
                         ...reactionsModalData,
-                        activeTab: emoji,
+                        activeTab: group.emoji,
                       })
                     }
                     className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                      reactionsModalData.activeTab === emoji
+                      reactionsModalData.activeTab === group.emoji
                         ? "bg-green-100 text-green-700 border-b-2 border-green-500"
                         : "bg-gray-100 text-gray-600"
                     }`}
                   >
-                    {emoji} {count}
+                    {group.emoji} {group.count}
                   </button>
                 ))}
               </div>
 
               {/* User list */}
               <div className="max-h-80 overflow-y-auto space-y-2">
-                {(reactionsModalData.reactions || [])
-                  .filter((r) =>
+                {(() => {
+                  const flat = (reactionsModalData.reactions || []).flatMap(
+                    (g) => g.users.map((u) => ({ user: u, emoji: g.emoji }))
+                  );
+                  const list = flat.filter((row) =>
                     reactionsModalData.activeTab === "all" ||
                     !reactionsModalData.activeTab
                       ? true
-                      : r.emoji === reactionsModalData.activeTab
-                  )
-                  .map((r, idx) => (
+                      : row.emoji === reactionsModalData.activeTab
+                  );
+                  return list.map((row, idx) => (
                     <div
                       key={idx}
                       className="flex items-center justify-between py-2 hover:bg-gray-50 rounded-lg transition-colors"
                     >
                       <div className="flex items-center gap-3">
                         <img
-                          src={getAvatarUrl(
-                            r.userId?.avatarUrl || r.userId?.avatar
-                          )}
-                          alt={r.userId?.name || "User"}
+                          src={getAvatarUrl(row.user?.avatarUrl)}
+                          alt={row.user?.name || row.user?.username || "User"}
                           className="w-8 h-8 rounded-full object-cover"
                         />
                         <div className="text-sm">
-                          {r.userId?.name || r.userId?.username || "User"}
+                          {row.user?.name || row.user?.username || "User"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{r.emoji}</span>
-                        {String(r.userId?._id) === String(user._id) && (
+                        <span className="text-lg">{row.emoji}</span>
+                        {String(row.user?._id) === String(user._id) && (
                           <button
                             onClick={() => handleReact(reactionsModalFor, null)}
                             className="text-xs text-gray-500 hover:text-gray-700"
@@ -2169,7 +2303,8 @@ const MessagesPage = () => {
                         )}
                       </div>
                     </div>
-                  ))}
+                  ));
+                })()}
               </div>
             </div>
           </div>

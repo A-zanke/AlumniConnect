@@ -18,6 +18,7 @@ import {
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "../NotificationBell";
+import "./Navbar.css";
 import { getAvatarUrl } from "../utils/helpers";
 import { unreadAPI } from "../utils/api";
 import { io } from "socket.io-client";
