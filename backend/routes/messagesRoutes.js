@@ -354,6 +354,9 @@ router.post("/bulk", protect, async (req, res) => {
 // Bulk delete messages
 router.delete("/bulk-delete", protect, bulkDelete);
 
+// Delete single message (for me/everyone)
+router.delete("/:messageId", protect, deleteMessage);
+
 // Delete entire chat
 router.delete("/chat/:userId", protect, deleteChat);
 

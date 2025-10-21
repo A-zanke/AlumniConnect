@@ -106,6 +106,7 @@ const MessagesPage = () => {
   const [sharedMedia, setSharedMedia] = useState([]);
   const [showRightPanel, setShowRightPanel] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState("media");
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [openHeaderMenu, setOpenHeaderMenu] = useState(false);
   const [openMessageMenuFor, setOpenMessageMenuFor] = useState(null);
   const [forwardSource, setForwardSource] = useState(null);
@@ -330,9 +331,19 @@ const MessagesPage = () => {
         const id = payload.messageId || payload.id;
         if (id) updateMessageStatus(id, "delivered");
       });
-      s.on("message:seen", (payload) => {
-        const id = payload.messageId || payload.id;
-        if (id) updateMessageStatus(id, "seen");
+      // Normalize to server event name
+      s.on("messages:readReceipt", ({ conversationId }) => {
+        // Mark all my outgoing messages in current conversation as seen
+        const current = selectedUserRef.current;
+        if (!current) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.senderId) === String(user._id) &&
+            String(m.recipientId) === String(current._id)
+              ? { ...m, status: "seen" }
+              : m
+          )
+        );
       });
 
       // Reactions
@@ -372,7 +383,7 @@ const MessagesPage = () => {
       });
 
       // Deletions
-      s.on("messageDeleted", (payload) => {
+      const handleDeleted = (payload) => {
         if (payload?.messageId) {
           setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
         } else if (payload?.messageIds) {
@@ -384,6 +395,27 @@ const MessagesPage = () => {
         ) {
           setMessages([]);
         }
+      };
+      s.on("message:deleted", handleDeleted);
+      s.on("messages:bulkDeleted", handleDeleted);
+      // Pin updates
+      s.on("message:pinned", ({ messageId, isPinned }) => {
+        setPinnedMessages((prev) => {
+          const next = new Set(prev);
+          if (isPinned) next.add(String(messageId));
+          else next.delete(String(messageId));
+          return next;
+        });
+      });
+
+      // Block/unblock updates (self)
+      s.on("user:blocked", ({ userId, action }) => {
+        setBlockedUsers((prev) => {
+          const next = new Set(prev);
+          if (action === "block") next.add(String(userId));
+          else next.delete(String(userId));
+          return next;
+        });
       });
 
       // Typing indicators
@@ -426,6 +458,18 @@ const MessagesPage = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Show jump-to-latest when scrolled up
+  useEffect(() => {
+    const el = messageContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+      setShowJumpToLatest(!nearBottom);
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   // Fetch messages for selected user
   const fetchMessagesData = useCallback(async () => {
@@ -864,7 +908,15 @@ const MessagesPage = () => {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      setReactionsModalData(resp.data.messageInfo);
+      const info = resp.data.messageInfo || {};
+      // Flatten users for list view
+      const flat = [];
+      (info.reactions || []).forEach((entry) => {
+        (entry.users || []).forEach((u) => {
+          flat.push({ emoji: entry.emoji, user: u });
+        });
+      });
+      setReactionsModalData({ ...info, flatReactions: flat, activeTab: "all" });
       setReactionsModalFor(messageId);
     } catch (e) {
       console.error("Failed to fetch reactions:", e);
@@ -923,6 +975,16 @@ const MessagesPage = () => {
                 }`}
                 title="Select chats"
               >
+              {showJumpToLatest && (
+                <button
+                  type="button"
+                  onClick={scrollToBottom}
+                  className="fixed bottom-24 right-6 z-50 px-3 py-2 rounded-full shadow-md bg-white border border-gray-200 text-sm text-indigo-600"
+                  style={{ boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }}
+                >
+                  Jump to latest
+                </button>
+              )}
                 <FiCheckSquare />
               </button>
             </div>
@@ -1113,7 +1175,7 @@ const MessagesPage = () => {
         {selectedUser ? (
           <>
             {/* Chat Header */}
-              <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+              <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between relative">
               <div className="flex items-center gap-3">
                 <button
                   className="lg:hidden p-2 rounded-full hover:bg-gray-200"
@@ -1133,13 +1195,15 @@ const MessagesPage = () => {
                 />
 
                 <div>
-                  <button
-                    onClick={() => setShowRightPanel(true)}
-                    className="font-semibold text-gray-900 hover:underline text-left"
-                    title="View contact info"
-                  >
-                    {selectedUser.name}
-                  </button>
+                  <div className="font-semibold text-gray-900 text-left">
+                    <a
+                      href={`/profile/id/${selectedUser._id}`}
+                      className="hover:underline"
+                      title="View profile"
+                    >
+                      {selectedUser.name}
+                    </a>
+                  </div>
                   <p className="text-sm text-gray-500">
                     {isTyping && typingUser ? (
                       <span className="text-green-600 italic">typing...</span>
@@ -1162,7 +1226,7 @@ const MessagesPage = () => {
                   <FiCheckSquare />
                 </button>
 
-                <div className="relative">
+                <div className="relative z-50">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1174,7 +1238,7 @@ const MessagesPage = () => {
                   </button>
 
                   {openHeaderMenu && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-[60]">
                       <button
                         onClick={() => {
                           setShowMessageInfo(true);
@@ -1238,15 +1302,32 @@ const MessagesPage = () => {
                 </div>
               ) : (
                 <AnimatePresence>
-                  {messages.map((message, index) => {
-                    const isMine = message.senderId === user._id;
-                    const showDateSeparator =
-                      index === 0 ||
-                      new Date(messages[index - 1].timestamp).toDateString() !==
-                        new Date(message.timestamp).toDateString();
+                  {(() => {
+                    // Compute first unread boundary index
+                    const firstUnreadIndex = messages.findIndex(
+                      (m) => !m.isRead && String(m.recipientId) === String(user._id)
+                    );
+                    return messages.map((message, index) => {
+                      const isMine = String(message.senderId) === String(user._id);
+                      const prev = index > 0 ? messages[index - 1] : null;
+                      const next = index < messages.length - 1 ? messages[index + 1] : null;
+                      const sameAsPrev =
+                        prev &&
+                        String(prev.senderId) === String(message.senderId) &&
+                        Math.abs(new Date(message.timestamp) - new Date(prev.timestamp)) < 5 * 60 * 1000;
+                      const sameAsNext =
+                        next &&
+                        String(next.senderId) === String(message.senderId) &&
+                        Math.abs(new Date(next.timestamp) - new Date(message.timestamp)) < 5 * 60 * 1000;
+                      const isGroupStart = !sameAsPrev;
+                      const isGroupEnd = !sameAsNext;
+                      const showDateSeparator =
+                        index === 0 ||
+                        new Date(messages[index - 1].timestamp).toDateString() !==
+                          new Date(message.timestamp).toDateString();
 
-                    return (
-                      <div key={message.id}>
+                      return (
+                        <div key={message.id}>
                         {/* Date separator */}
                         {showDateSeparator && (
                           <div className="flex justify-center my-4">
@@ -1255,6 +1336,14 @@ const MessagesPage = () => {
                             </span>
                           </div>
                         )}
+                          {/* Unread separator */}
+                          {firstUnreadIndex === index && (
+                            <div className="flex items-center gap-2 my-3">
+                              <div className="flex-1 h-px bg-gray-300" />
+                              <span className="text-xs font-semibold text-indigo-600">Unread messages</span>
+                              <div className="flex-1 h-px bg-gray-300" />
+                            </div>
+                          )}
 
                         {/* Message */}
                         <motion.div
@@ -1311,12 +1400,27 @@ const MessagesPage = () => {
 
                             {/* Message bubble */}
                             <div
-                              className={`relative px-4 py-2 rounded-2xl ${
+                              className={`relative px-4 py-3 text-[15px] leading-[1.38] rounded-2xl ${
                                 isMine
-                                  ? "bg-green-500 text-white rounded-br-sm"
-                                  : "bg-white text-gray-900 rounded-bl-sm border border-gray-200"
+                                  ? "text-white"
+                                  : "text-gray-900 border border-gray-200"
                               } shadow-sm`}
+                              style={{
+                                background: isMine
+                                  ? "linear-gradient(135deg, rgba(79,70,229,0.85), rgba(124,58,237,0.85))"
+                                  : "var(--bubble-in, #f8fafc)",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+                                borderRadius: "var(--bubble-radius, 18px)",
+                              }}
                             >
+                              {/* Adaptive corners */}
+                              <div
+                                className={`${
+                                  isMine
+                                    ? `${isGroupEnd ? "rounded-br-md" : ""} ${isGroupStart ? "rounded-tr-md" : ""}`
+                                    : `${isGroupEnd ? "rounded-bl-md" : ""} ${isGroupStart ? "rounded-tl-md" : ""}`
+                                }`}
+                              />
                               {/* Message content */}
                               {message.content &&
                                 renderMessageContent(message.content)}
@@ -1349,7 +1453,7 @@ const MessagesPage = () => {
                                               <a
                                                 href={attachment}
                                                 download
-                                                className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
+                                                className="absolute top-2 right-2 bg-gray-900/70 text-white p-2 rounded-full hover:scale-110 transition-transform"
                                               >
                                                 <FiDownload size={16} />
                                               </a>
@@ -1385,15 +1489,18 @@ const MessagesPage = () => {
                                   </div>
                                 )}
 
-                              {/* Message time and status */}
-                              <div
-                                className={`flex items-center justify-end gap-1 mt-1 text-xs ${
-                                  isMine ? "text-green-100" : "text-gray-500"
-                                }`}
-                              >
-                                <span>{formatTime(message.timestamp)}</span>
-                                {getMessageStatusIcon(message.status, isMine)}
-                              </div>
+                              {/* Message time and status (only at group end) */}
+                              {isGroupEnd && (
+                                <div
+                                  className={`flex items-center justify-end gap-1 mt-1 text-[12px] ${
+                                    isMine ? "text-white/80" : "text-gray-500"
+                                  }`}
+                                  title={new Date(message.timestamp).toLocaleString()}
+                                >
+                                  <span>{formatTime(message.timestamp)}</span>
+                                  {getMessageStatusIcon(message.status, isMine)}
+                                </div>
+                              )}
 
                               {/* Reactions */}
                               {(() => {
@@ -1426,6 +1533,13 @@ const MessagesPage = () => {
                                   </button>
                                 );
                               })()}
+
+                              {/* Blocked banner on queued messages */}
+                              {message.queuedDuringBlock && isMine && (
+                                <div className="mt-2 text-[12px] text-yellow-700 bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
+                                  Delivery pending — recipient blocked you at the time
+                                </div>
+                              )}
                             </div>
 
                             {/* Message actions (hover) */}
@@ -1435,7 +1549,7 @@ const MessagesPage = () => {
                               } opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1`}
                             >
                               {/* React button */}
-                              <div className="relative">
+                              <div className="relative z-50">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1455,7 +1569,7 @@ const MessagesPage = () => {
 
                                 {/* Quick reactions */}
                                 {activeReactionFor === message.id && (
-                                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex gap-1 z-20">
+                                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex gap-1 z-[60]">
                                     {["👍", "❤️", "😂", "😮", "😢", "🙏"].map(
                                       (emoji) => (
                                         <button
@@ -1474,8 +1588,8 @@ const MessagesPage = () => {
                                 )}
                               </div>
 
-                              {/* More options */}
-                              <div className="relative">
+                            {/* More options */}
+                            <div className="relative z-50">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1495,7 +1609,7 @@ const MessagesPage = () => {
 
                                 {/* Message menu */}
                                 {openMessageMenuFor === message.id && (
-                                  <div className="absolute bottom-full mb-2 right-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 min-w-[160px]">
+                                  <div className="absolute bottom-full mb-2 right-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-[60] min-w-[160px]">
                                     <button
                                       onClick={() => {
                                         setReplyTo({ id: message.id });
@@ -1516,8 +1630,18 @@ const MessagesPage = () => {
                                       <BsForward /> Forward
                                     </button>
                                     <button
-                                      onClick={() => {
-                                        toggleStar(message.id);
+                                      onClick={async () => {
+                                        try {
+                                          const token = localStorage.getItem("token");
+                                          await axios.post(
+                                            `${baseURL}/api/messages/star`,
+                                            { messageId: message.id },
+                                            { headers: { Authorization: `Bearer ${token}` } }
+                                          );
+                                          toggleStar(message.id);
+                                        } catch {
+                                          toast.error("Failed to toggle star");
+                                        }
                                         setOpenMessageMenuFor(null);
                                       }}
                                       className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
@@ -1544,9 +1668,19 @@ const MessagesPage = () => {
                                       <FiCopy /> Copy
                                     </button>
                                     <button
-                                      onClick={() => {
-                                        setMessageInfo(message);
-                                        setShowMessageInfo(true);
+                                      onClick={async () => {
+                                        try {
+                                          const token = localStorage.getItem("token");
+                                          const resp = await axios.get(
+                                            `${baseURL}/api/messages/info/${message.id}`,
+                                            { headers: { Authorization: `Bearer ${token}` } }
+                                          );
+                                          setMessageInfo(resp?.data?.messageInfo || message);
+                                          setShowMessageInfo(true);
+                                        } catch {
+                                          setMessageInfo(message);
+                                          setShowMessageInfo(true);
+                                        }
                                         setOpenMessageMenuFor(null);
                                       }}
                                       className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
@@ -1584,7 +1718,8 @@ const MessagesPage = () => {
                         </motion.div>
                       </div>
                     );
-                  })}
+                    });
+                  })()}
                 </AnimatePresence>
               )}
             </div>
@@ -1695,7 +1830,7 @@ const MessagesPage = () => {
                       />
 
                       {/* Input actions */}
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-50">
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
@@ -1718,7 +1853,7 @@ const MessagesPage = () => {
 
                           {/* Emoji picker */}
                           {showEmojiPicker && (
-                            <div className="absolute bottom-full right-0 mb-2 z-50">
+                            <div className="absolute bottom-full right-0 mb-2 z-[60]">
                               <Picker
                                 onEmojiClick={(emojiData) => {
                                   setNewMessage(
@@ -1777,7 +1912,7 @@ const MessagesPage = () => {
       {/* Lightbox */}
       {lightboxSrc && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-gray-900/80 flex items-center justify-center z-50"
           onClick={() => setLightboxSrc(null)}
         >
           <img
@@ -1914,7 +2049,7 @@ const MessagesPage = () => {
 
       {/* Forward Dialog */}
       {showForwardDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold">Forward message</h3>
@@ -2009,7 +2144,7 @@ const MessagesPage = () => {
 
       {/* Message Info Dialog */}
       {showMessageInfo && messageInfo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Message info</h3>
@@ -2072,7 +2207,7 @@ const MessagesPage = () => {
 
       {/* Reactions Modal */}
       {reactionsModalFor && reactionsModalData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Reactions</h3>
@@ -2131,9 +2266,9 @@ const MessagesPage = () => {
                 ))}
               </div>
 
-              {/* User list */}
+              {/* User list with real display names */}
               <div className="max-h-80 overflow-y-auto space-y-2">
-                {(reactionsModalData.reactions || [])
+                {(reactionsModalData.flatReactions || (reactionsModalData.reactions || []).flatMap((entry) => (entry.users || []).map((u) => ({ emoji: entry.emoji, user: u }))))
                   .filter((r) =>
                     reactionsModalData.activeTab === "all" ||
                     !reactionsModalData.activeTab
@@ -2147,19 +2282,17 @@ const MessagesPage = () => {
                     >
                       <div className="flex items-center gap-3">
                         <img
-                          src={getAvatarUrl(
-                            r.userId?.avatarUrl || r.userId?.avatar
-                          )}
-                          alt={r.userId?.name || "User"}
+                          src={getAvatarUrl(r.user?.avatarUrl || r.user?.avatar)}
+                          alt={r.user?.name || r.user?.username || "User"}
                           className="w-8 h-8 rounded-full object-cover"
                         />
                         <div className="text-sm">
-                          {r.userId?.name || r.userId?.username || "User"}
+                          {r.user?.name || r.user?.username || "User"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-lg">{r.emoji}</span>
-                        {String(r.userId?._id) === String(user._id) && (
+                        {String(r.user?._id) === String(user._id) && (
                           <button
                             onClick={() => handleReact(reactionsModalFor, null)}
                             className="text-xs text-gray-500 hover:text-gray-700"
@@ -2178,7 +2311,7 @@ const MessagesPage = () => {
 
       {/* Unblock Confirmation Dialog */}
       {showUnblockDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
             <h3 className="text-lg font-semibold mb-4 text-center">
               Unblock {selectedUser.name}?

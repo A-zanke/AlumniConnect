@@ -293,7 +293,8 @@ io.on("connection", (socket) => {
           Block.findOne({ blocker: to, blocked: from }).lean(),
         ]);
       }
-      if (ab || ba) return;
+      // If I blocked recipient, do not send
+      if (ab) return;
       const participants = [String(from), String(to)].sort();
       const threadId = `${participants[0]}_${participants[1]}`;
       const messageData = {
@@ -303,9 +304,15 @@ io.on("connection", (socket) => {
         to,
         content: content || "",
         isRead: false,
+        deliveredAt: null,
       };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
+      }
+      // If recipient blocked me, queue and avoid emitting to them now
+      const recipientBlockedMe = !!ba;
+      if (recipientBlockedMe) {
+        messageData.queuedDuringBlock = true;
       }
       let msg;
       if (clientKey) {
@@ -347,25 +354,27 @@ io.on("connection", (socket) => {
         status: "sent",
         clientKey: clientKey || null,
       });
-      // Targeted delivery only to recipient
-      io.to(to).emit("message:new", messagePayload);
-      // Unread update to recipient
-      const newUnread =
-        thread.unreadCount?.get?.(String(to)) ||
-        thread.unreadCount?.[String(to)] ||
-        0;
-      io.to(to).emit("unread:update", {
-        conversationId: String(thread._id),
-        newCount: newUnread,
-      });
-      // If recipient is currently online (in room), then it's delivered
-      const isRecipientOnline = !!io.sockets.adapter.rooms.get(String(to));
-      if (isRecipientOnline) {
-        io.to(from).emit("message:delivered", {
-          id: String(msg._id),
-          messageId: String(msg._id),
-          clientKey: clientKey || null,
+      if (!recipientBlockedMe) {
+        // Targeted delivery only to recipient
+        io.to(to).emit("message:new", messagePayload);
+        // Unread update to recipient
+        const newUnread =
+          thread.unreadCount?.get?.(String(to)) ||
+          thread.unreadCount?.[String(to)] ||
+          0;
+        io.to(to).emit("unread:update", {
+          conversationId: String(thread._id),
+          newCount: newUnread,
         });
+        // If recipient is currently online (in room), then it's delivered
+        const isRecipientOnline = !!io.sockets.adapter.rooms.get(String(to));
+        if (isRecipientOnline) {
+          io.to(from).emit("message:delivered", {
+            id: String(msg._id),
+            messageId: String(msg._id),
+            clientKey: clientKey || null,
+          });
+        }
       }
     } catch (e) {
       console.error("Socket chat error:", e);

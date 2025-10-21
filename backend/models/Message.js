@@ -31,6 +31,11 @@ const MessageSchema = new mongoose.Schema(
       },
     ],
 
+    // Deletion flags
+    deletedForEveryone: { type: Boolean, default: false },
+    deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User", default: undefined }],
+    deletedAt: { type: Date, default: null },
+
     // Per-message emoji reactions
     reactions: [
       {
@@ -66,6 +71,7 @@ const MessageSchema = new mongoose.Schema(
         "document",
         "location",
         "contact",
+        "system",
       ],
       default: "text",
     },
@@ -117,6 +123,9 @@ const MessageSchema = new mongoose.Schema(
       },
     },
 
+    // Queued delivery when recipient blocked the sender
+    queuedDuringBlock: { type: Boolean, default: false },
+
     // Message encryption (for future use)
     encrypted: {
       type: Boolean,
@@ -163,6 +172,7 @@ MessageSchema.index({ messageId: 1 }, { sparse: true });
 MessageSchema.index({ clientKey: 1 }, { sparse: true });
 MessageSchema.index({ threadId: 1 }, { sparse: true });
 MessageSchema.index({ "reactions.userId": 1 });
+MessageSchema.index({ queuedDuringBlock: 1, to: 1 });
 
 // TTL index for auto-expiring messages
 MessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -351,6 +361,7 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
     deliveredAt: this.deliveredAt,
     status: this.isRead ? "seen" : this.deliveredAt ? "delivered" : "sent",
     metadata: this.metadata,
+    queuedDuringBlock: this.queuedDuringBlock,
   };
 };
 

@@ -25,6 +25,20 @@ async function isBlocked(userAId, userBId) {
   }
 }
 
+async function whoBlocks(userAId, userBId) {
+  try {
+    const a = String(userAId);
+    const b = String(userBId);
+    const [ab, ba] = await Promise.all([
+      Block.findOne({ blocker: a, blocked: b }).lean(),
+      Block.findOne({ blocker: b, blocked: a }).lean(),
+    ]);
+    return { aBlocksB: !!ab, bBlocksA: !!ba };
+  } catch (e) {
+    return { aBlocksB: false, bBlocksA: false };
+  }
+}
+
 async function areConnected(userAId, userBId) {
   const user = await User.findById(userAId).select("connections");
   if (!user) return false;
@@ -111,6 +125,7 @@ function parseMessage(doc, viewerId) {
       reactions,
       replyTo: getReplyFromAttachments(doc.attachments),
       isStarred,
+      queuedDuringBlock: !!doc.queuedDuringBlock,
     };
   } catch (e) {
     return null;
@@ -214,19 +229,16 @@ exports.getMessages = async (req, res) => {
       return res.status(400).json({ message: "Invalid user ID" });
     }
 
-    const [connected, blocked] = await Promise.all([
+    const [connected, blockDir] = await Promise.all([
       areConnected(me, other),
-      isBlocked(me, other),
+      whoBlocks(me, other),
     ]);
 
     if (!connected)
       return res
         .status(403)
         .json({ message: "You can only message connected users" });
-    if (blocked)
-      return res
-        .status(403)
-        .json({ message: "Messaging is blocked between these users" });
+    // Allow history visibility even if blocked; do not block reads
 
     // Get messages with populated reply references
     const messages = await Message.find({
@@ -318,19 +330,19 @@ exports.sendMessage = async (req, res) => {
       return res.status(400).json({ message: "Invalid recipient user ID" });
     }
 
-    const [connected, blocked] = await Promise.all([
+    const [connected, blockDir] = await Promise.all([
       areConnected(me, to),
-      isBlocked(me, to),
+      whoBlocks(me, to),
     ]);
 
     if (!connected)
       return res
         .status(403)
         .json({ message: "You can only message connected users" });
-    if (blocked)
-      return res
-        .status(403)
-        .json({ message: "Messaging is blocked between these users" });
+    // If I blocked the other, disallow sending (but allow showing banner in UI)
+    if (blockDir.aBlocksB) {
+      return res.status(403).json({ message: "You have blocked this user" });
+    }
 
     const content = (req.body.content || "").toString();
     const messageType = req.body.messageType || "text";
@@ -443,7 +455,7 @@ exports.sendMessage = async (req, res) => {
       messageId:
         clientKey ||
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      deliveredAt: new Date(),
+      deliveredAt: null,
     };
 
     // Handle location messages
@@ -456,6 +468,11 @@ exports.sendMessage = async (req, res) => {
       messageData.contact = req.body.contact;
     }
 
+    // If recipient blocked me, queue message and do not deliver in real-time
+    const recipientBlockedMe = blockDir.bBlocksA;
+    if (recipientBlockedMe) {
+      messageData.queuedDuringBlock = true;
+    }
     const message = await Message.create(messageData);
     const populatedMessage = await Message.findById(message._id).populate(
       "from to",
@@ -481,8 +498,8 @@ exports.sendMessage = async (req, res) => {
     thread.unreadCount.set(String(to), currentUnread + 1);
     await thread.save();
 
-    // Real-time notifications
-    if (req.io) {
+    // Real-time notifications (only if not queued due to block)
+    if (req.io && !recipientBlockedMe) {
       // Send to recipient with normalized payload
       req.io.to(String(to)).emit("message:new", {
         conversationId: String(thread?._id || `${me}_${to}`),
@@ -1322,6 +1339,45 @@ exports.block = async (req, res) => {
         );
       } else {
         await Block.deleteOne({ blocker: blockerId, blocked: blockedId });
+        // On unblock: deliver queued messages from me->target that were queued during block
+        // Deliver both directions so the unblocked user receives messages sent while blocked
+        const participants = [blockerId, blockedId];
+        const queued = await Message.find({
+          from: { $in: participants },
+          to: { $in: participants },
+          queuedDuringBlock: true,
+        }).lean();
+        if (queued && queued.length > 0 && req.io) {
+          for (const q of queued) {
+            // mark delivered and clear queue flag
+            await Message.updateOne(
+              { _id: q._id },
+              { $set: { queuedDuringBlock: false, deliveredAt: new Date() } }
+            );
+            const convParticipants = [String(q.from), String(q.to)].sort();
+            const thread = await Thread.findOne({
+              participants: { $all: convParticipants, $size: 2 },
+            })
+              .select("_id unreadCount")
+              .lean();
+            const conversationId = String(
+              thread?._id || `${convParticipants[0]}_${convParticipants[1]}`
+            );
+            // Emit to recipient
+            req.io.to(String(q.to)).emit("message:new", {
+              conversationId,
+              messageId: String(q._id),
+              senderId: String(q.from),
+              body: q.content,
+              createdAt: q.createdAt,
+            });
+            // Emit delivery to sender
+            req.io.to(String(q.from)).emit("message:delivered", {
+              messageId: String(q._id),
+              status: "delivered",
+            });
+          }
+        }
       }
     } catch (dbError) {
       console.error("Database error in block operation:", dbError);
