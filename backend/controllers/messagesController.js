@@ -69,6 +69,13 @@ function getAttachmentUrls(attachments) {
 }
 
 function isDeletedForViewer(doc, viewerId) {
+  // Prefer explicit fields
+  if (doc.deletedForEveryone) return true;
+  if (Array.isArray(doc.deletedFor)) {
+    const uid = String(viewerId);
+    if (doc.deletedFor.some((id) => String(id) === uid)) return true;
+  }
+  // Backward compatibility: legacy markers in attachments
   const atts = doc.attachments;
   if (!Array.isArray(atts)) return false;
   return (
