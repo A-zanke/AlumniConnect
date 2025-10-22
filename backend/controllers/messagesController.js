@@ -785,8 +785,11 @@ exports.deleteMessage = async (req, res) => {
           .json({ message: "Delete for everyone time limit exceeded" });
       }
 
-      message.deletedForEveryone = true;
-      message.deletedAt = new Date();
+      // Replace content and strip media so both sides see a placeholder
+      message.content = "This message was deleted";
+      message.attachments = [];
+      message.messageType = "text";
+      message.metadata = { ...(message.metadata || {}), deleted: true };
       await message.save();
 
       if (req.io) {
@@ -794,13 +797,16 @@ exports.deleteMessage = async (req, res) => {
           req.io.to(userId).emit("message:deleted", {
             messageId: String(messageId),
             scope: "everyone",
+            placeholder: true,
           });
         });
       }
     } else {
       // Delete for me only
-      if (!message.deletedFor.includes(me)) {
-        message.deletedFor.push(me);
+      message.attachments = message.attachments || [];
+      const marker = `deletedFor:${me}`;
+      if (!message.attachments.includes(marker)) {
+        message.attachments.push(marker);
         await message.save();
       }
 

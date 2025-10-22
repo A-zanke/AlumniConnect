@@ -418,7 +418,11 @@ const MessagesPage = () => {
       // Deletions
       s.on("messageDeleted", (payload) => {
         if (payload?.messageId) {
-          setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+          if (payload.placeholder) {
+            setMessages((prev) => prev.map((m) => (String(m.id) === String(payload.messageId) ? { ...m, content: "This message was deleted", attachments: [], messageType: "text" } : m)));
+          } else {
+            setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+          }
         } else if (payload?.messageIds) {
           const ids = new Set(payload.messageIds.map(String));
           setMessages((prev) => prev.filter((m) => !ids.has(String(m.id))));
@@ -689,6 +693,17 @@ const MessagesPage = () => {
     try {
       const ids = Array.from(selectedMessageIds);
       if (ids.length === 0) return;
+      if (scope === 'everyone') {
+        // Ensure only my messages are in the selection for delete-everyone
+        const invalid = ids.some((id) => {
+          const m = messages.find((mm) => String(mm.id) === String(id));
+          return !m || String(m.senderId) !== String(user._id);
+        });
+        if (invalid) {
+          toast.error('Only your messages can be deleted for everyone');
+          return;
+        }
+      }
       const token = localStorage.getItem("token");
       await axios.delete(`${baseURL}/api/messages/bulk-delete`, {
         headers: { Authorization: `Bearer ${token}` },
