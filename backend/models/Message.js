@@ -122,6 +122,25 @@ const MessageSchema = new mongoose.Schema(
       default: "normal",
     },
 
+    // Deletion flags (explicit fields in addition to legacy markers)
+    deletedForEveryone: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedFor: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        index: true,
+      },
+    ],
+    deletedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     // Auto-delete timer (in seconds)
     autoDeleteAfter: {
       type: Number,
@@ -155,6 +174,8 @@ MessageSchema.index({ messageId: 1 }, { sparse: true });
 MessageSchema.index({ clientKey: 1 }, { sparse: true });
 MessageSchema.index({ threadId: 1 }, { sparse: true });
 MessageSchema.index({ "reactions.userId": 1 });
+MessageSchema.index({ deletedForEveryone: 1, createdAt: -1 });
+MessageSchema.index({ deletedFor: 1, createdAt: -1 });
 
 // TTL index for auto-expiring messages
 MessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -238,15 +259,26 @@ MessageSchema.statics.getUnreadCount = function (userId) {
   return this.countDocuments({
     to: userId,
     isRead: false,
-    attachments: { $not: { $in: [`deletedFor:${userId}`, 'deletedForEveryone'] } },
+    // Respect explicit deletion flags
+    deletedForEveryone: { $ne: true },
+    deletedFor: { $ne: userId },
+    // Backward compatibility with legacy markers kept in attachments
+    attachments: { $not: { $in: [`deletedFor:${userId}`, "deletedForEveryone"] } },
   });
 };
 
 // Instance method to check if message is deleted for user
 MessageSchema.methods.isDeletedFor = function (userId) {
+  // Respect explicit fields first
+  if (this.deletedForEveryone) return true;
+  if (Array.isArray(this.deletedFor)) {
+    const uid = String(userId);
+    if (this.deletedFor.some((id) => String(id) === uid)) return true;
+  }
+  // Backward compatibility with legacy markers in attachments
   return (
     (this.attachments && this.attachments.includes(`deletedFor:${userId}`)) ||
-    (this.attachments && this.attachments.includes('deletedForEveryone'))
+    (this.attachments && this.attachments.includes("deletedForEveryone"))
   );
 };
 

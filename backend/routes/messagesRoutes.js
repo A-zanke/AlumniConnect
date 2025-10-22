@@ -130,6 +130,42 @@ router.get("/starred", protect, getStarredMessages);
 // Get shared media for a conversation
 router.get("/media/:userId", protect, getMedia);
 
+// Stage 1: Direct media upload to Cloudinary for chat (returns secure URLs)
+router.post(
+  "/upload",
+  protect,
+  upload.fields([
+    { name: "image", maxCount: 5 },
+    { name: "video", maxCount: 5 },
+    { name: "audio", maxCount: 3 },
+    { name: "document", maxCount: 3 },
+    { name: "media", maxCount: 13 },
+  ]),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      const files = req.files || {};
+      const urls = [];
+      const pushFile = (f) => {
+        const url = f?.secure_url || f?.path || f?.url;
+        if (url) urls.push(url);
+      };
+      ["image", "video", "audio", "document", "media"].forEach((f) => {
+        const arr = files[f];
+        if (!arr) return;
+        (Array.isArray(arr) ? arr : [arr]).forEach(pushFile);
+      });
+      if (urls.length === 0) {
+        return res.status(400).json({ success: false, message: "No files uploaded" });
+      }
+      return res.status(201).json({ success: true, urls });
+    } catch (e) {
+      console.error("Upload error:", e);
+      return res.status(500).json({ success: false, message: "Upload failed" });
+    }
+  }
+);
+
 // Get detailed message info
 router.get("/info/:messageId", protect, getMessageInfo);
 
