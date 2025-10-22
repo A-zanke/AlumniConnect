@@ -17,7 +17,7 @@ connectDB();
 
 // Initialize Express
 const app = express();
-// Legacy static for old links; keep but prefer Cloudinary for new uploads
+// Serve uploads for backward compatibility and development
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const http = require("http").createServer(app);
 const { Server } = require("socket.io");

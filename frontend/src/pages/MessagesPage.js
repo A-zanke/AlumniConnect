@@ -134,6 +134,7 @@ const MessagesPage = () => {
   const [showUnblockDialog, setShowUnblockDialog] = useState(false);
   const [showUnblockSuccess, setShowUnblockSuccess] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({}); // id -> 0..100
+  const [mediaLoaded, setMediaLoaded] = useState({}); // url -> boolean
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
@@ -158,6 +159,7 @@ const MessagesPage = () => {
     const i = Math.min(3, Math.floor(Math.log(bytes) / Math.log(1024)));
     return `${(bytes / Math.pow(1024, i)).toFixed( (i===0)?0:1 )} ${sizes[i]}`;
   };
+  const resolveMediaUrl = (u = "") => (u && u.startsWith("/uploads") ? `${baseURL}${u}` : u);
 
   // Message status update callback
   const updateMessageStatus = useCallback((messageId, status) => {
@@ -588,7 +590,7 @@ const MessagesPage = () => {
       }
 
       const resp = await axios.post(
-        `${baseURL}/api/messages/${selectedUser._id}`,
+        `/api/messages/${selectedUser._id}`,
         formData,
         {
           headers: {
@@ -1538,18 +1540,24 @@ const MessagesPage = () => {
                                       return (
                                         <div key={idx} className="relative">
                                           <img
-                                            src={attachment}
+                                            src={resolveMediaUrl(attachment)}
                                             alt="attachment"
                                             className="max-w-full h-auto rounded-lg cursor-pointer"
-                                            onClick={() => setLightboxSrc(attachment)}
+                                            onClick={() => setLightboxSrc(resolveMediaUrl(attachment))}
+                                            onLoad={() => setMediaLoaded((p)=>({ ...p, [attachment]: true }))}
                                           />
+                                          {(!mediaLoaded[attachment]) && (
+                                            <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
+                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                            </div>
+                                          )}
                                           {message.uploading && (
                                             <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
                                               <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
                                             </div>
                                           )}
                                           <a
-                                            href={attachment}
+                                            href={resolveMediaUrl(attachment)}
                                             download
                                             className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
                                           >
@@ -1562,19 +1570,24 @@ const MessagesPage = () => {
                                       return (
                                         <div key={idx} className="relative">
                                           <div className="relative">
-                                            <video src={attachment} controls className="max-w-full rounded-lg" />
+                                            <video src={resolveMediaUrl(attachment)} controls className="max-w-full rounded-lg" onLoadedData={() => setMediaLoaded((p)=>({ ...p, [attachment]: true }))} />
                                             {/* Play overlay for aesthetics */}
                                             <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                               <span className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center text-white">▶</span>
                                             </span>
                                           </div>
+                                          {(!mediaLoaded[attachment]) && (
+                                            <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
+                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                            </div>
+                                          )}
                                           {message.uploading && (
                                             <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
                                               <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
                                             </div>
                                           )}
                                           <a
-                                            href={attachment}
+                                            href={resolveMediaUrl(attachment)}
                                             download
                                             className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
                                           >
@@ -1586,7 +1599,7 @@ const MessagesPage = () => {
                                     return (
                                       <div key={idx} className="p-2 bg-gray-100 rounded-lg flex items-center justify-between">
                                         <a
-                                          href={attachment}
+                                          href={resolveMediaUrl(attachment)}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           className="text-blue-600 hover:underline flex items-center gap-2 truncate max-w-[220px]"
@@ -1595,7 +1608,7 @@ const MessagesPage = () => {
                                           <span className="truncate">{filename || 'Attachment'}</span>
                                         </a>
                                         <a
-                                          href={attachment}
+                                          href={resolveMediaUrl(attachment)}
                                           download
                                           className="ml-3 text-gray-700 hover:text-gray-900 px-2 py-1 border rounded hover:bg-gray-200"
                                         >
