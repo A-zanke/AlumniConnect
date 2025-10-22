@@ -133,7 +133,8 @@ const MessagesPage = () => {
   const [chatSelectionMode, setChatSelectionMode] = useState(false);
   const [showUnblockDialog, setShowUnblockDialog] = useState(false);
   const [showUnblockSuccess, setShowUnblockSuccess] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({}); // id -> 0..100
+  const [uploadProgress, setUploadProgress] = useState({}); // clientKey -> 0..100
+  const [pendingUploads, setPendingUploads] = useState({}); // clientKey -> {images, videos, docs, content, replyTo}
   const [mediaLoaded, setMediaLoaded] = useState({}); // url -> boolean
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
@@ -564,26 +565,6 @@ const MessagesPage = () => {
     if ((!newMessage.trim() && !hasAnyMedia) || !selectedUser) return;
 
     try {
-      const formData = new FormData();
-      formData.append("content", newMessage);
-      // Append all selected media with server-supported field names
-      selectedImages
-        .slice(0, 5)
-        .forEach((file) => formData.append("image", file));
-      selectedVideos
-        .slice(0, 5)
-        .forEach((file) => formData.append("video", file));
-      selectedDocs
-        .slice(0, 3)
-        .forEach((file) => formData.append("document", file));
-      if (selectedImage) {
-        const field =
-          (typeof selectedFileField !== "undefined" && selectedFileField) ||
-          "image";
-        formData.append(field, selectedImage);
-      }
-      if (replyTo?.id) formData.append("replyToId", replyTo.id);
-
       const token = localStorage.getItem("token");
       const isTextOnly = !!newMessage.trim() && !hasAnyMedia;
       let clientKey = generateClientKey();
@@ -615,10 +596,10 @@ const MessagesPage = () => {
         setReplyTo(null);
       }
 
-      if (clientKey) formData.append("clientKey", clientKey);
-
-      // For media messages, create an optimistic message with local previews and a loader
+      // For media messages, perform two-stage upload -> send
+      let serverMessage = null;
       if (!isTextOnly) {
+        // 1) Optimistic bubble with local previews
         const localUrls = [
           ...selectedImages.map((f) => URL.createObjectURL(f)),
           ...selectedVideos.map((f) => URL.createObjectURL(f)),
@@ -637,12 +618,26 @@ const MessagesPage = () => {
         };
         setMessages((prev) => [...prev, optimistic]);
         setTimeout(scrollToBottom, 50);
-      }
 
-      const resp = await axios.post(
-        `/api/messages/${selectedUser._id}`,
-        formData,
-        {
+        // Save files for retry if upload fails
+        setPendingUploads((prev) => ({
+          ...prev,
+          [clientKey]: {
+            images: selectedImages.slice(0, 5),
+            videos: selectedVideos.slice(0, 5),
+            docs: selectedDocs.slice(0, 3),
+            content: newMessage,
+            replyTo,
+          },
+        }));
+
+        // 2) Stage-1 upload
+        const uploadFD = new FormData();
+        selectedImages.slice(0, 5).forEach((file) => uploadFD.append("image", file));
+        selectedVideos.slice(0, 5).forEach((file) => uploadFD.append("video", file));
+        selectedDocs.slice(0, 3).forEach((file) => uploadFD.append("document", file));
+
+        const uploadResp = await axios.post(`/api/messages/upload`, uploadFD, {
           headers: {
             "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`,
@@ -651,11 +646,29 @@ const MessagesPage = () => {
             const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
             setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
           },
-        }
-      );
+        });
 
-      const payload = resp.data;
-      const serverMessage = payload && payload.message ? payload.message : null;
+        const files = uploadResp?.data?.files || [];
+        const urls = files.map((f) => f.url).filter(Boolean);
+        if (!urls.length) throw new Error("Upload failed: no URLs");
+
+        // 3) Stage-2 save message
+        const sendResp = await axios.post(
+          `/api/messages/${selectedUser._id}`,
+          {
+            content: newMessage,
+            attachments: urls,
+            clientKey,
+            replyToId: replyTo?.id || undefined,
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        serverMessage = sendResp?.data?.message || null;
+      } else {
+        // Text-only can continue to use socket path (fast ack) and no upload
+        // serverMessage remains null; UI already appended optimistic message
+      }
+
       if (!clientKey) {
         const idStr = serverMessage?.id ? String(serverMessage.id) : null;
         if (!idStr || !seenIdsRef.current.has(idStr)) {
@@ -688,6 +701,11 @@ const MessagesPage = () => {
           delete next[clientKey];
           return next;
         });
+        setPendingUploads((prev) => {
+          const next = { ...prev };
+          delete next[clientKey];
+          return next;
+        });
         setSelectedImage(null);
         setImagePreview(null);
         setSelectedImages([]);
@@ -699,9 +717,86 @@ const MessagesPage = () => {
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error("Error sending message:", error);
-      toast.error("Failed to send message. Please try again.");
-      // Reset file input to avoid stuck state after background upload success
+      // Mark optimistic bubble failed if media path
+      if (hasAnyMedia) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.id) === String(clientKey)
+              ? { ...m, uploading: false, status: "failed" }
+              : m
+          )
+        );
+      }
+      toast.error("Failed to send. Tap retry.");
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Retry failed media message by clientKey using saved files
+  const retryFailedMedia = async (clientKey) => {
+    const pending = pendingUploads[clientKey];
+    if (!pending || !selectedUser) return;
+    try {
+      const token = localStorage.getItem("token");
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === String(clientKey)
+            ? { ...m, uploading: true, status: "sending" }
+            : m
+        )
+      );
+      // Upload stage
+      const fd = new FormData();
+      pending.images.forEach((f) => fd.append("image", f));
+      pending.videos.forEach((f) => fd.append("video", f));
+      pending.docs.forEach((f) => fd.append("document", f));
+      const uploadResp = await axios.post(`/api/messages/upload`, fd, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${token}`,
+        },
+        onUploadProgress: (evt) => {
+          const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
+          setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
+        },
+      });
+      const urls = (uploadResp?.data?.files || []).map((f) => f.url).filter(Boolean);
+      if (!urls.length) throw new Error("Upload failed");
+      // Save message stage
+      const sendResp = await axios.post(
+        `/api/messages/${selectedUser._id}`,
+        {
+          content: pending.content || "",
+          attachments: urls,
+          clientKey,
+          replyToId: pending.replyTo?.id || undefined,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const serverMessage = sendResp?.data?.message || null;
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === String(clientKey) ? { ...serverMessage, status: "sent" } : m
+        )
+      );
+      setUploadProgress((prev) => {
+        const next = { ...prev };
+        delete next[clientKey];
+        return next;
+      });
+      setPendingUploads((prev) => {
+        const next = { ...prev };
+        delete next[clientKey];
+        return next;
+      });
+    } catch (e) {
+      console.error("Retry failed", e);
+      toast.error("Retry failed. Check your connection.");
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === String(clientKey) ? { ...m, uploading: false, status: "failed" } : m
+        )
+      );
     }
   };
 
@@ -1662,8 +1757,15 @@ const MessagesPage = () => {
                                       return (
                                         <div key={idx} className="relative">
                                           {message.uploading ? (
-                                            <div className="w-full h-24 bg-gray-200 flex items-center justify-center rounded-lg">
-                                              <div className="w-8 h-8 rounded-full border-4 border-gray-400 border-t-transparent animate-spin" />
+                                            <div className="relative">
+                                              <img
+                                                src={resolveMediaUrl(attachment)}
+                                                alt="attachment"
+                                                className="max-w-full h-auto rounded-lg opacity-60"
+                                              />
+                                              <div className="absolute inset-0 flex items-center justify-center">
+                                                <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                              </div>
                                             </div>
                                           ) : (
                                             <>
@@ -1723,6 +1825,15 @@ const MessagesPage = () => {
                                                 >
                                                   <FiDownload size={16} />
                                                 </a>
+                                                {message.status === "failed" && (
+                                                  <button
+                                                    onClick={() => retryFailedMedia(message.id)}
+                                                    className="bg-red-600 text-white px-2 py-1 rounded-full text-xs ml-1"
+                                                    title="Retry"
+                                                  >
+                                                    Retry
+                                                  </button>
+                                                )}
                                               </div>
                                             </>
                                           )}

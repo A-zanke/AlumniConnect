@@ -27,6 +27,7 @@ const {
   bulkDeleteChats,
   bulkBlockUsers,
   bulkReportUsers,
+  uploadMedia,
 } = require("../controllers/messagesController");
 
 // Ensure upload directories exist
@@ -129,6 +130,21 @@ router.get("/starred", protect, getStarredMessages);
 
 // Get shared media for a conversation
 router.get("/media/:userId", protect, getMedia);
+// Stage-1: Media upload only (returns Cloudinary URLs)
+router.post(
+  "/upload",
+  protect,
+  upload.fields([
+    { name: "image", maxCount: 5 },
+    { name: "video", maxCount: 5 },
+    { name: "audio", maxCount: 3 },
+    { name: "document", maxCount: 3 },
+    { name: "media", maxCount: 13 },
+  ]),
+  handleMulterError,
+  uploadMedia
+);
+
 
 // Get detailed message info
 router.get("/info/:messageId", protect, getMessageInfo);
