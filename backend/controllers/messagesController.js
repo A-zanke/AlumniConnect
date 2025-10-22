@@ -57,7 +57,7 @@ function getAttachmentUrls(attachments) {
   if (!Array.isArray(attachments)) return [];
   return attachments
     .map((att) => {
-      if (typeof att === "string" && att.startsWith("/uploads/")) return att;
+      if (typeof att === "string") return att; // Cloudinary or any https URL
       if (att && typeof att === "object" && att.url) return att.url;
       return null;
     })
@@ -335,7 +335,8 @@ exports.sendMessage = async (req, res) => {
 
     const content = (req.body.content || "").toString();
     const messageType = req.body.messageType || "text";
-    const clientKey = req.body.clientKey || null;
+    // Always ensure a non-null clientKey for unique index (threadId + clientKey)
+    const clientKey = req.body.clientKey || `ck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     console.log("sendMessage called:", {
       recipientId: req.params.userId,
@@ -407,6 +408,15 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
+    // Ensure thread exists BEFORE message so we can set threadId
+    const participants = [String(me), String(to)].sort();
+    let thread = await Thread.findOne({
+      participants: { $all: participants, $size: 2 },
+    });
+    if (!thread) {
+      thread = await Thread.create({ participants });
+    }
+
     // Create message
     const messageData = {
       from: me,
@@ -414,8 +424,9 @@ exports.sendMessage = async (req, res) => {
       content,
       attachments,
       messageType,
+      clientKey,
+      threadId: String(thread._id),
       messageId:
-        clientKey ||
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       deliveredAt: new Date(),
     };
@@ -439,14 +450,6 @@ exports.sendMessage = async (req, res) => {
     const dto = parseMessage(populatedMessage.toObject(), me);
 
     // Update thread
-    const participants = [String(me), String(to)].sort();
-    // Avoid "participants matched twice" by first finding thread
-    let thread = await Thread.findOne({
-      participants: { $all: participants, $size: 2 },
-    });
-    if (!thread) {
-      thread = await Thread.create({ participants });
-    }
     // Now update fields separately
     thread.lastMessageAt = new Date();
     thread.lastMessage = message._id;
@@ -1102,26 +1105,36 @@ exports.getMedia = async (req, res) => {
     const links = [];
 
     messages.forEach((msg) => {
-      msg.attachments.forEach((attachment) => {
+      (msg.attachments || []).forEach((attachment) => {
+        const url = typeof attachment === "string" ? attachment : attachment?.url;
+        if (!url) return;
+        const lower = url.toLowerCase();
+        const type =
+          /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)
+            ? "image"
+            : /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)
+            ? "video"
+            : /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)
+            ? "audio"
+            : "document";
+
         const mediaItem = {
           id: msg._id,
           messageId: msg.messageId,
-          url: attachment.url,
-          type: attachment.type,
-          filename: attachment.filename,
-          size: attachment.size,
-          mimeType: attachment.mimeType,
-          thumbnail: attachment.thumbnail,
+          url,
+          type,
+          filename: undefined,
+          size: undefined,
+          mimeType: undefined,
+          thumbnail: undefined,
           timestamp: msg.createdAt,
           sender: msg.from,
-          isStarred: msg.isStarred.includes(me),
+          isStarred: Array.isArray(msg.isStarred)
+            ? msg.isStarred.includes(me)
+            : false,
         };
 
-        if (attachment.type === "link") {
-          links.push(mediaItem);
-        } else {
-          media.push(mediaItem);
-        }
+        media.push(mediaItem);
       });
     });
 

@@ -1983,30 +1983,27 @@ const MessagesPage = () => {
             {rightPanelTab === "media" && (
               <div className="grid grid-cols-3 gap-2">
                 {sharedMedia
-                  .filter((m) => m.type !== "link")
+                  .filter((m) => m.type === "image" || m.type === "video")
                   .map((m) => (
-                    <img
-                      key={m.id + String(m.url)}
-                      src={m.url}
-                      alt=""
-                      className="w-full h-24 object-cover rounded"
-                    />
+                    <a key={m.id + String(m.url)} href={m.url} target="_blank" rel="noreferrer">
+                      <img src={m.url} alt="" className="w-full h-24 object-cover rounded" />
+                    </a>
                   ))}
               </div>
             )}
             {rightPanelTab === "docs" && (
               <div className="space-y-2">
                 {sharedMedia
-                  .filter((m) => m.type === "document")
+                  .filter((m) => m.type === "document" || m.type === "audio")
                   .map((m) => (
                     <a
                       key={m.id + String(m.url)}
                       href={m.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="block p-2 bg-gray-50 rounded border hover:bg-gray-100"
+                      className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate"
                     >
-                      Document
+                      {m.url}
                     </a>
                   ))}
               </div>
