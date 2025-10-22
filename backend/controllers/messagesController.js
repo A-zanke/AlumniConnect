@@ -69,6 +69,14 @@ function getAttachmentUrls(attachments) {
 }
 
 function isDeletedForViewer(doc, viewerId) {
+  // New fields first
+  if (doc.deletedForEveryone) return true;
+  if (Array.isArray(doc.deletedFor)) {
+    if (doc.deletedFor.some((id) => String(id) === String(viewerId))) {
+      return true;
+    }
+  }
+  // Backward-compat markers in attachments
   const atts = doc.attachments;
   if (!Array.isArray(atts)) return false;
   return (
@@ -1658,6 +1666,50 @@ async function generateVideoThumbnail(videoPath) {
   // You can use ffmpeg or similar library
   return null;
 }
+
+// Stage-1: Dedicated media upload endpoint (Cloudinary via multer)
+// Accepts same field names as sendMessage: image, video, audio, document, media
+exports.uploadMedia = async (req, res) => {
+  try {
+    // Multer + Cloudinary already processed files, just normalize response
+    const files = [];
+    const bag = req.files || {};
+    const fields = ["image", "video", "audio", "document", "media"];
+    for (const field of fields) {
+      const arr = bag[field];
+      if (!arr) continue;
+      const list = Array.isArray(arr) ? arr : [arr];
+      for (const f of list) {
+        // Prefer secure_url; fallback to path
+        const url = f.secure_url || f.path || f.url || null;
+        if (!url) continue;
+        const mime = f.mimetype || "";
+        const lower = (f.originalname || "").toLowerCase();
+        let type = "document";
+        if (mime.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(lower)) type = "image";
+        else if (mime.startsWith("video/") || /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(lower)) type = "video";
+        else if (mime.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/i.test(lower)) type = "audio";
+        files.push({
+          url,
+          type,
+          public_id: f.filename || f.public_id || null,
+          bytes: f.size || f.bytes || undefined,
+          original_name: f.originalname || undefined,
+          mimeType: mime || undefined,
+        });
+      }
+    }
+
+    if (!files.length) {
+      return res.status(400).json({ success: false, message: "No media files uploaded" });
+    }
+
+    return res.json({ success: true, files });
+  } catch (error) {
+    console.error("Error uploading media:", error);
+    return res.status(500).json({ success: false, message: "Media upload failed" });
+  }
+};
 
 // Get blocked users
 exports.getBlocks = async (req, res) => {

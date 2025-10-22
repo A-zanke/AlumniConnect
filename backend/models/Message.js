@@ -243,7 +243,20 @@ MessageSchema.statics.getUnreadCount = function (userId) {
 };
 
 // Instance method to check if message is deleted for user
+// Deletion flags
+MessageSchema.add({
+  deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+  deletedForEveryone: { type: Boolean, default: false },
+  deletedAt: { type: Date, default: null },
+});
+
 MessageSchema.methods.isDeletedFor = function (userId) {
+  // New fields take precedence
+  if (this.deletedForEveryone) return true;
+  if (Array.isArray(this.deletedFor)) {
+    if (this.deletedFor.some((id) => String(id) === String(userId))) return true;
+  }
+  // Backward-compat with legacy markers inside attachments
   return (
     (this.attachments && this.attachments.includes(`deletedFor:${userId}`)) ||
     (this.attachments && this.attachments.includes('deletedForEveryone'))
