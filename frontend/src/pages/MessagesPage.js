@@ -139,6 +139,9 @@ const MessagesPage = () => {
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
 
+  // Keep original files for retry when upload fails (clientKey -> {images, videos, docs})
+  const pendingUploadsRef = useRef(new Map());
+
   // Media URL helpers for rendering and text auto-preview
   const isImageUrl = (u = "") =>
     /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(u);
@@ -564,26 +567,6 @@ const MessagesPage = () => {
     if ((!newMessage.trim() && !hasAnyMedia) || !selectedUser) return;
 
     try {
-      const formData = new FormData();
-      formData.append("content", newMessage);
-      // Append all selected media with server-supported field names
-      selectedImages
-        .slice(0, 5)
-        .forEach((file) => formData.append("image", file));
-      selectedVideos
-        .slice(0, 5)
-        .forEach((file) => formData.append("video", file));
-      selectedDocs
-        .slice(0, 3)
-        .forEach((file) => formData.append("document", file));
-      if (selectedImage) {
-        const field =
-          (typeof selectedFileField !== "undefined" && selectedFileField) ||
-          "image";
-        formData.append(field, selectedImage);
-      }
-      if (replyTo?.id) formData.append("replyToId", replyTo.id);
-
       const token = localStorage.getItem("token");
       const isTextOnly = !!newMessage.trim() && !hasAnyMedia;
       let clientKey = generateClientKey();
@@ -615,8 +598,6 @@ const MessagesPage = () => {
         setReplyTo(null);
       }
 
-      if (clientKey) formData.append("clientKey", clientKey);
-
       // For media messages, create an optimistic message with local previews and a loader
       if (!isTextOnly) {
         const localUrls = [
@@ -637,25 +618,63 @@ const MessagesPage = () => {
         };
         setMessages((prev) => [...prev, optimistic]);
         setTimeout(scrollToBottom, 50);
+
+        // Remember files for retry
+        pendingUploadsRef.current.set(clientKey, {
+          images: [...selectedImages],
+          videos: [...selectedVideos],
+          docs: [...selectedDocs],
+          single: selectedImage || null,
+          singleField:
+            (typeof selectedFileField !== "undefined" && selectedFileField) ||
+            "image",
+        });
       }
 
-      const resp = await axios.post(
-        `/api/messages/${selectedUser._id}`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${token}`,
-          },
+      let serverMessage = null;
+      if (isTextOnly) {
+        // Stage 2 only (text)
+        const resp = await axios.post(
+          `${baseURL}/api/messages/${selectedUser._id}`,
+          { content: newMessage, clientKey, replyToId: replyTo?.id || null },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        serverMessage = resp.data?.message || null;
+      } else {
+        // Stage 1: upload media only
+        const uploadForm = new FormData();
+        selectedImages.slice(0, 5).forEach((f) => uploadForm.append("image", f));
+        selectedVideos.slice(0, 5).forEach((f) => uploadForm.append("video", f));
+        selectedDocs.slice(0, 3).forEach((f) => uploadForm.append("document", f));
+        if (selectedImage) {
+          const field =
+            (typeof selectedFileField !== "undefined" && selectedFileField) ||
+            "image";
+          uploadForm.append(field, selectedImage);
+        }
+
+        const up = await axios.post(`${baseURL}/api/messages/upload`, uploadForm, {
+          headers: { "Content-Type": "multipart/form-data", Authorization: `Bearer ${token}` },
           onUploadProgress: (evt) => {
             const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
             setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
           },
-        }
-      );
+        });
+        const urls = Array.isArray(up.data?.urls) ? up.data.urls : [];
+        // Stage 2: save message with Cloudinary URLs
+        const resp = await axios.post(
+          `${baseURL}/api/messages/${selectedUser._id}`,
+          {
+            content: newMessage,
+            attachments: urls,
+            clientKey,
+            replyToId: replyTo?.id || null,
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        serverMessage = resp.data?.message || null;
+      }
 
-      const payload = resp.data;
-      const serverMessage = payload && payload.message ? payload.message : null;
       if (!clientKey) {
         const idStr = serverMessage?.id ? String(serverMessage.id) : null;
         if (!idStr || !seenIdsRef.current.has(idStr)) {
@@ -694,14 +713,81 @@ const MessagesPage = () => {
         setSelectedVideos([]);
         setSelectedDocs([]);
         if (fileInputRef.current) fileInputRef.current.value = "";
+        pendingUploadsRef.current.delete(clientKey);
       }
 
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error("Error sending message:", error);
-      toast.error("Failed to send message. Please try again.");
+      toast.error("Failed to send message. Tap retry.");
+      // Mark optimistic bubble as failed
+      const failedId = messages[messages.length - 1]?.id; // likely the optimistic one
+      const idToFail = failedId || null;
+      if (idToFail) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.id) === String(idToFail)
+              ? { ...m, uploading: false, status: "failed" }
+              : m
+          )
+        );
+      }
       // Reset file input to avoid stuck state after background upload success
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Retry a failed media send
+  const handleRetrySend = async (tempId) => {
+    const entry = pendingUploadsRef.current.get(tempId);
+    if (!entry || !selectedUser) return;
+    // Restore local optimistic state
+    setMessages((prev) =>
+      prev.map((m) =>
+        String(m.id) === String(tempId)
+          ? { ...m, status: "sending", uploading: true }
+          : m
+      )
+    );
+    try {
+      const token = localStorage.getItem("token");
+      const uploadForm = new FormData();
+      entry.images.slice(0, 5).forEach((f) => uploadForm.append("image", f));
+      entry.videos.slice(0, 5).forEach((f) => uploadForm.append("video", f));
+      entry.docs.slice(0, 3).forEach((f) => uploadForm.append("document", f));
+      if (entry.single) uploadForm.append(entry.singleField || "image", entry.single);
+      const up = await axios.post(`${baseURL}/api/messages/upload`, uploadForm, {
+        headers: { "Content-Type": "multipart/form-data", Authorization: `Bearer ${token}` },
+        onUploadProgress: (evt) => {
+          const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
+          setUploadProgress((prev) => ({ ...prev, [tempId]: percent }));
+        },
+      });
+      const urls = Array.isArray(up.data?.urls) ? up.data.urls : [];
+      const resp = await axios.post(
+        `${baseURL}/api/messages/${selectedUser._id}`,
+        { content: messages.find((m) => String(m.id) === String(tempId))?.content || "", attachments: urls, clientKey: tempId, replyToId: messages.find((m) => String(m.id) === String(tempId))?.replyTo?.id || null },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const serverMessage = resp.data?.message || null;
+      setMessages((prev) =>
+        prev.map((m) => (String(m.id) === String(tempId) ? { ...serverMessage, status: "sent" } : m))
+      );
+      setUploadProgress((prev) => {
+        const next = { ...prev };
+        delete next[tempId];
+        return next;
+      });
+      pendingUploadsRef.current.delete(tempId);
+    } catch (e) {
+      toast.error("Retry failed");
+      setMessages((prev) =>
+        prev.map((m) =>
+          String(m.id) === String(tempId)
+            ? { ...m, uploading: false, status: "failed" }
+            : m
+        )
+      );
     }
   };
 
@@ -1756,9 +1842,31 @@ const MessagesPage = () => {
                                               <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
                                             </div>
                                           )}
+                                          {message.status === "failed" && (
+                                            <div className="absolute inset-0 bg-black/50 text-white flex flex-col items-center justify-center gap-2 rounded-lg">
+                                              <span>Failed to send</span>
+                                              <button
+                                                onClick={() => handleRetrySend(message.id)}
+                                                className="px-3 py-1 bg-white text-black rounded"
+                                              >
+                                                Retry
+                                              </button>
+                                            </div>
+                                          )}
                                           {message.uploading && (
                                             <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
                                               <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                            </div>
+                                          )}
+                                          {message.status === "failed" && (
+                                            <div className="absolute inset-0 bg-black/50 text-white flex flex-col items-center justify-center gap-2 rounded-lg">
+                                              <span>Failed to send</span>
+                                              <button
+                                                onClick={() => handleRetrySend(message.id)}
+                                                className="px-3 py-1 bg-white text-black rounded"
+                                              >
+                                                Retry
+                                              </button>
                                             </div>
                                           )}
                                           <a
