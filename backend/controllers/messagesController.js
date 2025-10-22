@@ -57,7 +57,11 @@ function getAttachmentUrls(attachments) {
   if (!Array.isArray(attachments)) return [];
   return attachments
     .map((att) => {
-      if (typeof att === "string") return att; // Cloudinary or any https URL
+      if (typeof att === "string") {
+        // Only surface real media URLs or legacy local files, ignore markers (react:, star:, reply:, deletedFor:)
+        if (/^https?:\/\//i.test(att) || att.startsWith('/uploads/')) return att;
+        return null;
+      }
       if (att && typeof att === "object" && att.url) return att.url;
       return null;
     })
@@ -355,9 +359,8 @@ exports.sendMessage = async (req, res) => {
         if (!arr) continue;
         const fileArray = Array.isArray(arr) ? arr : [arr];
         for (const file of fileArray) {
-          // When using multer-storage-cloudinary the file will already have a path = Cloudinary URL
-          // Some versions provide file.path (url) and file.filename (public_id)
-          const url = file.path || file.secure_url || null;
+          // Prefer Cloudinary secure_url; fallback to path/url
+          const url = file.secure_url || file.path || file.url || null;
           if (url) attachments.push(url);
         }
       }
