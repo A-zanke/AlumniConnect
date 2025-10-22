@@ -133,6 +133,7 @@ const MessagesPage = () => {
   const [chatSelectionMode, setChatSelectionMode] = useState(false);
   const [showUnblockDialog, setShowUnblockDialog] = useState(false);
   const [showUnblockSuccess, setShowUnblockSuccess] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({}); // id -> 0..100
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
@@ -533,7 +534,7 @@ const MessagesPage = () => {
 
       const token = localStorage.getItem("token");
       const isTextOnly = !!newMessage.trim() && !hasAnyMedia;
-      let clientKey = null;
+      let clientKey = generateClientKey();
 
       if (isTextOnly) {
         clientKey = generateClientKey();
@@ -564,9 +565,26 @@ const MessagesPage = () => {
 
       if (clientKey) formData.append("clientKey", clientKey);
 
-      // If it's text-only and we already sent via socket, skip HTTP to avoid duplicates
-      if (isTextOnly) {
-        return;
+      // For media messages, create an optimistic message with local previews and a loader
+      if (!isTextOnly) {
+        const localUrls = [
+          ...selectedImages.map((f) => URL.createObjectURL(f)),
+          ...selectedVideos.map((f) => URL.createObjectURL(f)),
+          ...selectedDocs.map((f) => URL.createObjectURL(f)),
+        ];
+        const optimistic = {
+          id: clientKey,
+          senderId: user._id,
+          recipientId: selectedUser._id,
+          content: newMessage,
+          attachments: localUrls,
+          timestamp: new Date().toISOString(),
+          status: "sending",
+          uploading: true,
+          replyTo: replyTo,
+        };
+        setMessages((prev) => [...prev, optimistic]);
+        setTimeout(scrollToBottom, 50);
       }
 
       const resp = await axios.post(
@@ -576,6 +594,10 @@ const MessagesPage = () => {
           headers: {
             "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`,
+          },
+          onUploadProgress: (evt) => {
+            const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
+            setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
           },
         }
       );
@@ -601,6 +623,9 @@ const MessagesPage = () => {
         setSelectedDocs([]);
         setReplyTo(null);
       } else {
+        // Replace optimistic (clientKey) with the server message and clear loader
+        setMessages((prev) => prev.map((m) => (String(m.id) === String(clientKey) ? { ...serverMessage, status: "sent" } : m)));
+        setUploadProgress((prev) => { const next = { ...prev }; delete next[clientKey]; return next; });
         setSelectedImage(null);
         setImagePreview(null);
         setSelectedImages([]);
@@ -1518,6 +1543,11 @@ const MessagesPage = () => {
                                             className="max-w-full h-auto rounded-lg cursor-pointer"
                                             onClick={() => setLightboxSrc(attachment)}
                                           />
+                                          {message.uploading && (
+                                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
+                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                            </div>
+                                          )}
                                           <a
                                             href={attachment}
                                             download
@@ -1538,6 +1568,11 @@ const MessagesPage = () => {
                                               <span className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center text-white">▶</span>
                                             </span>
                                           </div>
+                                          {message.uploading && (
+                                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
+                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                            </div>
+                                          )}
                                           <a
                                             href={attachment}
                                             download
