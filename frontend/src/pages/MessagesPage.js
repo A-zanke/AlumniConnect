@@ -83,9 +83,13 @@ const MessagesPage = () => {
   const messageContainerRef = useRef(null);
   const seenIdsRef = useRef(new Set());
   const [error, setError] = useState(null);
+  // Attachment selection (WhatsApp-like)
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [selectedFileField, setSelectedFileField] = useState('image');
+  const [selectedVideos, setSelectedVideos] = useState([]);
+  const [selectedDocs, setSelectedDocs] = useState([]);
+  const [selectedImages, setSelectedImages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -289,7 +293,7 @@ const MessagesPage = () => {
       // Message events
       s.on(
         "message:new",
-        ({ conversationId, messageId, senderId, body, createdAt }) => {
+        ({ conversationId, messageId, senderId, body, attachments = [], createdAt }) => {
           const currentSelected = selectedUserRef.current;
           const isCurrent =
             currentSelected && String(senderId) === String(currentSelected._id);
@@ -303,7 +307,7 @@ const MessagesPage = () => {
                 senderId,
                 recipientId: user._id,
                 content: body,
-                attachments: [],
+                attachments: Array.isArray(attachments) ? attachments : [],
                 timestamp: createdAt,
                 status: "delivered",
               },
@@ -485,11 +489,17 @@ const MessagesPage = () => {
   const handleSendMessage = async (e) => {
     e.preventDefault();
 
-    if ((!newMessage.trim() && !selectedImage) || !selectedUser) return;
+    const hasAnyMedia =
+      selectedImages.length > 0 || selectedVideos.length > 0 || selectedDocs.length > 0 || !!selectedImage;
+    if ((!newMessage.trim() && !hasAnyMedia) || !selectedUser) return;
 
     try {
       const formData = new FormData();
       formData.append("content", newMessage);
+      // Append all selected media with server-supported field names
+      selectedImages.slice(0, 5).forEach((file) => formData.append("image", file));
+      selectedVideos.slice(0, 5).forEach((file) => formData.append("video", file));
+      selectedDocs.slice(0, 3).forEach((file) => formData.append("document", file));
       if (selectedImage) {
         const field = (typeof selectedFileField !== 'undefined' && selectedFileField) || 'image';
         formData.append(field, selectedImage);
@@ -497,7 +507,7 @@ const MessagesPage = () => {
       if (replyTo?.id) formData.append("replyToId", replyTo.id);
 
       const token = localStorage.getItem("token");
-      const isTextOnly = !!newMessage.trim() && !selectedImage;
+      const isTextOnly = !!newMessage.trim() && !hasAnyMedia;
       let clientKey = null;
 
       if (isTextOnly) {
@@ -529,6 +539,11 @@ const MessagesPage = () => {
 
       if (clientKey) formData.append("clientKey", clientKey);
 
+      // If it's text-only and we already sent via socket, skip HTTP to avoid duplicates
+      if (isTextOnly) {
+        return;
+      }
+
       const resp = await axios.post(
         `${baseURL}/api/messages/${selectedUser._id}`,
         formData,
@@ -556,10 +571,16 @@ const MessagesPage = () => {
         setNewMessage("");
         setSelectedImage(null);
         setImagePreview(null);
+        setSelectedImages([]);
+        setSelectedVideos([]);
+        setSelectedDocs([]);
         setReplyTo(null);
       } else {
         setSelectedImage(null);
         setImagePreview(null);
+        setSelectedImages([]);
+        setSelectedVideos([]);
+        setSelectedDocs([]);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
 
@@ -708,27 +729,29 @@ const MessagesPage = () => {
   };
 
   const handleImageSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSelectedImage(file);
-      // Set proper upload field based on MIME type used by backend
-      if (file.type?.startsWith("video/")) {
-        setSelectedFileField && setSelectedFileField("video");
-      } else if (file.type?.startsWith("audio/")) {
-        setSelectedFileField && setSelectedFileField("audio");
-      } else if (file.type?.startsWith("image/")) {
-        setSelectedFileField && setSelectedFileField("image");
-      } else {
-        setSelectedFileField && setSelectedFileField("document");
-      }
-      const reader = new FileReader();
-      reader.onload = (e) => setImagePreview(e.target.result);
-      reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const img = [];
+    const vid = [];
+    const docs = [];
+    for (const f of files) {
+      if (f.type?.startsWith('image/')) img.push(f);
+      else if (f.type?.startsWith('video/')) vid.push(f);
+      else docs.push(f);
     }
+    setSelectedImages((prev) => prev.concat(img).slice(0, 5));
+    setSelectedVideos((prev) => prev.concat(vid).slice(0, 5));
+    setSelectedDocs((prev) => prev.concat(docs).slice(0, 3));
+    // Keep a single primary preview if an image exists
+    const previewSrc = img[0] ? URL.createObjectURL(img[0]) : (vid[0] ? URL.createObjectURL(vid[0]) : null);
+    if (previewSrc) setImagePreview(previewSrc);
   };
 
   const removeImage = () => {
     setSelectedImage(null);
+    setSelectedImages([]);
+    setSelectedVideos([]);
+    setSelectedDocs([]);
     setImagePreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -1403,68 +1426,70 @@ const MessagesPage = () => {
                                 renderMessageContent(message.content)}
 
                               {/* Attachments */}
-                              {message.attachments &&
-                                message.attachments.length > 0 && (
-                                  <div className="mt-2 space-y-2">
-                                    {message.attachments.map(
-                                      (attachment, idx) => {
-                                        const isImage =
-                                          /\.(jpg|jpeg|png|gif|webp)$/i.test(
-                                            attachment
-                                          );
-                                        const filename = attachment
-                                          .split("/")
-                                          .pop();
-
-                                        if (isImage) {
-                                          return (
-                                            <div key={idx} className="relative">
-                                              <img
-                                                src={attachment}
-                                                alt="attachment"
-                                                className="max-w-full h-auto rounded-lg cursor-pointer"
-                                                onClick={() =>
-                                                  setLightboxSrc(attachment)
-                                                }
-                                              />
-                                              <a
-                                                href={attachment}
-                                                download
-                                                className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
-                                              >
-                                                <FiDownload size={16} />
-                                              </a>
-                                            </div>
-                                          );
-                                        }
-
-                                        return (
-                                          <div
-                                            key={idx}
-                                            className="p-2 bg-gray-100 rounded-lg flex items-center justify-between"
+                              {message.attachments && message.attachments.length > 0 && (
+                                <div className="mt-2 space-y-2">
+                                  {message.attachments.map((attachment, idx) => {
+                                    const lower = String(attachment).toLowerCase();
+                                    const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower);
+                                    const isVideo = /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower);
+                                    const isAudio = /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower);
+                                    const filename = attachment.split('/').pop();
+                                    if (isImage) {
+                                      return (
+                                        <div key={idx} className="relative">
+                                          <img
+                                            src={attachment}
+                                            alt="attachment"
+                                            className="max-w-full h-auto rounded-lg cursor-pointer"
+                                            onClick={() => setLightboxSrc(attachment)}
+                                          />
+                                          <a
+                                            href={attachment}
+                                            download
+                                            className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
                                           >
-                                            <a
-                                              href={attachment}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="text-blue-600 hover:underline flex items-center gap-2"
-                                            >
-                                              <FiPaperclip />
-                                              {filename || "Attachment"}
-                                            </a>
-                                            <a
-                                              href={attachment}
-                                              download
-                                              className="ml-3 text-gray-700 hover:text-gray-900 px-2 py-1 border rounded hover:bg-gray-200"
-                                            >
-                                              <FiDownload className="inline-block" />
-                                            </a>
-                                          </div>
-                                        );
-                                      }
-                                    )}
-                                  </div>
-                                )}
+                                            <FiDownload size={16} />
+                                          </a>
+                                        </div>
+                                      );
+                                    }
+                                    if (isVideo || isAudio) {
+                                      return (
+                                        <div key={idx} className="relative">
+                                          <video src={attachment} controls className="max-w-full rounded-lg" />
+                                          <a
+                                            href={attachment}
+                                            download
+                                            className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
+                                          >
+                                            <FiDownload size={16} />
+                                          </a>
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <div key={idx} className="p-2 bg-gray-100 rounded-lg flex items-center justify-between">
+                                        <a
+                                          href={attachment}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:underline flex items-center gap-2"
+                                        >
+                                          <FiPaperclip />
+                                          {filename || 'Attachment'}
+                                        </a>
+                                        <a
+                                          href={attachment}
+                                          download
+                                          className="ml-3 text-gray-700 hover:text-gray-900 px-2 py-1 border rounded hover:bg-gray-200"
+                                        >
+                                          <FiDownload className="inline-block" />
+                                        </a>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
 
                               {/* Message time and status */}
                               <div
@@ -1766,20 +1791,28 @@ const MessagesPage = () => {
                 </div>
               ) : (
                 <>
-                  {/* Image preview */}
-                  {imagePreview && (
-                    <div className="mb-3 relative inline-block">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="h-20 object-cover rounded-lg"
-                      />
-                      <button
-                        onClick={removeImage}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm"
-                      >
-                        ×
-                      </button>
+                  {/* Attachment preview chips (WhatsApp-like) */}
+                  {(selectedImages.length>0 || selectedVideos.length>0 || selectedDocs.length>0) && (
+                    <div className="mb-3 flex flex-wrap">
+                      {selectedImages.slice(0,5).map((f, idx) => (
+                        <span key={`img-${idx}`} className="attachment-chip">
+                          🖼️ {f.name}
+                          <button onClick={() => setSelectedImages((prev)=>prev.filter((_,i)=>i!==idx))}>✕</button>
+                        </span>
+                      ))}
+                      {selectedVideos.slice(0,5).map((f, idx) => (
+                        <span key={`vid-${idx}`} className="attachment-chip">
+                          🎥 {f.name}
+                          <button onClick={() => setSelectedVideos((prev)=>prev.filter((_,i)=>i!==idx))}>✕</button>
+                        </span>
+                      ))}
+                      {selectedDocs.slice(0,3).map((f, idx) => (
+                        <span key={`doc-${idx}`} className="attachment-chip">
+                          📄 {f.name}
+                          <button onClick={() => setSelectedDocs((prev)=>prev.filter((_,i)=>i!==idx))}>✕</button>
+                        </span>
+                      ))}
+                      <button onClick={removeImage} className="ml-2 text-sm text-red-600">Clear all</button>
                     </div>
                   )}
 
@@ -1862,7 +1895,8 @@ const MessagesPage = () => {
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept="image/*,video/*,.pdf,.doc,.docx"
+                        multiple
+                        accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt"
                         onChange={handleImageSelect}
                         className="hidden"
                       />
@@ -1980,12 +2014,13 @@ const MessagesPage = () => {
             ))}
           </div>
           <div className="p-4 flex-1 overflow-y-auto">
-            {rightPanelTab === "media" && (
+              {rightPanelTab === "media" && (
               <div className="grid grid-cols-3 gap-2">
                 {sharedMedia
                   .filter((m) => m.type === "image" || m.type === "video")
                   .map((m) => (
                     <a key={m.id + String(m.url)} href={m.url} target="_blank" rel="noreferrer">
+                      {/* simple thumbnail: image tag even for video will show poster from Cloudinary if available */}
                       <img src={m.url} alt="" className="w-full h-24 object-cover rounded" />
                     </a>
                   ))}

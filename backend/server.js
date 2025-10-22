@@ -17,6 +17,7 @@ connectDB();
 
 // Initialize Express
 const app = express();
+// Legacy static for old links; keep but prefer Cloudinary for new uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const http = require("http").createServer(app);
 const { Server } = require("socket.io");
@@ -132,12 +133,16 @@ app.use("/api/messages", messagesRoutes);
 app.use("/api", avatarRoutes);
 app.use("/api/ai", aiRoutes);
 
-// Create uploads directory if it doesn't exist
+// Do not proactively create uploads in production; keep for backward-compat only
 const fs = require("fs");
 const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    if (process.env.NODE_ENV !== "production") {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  }
+} catch {}
 
 // Serve uploaded files with CORS headers
 app.use(

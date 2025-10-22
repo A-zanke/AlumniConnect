@@ -460,12 +460,13 @@ exports.sendMessage = async (req, res) => {
 
     // Real-time notifications
     if (req.io) {
-      // Send to recipient with normalized payload
+      // Send to recipient with normalized payload including attachments for rich preview
       req.io.to(String(to)).emit("message:new", {
         conversationId: String(thread?._id || `${me}_${to}`),
         messageId: String(dto.id),
         senderId: String(me),
         body: dto.content,
+        attachments: dto.attachments || [],
         createdAt: dto.timestamp,
       });
 

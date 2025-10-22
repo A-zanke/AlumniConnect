@@ -1,3 +1,5 @@
+.attachment-chip{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9999px;padding:4px 8px;margin-right:8px;margin-bottom:8px;font-size:12px}
+.attachment-chip button{background:transparent;border:none;color:#374151;cursor:pointer}
 /* Enhanced WhatsApp-like Modern Message Page Styles */
 
 /* Root variables with enhanced color palette */

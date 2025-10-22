@@ -58,7 +58,7 @@ exports.createPost = async (req, res) => {
     // Build media array from multer (Cloudinary or disk)
     const media = Array.isArray(req.files)
       ? req.files.map((f) => ({
-          url: f.path, // Cloudinary path or local uploads path
+          url: f.path || f.secure_url, // Cloudinary URL
           type: (f.mimetype || "").startsWith("video") ? "video" : "image",
           public_id: f.filename || f.public_id || null,
         }))

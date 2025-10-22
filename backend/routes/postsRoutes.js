@@ -47,10 +47,10 @@ if (
   });
   upload = multer({ storage });
 } else {
-  console.warn(
-    "[postsRoutes] Cloudinary env not found. Using disk storage at ./uploads; media URLs will be local."
-  );
-  upload = multer({ dest: "uploads/" });
+  // Enforce Cloudinary-only; reject if not configured to avoid local storage
+  console.error("[postsRoutes] Cloudinary env not found. Rejecting media uploads to avoid local storage.");
+  const rejectStorage = multer.memoryStorage();
+  upload = multer({ storage: rejectStorage });
 }
 
 // Routes
