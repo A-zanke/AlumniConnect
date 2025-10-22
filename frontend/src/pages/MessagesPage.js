@@ -668,6 +668,23 @@ const MessagesPage = () => {
     }
   };
 
+  // Delete entire chat for current user like WhatsApp
+  const handleDeleteEntireChat = async () => {
+    if (!selectedUser) return;
+    if (!window.confirm("Delete this chat for you? This can't be undone.")) return;
+    try {
+      const token = localStorage.getItem("token");
+      await axios.delete(`${baseURL}/api/messages/${selectedUser._id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMessages([]);
+      setConnections((prev) => prev.map((c) => c.user?._id === selectedUser._id ? { ...c, lastMessage: "", lastMessageTime: null } : c));
+      toast.success("Chat deleted");
+    } catch (e) {
+      toast.error("Failed to delete chat");
+    }
+  };
+
   const handleBulkDelete = async (scope = "me") => {
     try {
       const ids = Array.from(selectedMessageIds);
@@ -1112,9 +1129,12 @@ const MessagesPage = () => {
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-600 truncate">
-                          {getLastMessagePreview(connection)}
-                        </p>
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-600 truncate">
+                            {getLastMessagePreview(connection)}
+                          </p>
+                          <p className="text-[11px] text-gray-400 truncate">@{connection.user?.username}</p>
+                        </div>
 
                         {/* Unread badge */}
                         {(() => {
@@ -1164,7 +1184,7 @@ const MessagesPage = () => {
                 onClick={handleBulkDeleteChats}
                 className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-semibold"
               >
-                Delete
+                Delete chats
               </button>
               <button
                 onClick={handleBulkBlockUsers}
@@ -1321,13 +1341,24 @@ const MessagesPage = () => {
             {/* Pinned message header */}
             {pinnedMessages.size > 0 && (
               <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center gap-3">
-                <BsStarFill className="text-yellow-500" />
+                <span className="text-yellow-600">📌</span>
                 {(() => {
                   const firstId = Array.from(pinnedMessages)[0];
-                  const pm = messages.find((m) => String(m.id) === String(firstId));
+                  const pmIndex = messages.findIndex((m) => String(m.id) === String(firstId));
+                  const pm = messages[pmIndex];
                   const preview = pm?.content || (pm?.attachments?.length ? "Media" : "Pinned");
                   return (
-                    <div className="flex-1 truncate text-sm text-gray-800">{preview}</div>
+                    <button
+                      onClick={() => {
+                        const el = document.querySelector(`[data-mid="${firstId}"]`);
+                        if (el && messageContainerRef.current) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }}
+                      className="flex-1 text-left truncate text-sm text-gray-800 hover:underline"
+                    >
+                      {preview}
+                    </button>
                   );
                 })()}
                 <button
@@ -1395,6 +1426,7 @@ const MessagesPage = () => {
                           className={`flex ${
                             isMine ? "justify-end" : "justify-start"
                           } group`}
+                          data-mid={message.id}
                         >
                           <div
                             className={`max-w-xs lg:max-w-md relative ${
@@ -1657,22 +1689,6 @@ const MessagesPage = () => {
                                     </button>
                                     <button
                                       onClick={() => {
-                                        toggleStar(message.id);
-                                        setOpenMessageMenuFor(null);
-                                      }}
-                                      className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-                                    >
-                                      {starredMessages.has(message.id) ? (
-                                        <BsStarFill className="text-yellow-500" />
-                                      ) : (
-                                        <BsStar />
-                                      )}
-                                      {starredMessages.has(message.id)
-                                        ? "Unstar"
-                                        : "Star"}
-                                    </button>
-                                    <button
-                                      onClick={() => {
                                         navigator.clipboard.writeText(
                                           message.content || ""
                                         );
@@ -1706,10 +1722,7 @@ const MessagesPage = () => {
                                           setPinnedMessages((prev) => {
                                             const next = new Set(prev);
                                             if (isPinned) next.delete(message.id);
-                                            else {
-                                              next.clear();
-                                              next.add(message.id);
-                                            }
+                                            else { next.clear(); next.add(message.id); }
                                             return next;
                                           });
                                         } catch {}
@@ -1718,13 +1731,9 @@ const MessagesPage = () => {
                                       className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
                                     >
                                       {pinnedMessages.has(message.id) ? (
-                                        <>
-                                          <BsStarFill className="text-yellow-500" /> Unpin
-                                        </>
+                                        <>📌 Unpin</>
                                       ) : (
-                                        <>
-                                          <BsStar /> Pin
-                                        </>
+                                        <>📌 Pin</>
                                       )}
                                     </button>
                                     <button
@@ -1897,6 +1906,7 @@ const MessagesPage = () => {
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
                           className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                          title="Attach"
                         >
                           <FiPaperclip size={18} />
                         </button>

@@ -324,6 +324,9 @@ router.delete("/bulk-delete", protect, bulkDelete);
 // Delete entire chat
 router.delete("/chat/:userId", protect, deleteChat);
 
+// WhatsApp-like delete entire conversation for current user
+router.delete("/:userId", protect, deleteChat);
+
 // Report user/message
 router.post("/report", protect, report);
 

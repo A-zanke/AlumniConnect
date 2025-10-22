@@ -1334,6 +1334,44 @@ exports.block = async (req, res) => {
       });
     }
 
+    // Create a system message for the blocker only (like WhatsApp banner)
+    try {
+      const participants = [String(me), String(targetUserId)].sort();
+      let thread = await Thread.findOne({
+        participants: { $all: participants, $size: 2 },
+      });
+      if (!thread) thread = await Thread.create({ participants });
+
+      const text = action === "block"
+        ? `You blocked this contact on ${new Date().toLocaleString()}`
+        : `You unblocked this contact on ${new Date().toLocaleString()}`;
+
+      const sys = await Message.create({
+        from: me,
+        to: targetUserId,
+        content: text,
+        messageType: "text",
+        threadId: String(thread._id),
+        metadata: { system: true, systemCode: action },
+        // hide from the other participant
+        deletedFor: [targetUserId],
+      });
+
+      // Emit to blocker timeline only
+      if (req.io) {
+        req.io.to(String(me)).emit("message:new", {
+          conversationId: String(thread._id),
+          messageId: String(sys._id),
+          senderId: String(me),
+          body: text,
+          attachments: [],
+          createdAt: sys.createdAt,
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to append system block/unblock banner:", e.message);
+    }
+
     // Emit real-time update
     if (req.io) {
       req.io.to(String(me)).emit("user:blocked", {

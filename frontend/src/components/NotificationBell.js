@@ -109,7 +109,7 @@ const NotificationBell = () => {
     return () => document.removeEventListener("click", onClick);
   }, []);
 
-  const goProfile = async (sender, notificationId) => {
+  const goProfile = async (sender, notificationId, notification = null) => {
     // Mark notification as read if it's not already read
     if (
       notificationId &&
@@ -134,7 +134,11 @@ const NotificationBell = () => {
       }
     }
 
-    if (sender?.username) {
+    // Prefer routing to messages when notification relates to a chat/message
+    const relatedType = notification?.type || '';
+    if (relatedType === 'message' || relatedType === 'chat' || (notification && notification.onModel === 'Message')) {
+      navigate('/messages');
+    } else if (sender?.username) {
       navigate(`/profile/${sender.username}`);
     } else if (sender?._id) {
       navigate(`/profile/id/${sender._id}`);
@@ -261,7 +265,7 @@ const NotificationBell = () => {
                     }`}
                   >
                     <div
-                      onClick={() => goProfile(n.sender, n._id)}
+                      onClick={() => goProfile(n.sender, n._id, n)}
                       className="cursor-pointer transform hover:scale-105 transition-transform duration-200"
                     >
                       <Avatar
@@ -274,7 +278,7 @@ const NotificationBell = () => {
                       <div className="text-sm">
                         <span
                           className="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer transition-colors duration-200"
-                          onClick={() => goProfile(n.sender, n._id)}
+                          onClick={() => goProfile(n.sender, n._id, n)}
                         >
                           {n.sender?.name || "User"}
                         </span>{" "}
