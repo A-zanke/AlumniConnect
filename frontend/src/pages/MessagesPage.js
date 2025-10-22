@@ -137,6 +137,27 @@ const MessagesPage = () => {
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
 
+  // Media URL helpers for rendering and text auto-preview
+  const isImageUrl = (u = "") => /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(u);
+  const isVideoUrl = (u = "") => /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(u);
+  const isAudioUrl = (u = "") => /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/i.test(u);
+  const isDocUrl = (u = "") => /\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/i.test(u);
+  const getMediaTypeFromUrl = (u = "") => (isImageUrl(u) ? "image" : isVideoUrl(u) ? "video" : isAudioUrl(u) ? "audio" : isDocUrl(u) ? "document" : null);
+  const extractUrls = (text = "") => {
+    try { return text.match(/https?:\/\/\S+/g) || []; } catch { return []; }
+  };
+  const isOnlyUrlText = (text = "") => {
+    const urls = extractUrls(text);
+    const stripped = text.replace(urls[0] || '', '').trim();
+    return urls.length === 1 && stripped === '';
+  };
+  const formatBytes = (bytes) => {
+    if (!bytes && bytes !== 0) return '';
+    const sizes = ['B','KB','MB','GB'];
+    const i = Math.min(3, Math.floor(Math.log(bytes) / Math.log(1024)));
+    return `${(bytes / Math.pow(1024, i)).toFixed( (i===0)?0:1 )} ${sizes[i]}`;
+  };
+
   // Message status update callback
   const updateMessageStatus = useCallback((messageId, status) => {
     if (!messageId || !status) return;
@@ -886,6 +907,12 @@ const MessagesPage = () => {
       return <div className="text-4xl py-2">{text}</div>;
     }
 
+    // Hide bare media URLs; we'll render dedicated preview below
+    const urls = extractUrls(text);
+    if (urls.length === 1 && getMediaTypeFromUrl(urls[0])) {
+      return null;
+    }
+
     return <div className="whitespace-pre-wrap break-words">{text}</div>;
   };
 
@@ -1426,9 +1453,10 @@ const MessagesPage = () => {
                                 renderMessageContent(message.content)}
 
                               {/* Attachments */}
-                              {message.attachments && message.attachments.length > 0 && (
+                              {/* Attachments + implicit media URL in text */}
+                              {(message.attachments && message.attachments.length > 0) || isOnlyUrlText(message.content) ? (
                                 <div className="mt-2 space-y-2">
-                                  {message.attachments.map((attachment, idx) => {
+                                  {(message.attachments && message.attachments.length > 0 ? message.attachments : extractUrls(message.content)).map((attachment, idx) => {
                                     const lower = String(attachment).toLowerCase();
                                     const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower);
                                     const isVideo = /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower);
@@ -1456,7 +1484,13 @@ const MessagesPage = () => {
                                     if (isVideo || isAudio) {
                                       return (
                                         <div key={idx} className="relative">
-                                          <video src={attachment} controls className="max-w-full rounded-lg" />
+                                          <div className="relative">
+                                            <video src={attachment} controls className="max-w-full rounded-lg" />
+                                            {/* Play overlay for aesthetics */}
+                                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                              <span className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center text-white">▶</span>
+                                            </span>
+                                          </div>
                                           <a
                                             href={attachment}
                                             download
@@ -1473,10 +1507,10 @@ const MessagesPage = () => {
                                           href={attachment}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="text-blue-600 hover:underline flex items-center gap-2"
+                                          className="text-blue-600 hover:underline flex items-center gap-2 truncate max-w-[220px]"
                                         >
                                           <FiPaperclip />
-                                          {filename || 'Attachment'}
+                                          <span className="truncate">{filename || 'Attachment'}</span>
                                         </a>
                                         <a
                                           href={attachment}
@@ -1489,7 +1523,7 @@ const MessagesPage = () => {
                                     );
                                   })}
                                 </div>
-                              )}
+                              ) : null}
 
                               {/* Message time and status */}
                               <div
@@ -1793,26 +1827,32 @@ const MessagesPage = () => {
                 <>
                   {/* Attachment preview chips (WhatsApp-like) */}
                   {(selectedImages.length>0 || selectedVideos.length>0 || selectedDocs.length>0) && (
-                    <div className="mb-3 flex flex-wrap">
-                      {selectedImages.slice(0,5).map((f, idx) => (
-                        <span key={`img-${idx}`} className="attachment-chip">
-                          🖼️ {f.name}
-                          <button onClick={() => setSelectedImages((prev)=>prev.filter((_,i)=>i!==idx))}>✕</button>
-                        </span>
-                      ))}
-                      {selectedVideos.slice(0,5).map((f, idx) => (
-                        <span key={`vid-${idx}`} className="attachment-chip">
-                          🎥 {f.name}
-                          <button onClick={() => setSelectedVideos((prev)=>prev.filter((_,i)=>i!==idx))}>✕</button>
-                        </span>
-                      ))}
-                      {selectedDocs.slice(0,3).map((f, idx) => (
-                        <span key={`doc-${idx}`} className="attachment-chip">
-                          📄 {f.name}
-                          <button onClick={() => setSelectedDocs((prev)=>prev.filter((_,i)=>i!==idx))}>✕</button>
-                        </span>
-                      ))}
-                      <button onClick={removeImage} className="ml-2 text-sm text-red-600">Clear all</button>
+                    <div className="mb-3">
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {selectedImages.slice(0,5).map((f, idx) => (
+                          <div key={`img-${idx}`} className="relative group">
+                            <img src={URL.createObjectURL(f)} alt="preview" className="w-full h-24 object-cover rounded" />
+                            <button title="Remove" onClick={() => setSelectedImages((prev)=>prev.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90">×</button>
+                          </div>
+                        ))}
+                        {selectedVideos.slice(0,5).map((f, idx) => (
+                          <div key={`vid-${idx}`} className="relative">
+                            <video src={URL.createObjectURL(f)} className="w-full h-24 object-cover rounded" />
+                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="w-10 h-10 bg-black/40 rounded-full text-white flex items-center justify-center">▶</span></span>
+                            <button title="Remove" onClick={() => setSelectedVideos((prev)=>prev.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90">×</button>
+                          </div>
+                        ))}
+                        {selectedDocs.slice(0,3).map((f, idx) => (
+                          <div key={`doc-${idx}`} className="relative p-2 bg-gray-50 border rounded flex flex-col text-xs">
+                            <div className="font-medium truncate">{f.name}</div>
+                            <div className="text-gray-500">{formatBytes(f.size)}</div>
+                            <button title="Remove" onClick={() => setSelectedDocs((prev)=>prev.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90">×</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 text-right">
+                        <button onClick={removeImage} className="text-sm text-red-600">Clear all</button>
+                      </div>
                     </div>
                   )}
 
