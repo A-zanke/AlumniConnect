@@ -86,7 +86,7 @@ const MessagesPage = () => {
   // Attachment selection (WhatsApp-like)
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [selectedFileField, setSelectedFileField] = useState('image');
+  const [selectedFileField, setSelectedFileField] = useState("image");
   const [selectedVideos, setSelectedVideos] = useState([]);
   const [selectedDocs, setSelectedDocs] = useState([]);
   const [selectedImages, setSelectedImages] = useState([]);
@@ -140,26 +140,45 @@ const MessagesPage = () => {
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
 
   // Media URL helpers for rendering and text auto-preview
-  const isImageUrl = (u = "") => /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(u);
+  const isImageUrl = (u = "") =>
+    /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(u);
   const isVideoUrl = (u = "") => /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(u);
-  const isAudioUrl = (u = "") => /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/i.test(u);
-  const isDocUrl = (u = "") => /\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/i.test(u);
-  const getMediaTypeFromUrl = (u = "") => (isImageUrl(u) ? "image" : isVideoUrl(u) ? "video" : isAudioUrl(u) ? "audio" : isDocUrl(u) ? "document" : null);
+  const isAudioUrl = (u = "") =>
+    /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/i.test(u);
+  const isDocUrl = (u = "") =>
+    /\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/i.test(u);
+  const getMediaTypeFromUrl = (u = "") =>
+    isImageUrl(u)
+      ? "image"
+      : isVideoUrl(u)
+      ? "video"
+      : isAudioUrl(u)
+      ? "audio"
+      : isDocUrl(u)
+      ? "document"
+      : null;
   const extractUrls = (text = "") => {
-    try { return text.match(/https?:\/\/\S+/g) || []; } catch { return []; }
+    try {
+      return text.match(/https?:\/\/\S+/g) || [];
+    } catch {
+      return [];
+    }
   };
   const isOnlyUrlText = (text = "") => {
     const urls = extractUrls(text);
-    const stripped = text.replace(urls[0] || '', '').trim();
-    return urls.length === 1 && stripped === '';
+    const stripped = text.replace(urls[0] || "", "").trim();
+    return urls.length === 1 && stripped === "";
   };
   const formatBytes = (bytes) => {
-    if (!bytes && bytes !== 0) return '';
-    const sizes = ['B','KB','MB','GB'];
+    if (!bytes && bytes !== 0) return "";
+    const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.min(3, Math.floor(Math.log(bytes) / Math.log(1024)));
-    return `${(bytes / Math.pow(1024, i)).toFixed( (i===0)?0:1 )} ${sizes[i]}`;
+    return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${
+      sizes[i]
+    }`;
   };
-  const resolveMediaUrl = (u = "") => (u && u.startsWith("/uploads") ? `${baseURL}${u}` : u);
+  const resolveMediaUrl = (u = "") =>
+    u && u.startsWith("/uploads") ? `${baseURL}${u}` : u;
 
   // Message status update callback
   const updateMessageStatus = useCallback((messageId, status) => {
@@ -317,7 +336,14 @@ const MessagesPage = () => {
       // Message events
       s.on(
         "message:new",
-        ({ conversationId, messageId, senderId, body, attachments = [], createdAt }) => {
+        ({
+          conversationId,
+          messageId,
+          senderId,
+          body,
+          attachments = [],
+          createdAt,
+        }) => {
           const currentSelected = selectedUserRef.current;
           const isCurrent =
             currentSelected && String(senderId) === String(currentSelected._id);
@@ -422,9 +448,22 @@ const MessagesPage = () => {
       s.on("messageDeleted", (payload) => {
         if (payload?.messageId) {
           if (payload.placeholder) {
-            setMessages((prev) => prev.map((m) => (String(m.id) === String(payload.messageId) ? { ...m, content: "This message was deleted", attachments: [], messageType: "text" } : m)));
+            setMessages((prev) =>
+              prev.map((m) =>
+                String(m.id) === String(payload.messageId)
+                  ? {
+                      ...m,
+                      content: "This message was deleted",
+                      attachments: [],
+                      messageType: "text",
+                    }
+                  : m
+              )
+            );
           } else {
-            setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+            setMessages((prev) =>
+              prev.filter((m) => m.id !== payload.messageId)
+            );
           }
         } else if (payload?.messageIds) {
           const ids = new Set(payload.messageIds.map(String));
@@ -518,18 +557,29 @@ const MessagesPage = () => {
     e.preventDefault();
 
     const hasAnyMedia =
-      selectedImages.length > 0 || selectedVideos.length > 0 || selectedDocs.length > 0 || !!selectedImage;
+      selectedImages.length > 0 ||
+      selectedVideos.length > 0 ||
+      selectedDocs.length > 0 ||
+      !!selectedImage;
     if ((!newMessage.trim() && !hasAnyMedia) || !selectedUser) return;
 
     try {
       const formData = new FormData();
       formData.append("content", newMessage);
       // Append all selected media with server-supported field names
-      selectedImages.slice(0, 5).forEach((file) => formData.append("image", file));
-      selectedVideos.slice(0, 5).forEach((file) => formData.append("video", file));
-      selectedDocs.slice(0, 3).forEach((file) => formData.append("document", file));
+      selectedImages
+        .slice(0, 5)
+        .forEach((file) => formData.append("image", file));
+      selectedVideos
+        .slice(0, 5)
+        .forEach((file) => formData.append("video", file));
+      selectedDocs
+        .slice(0, 3)
+        .forEach((file) => formData.append("document", file));
       if (selectedImage) {
-        const field = (typeof selectedFileField !== 'undefined' && selectedFileField) || 'image';
+        const field =
+          (typeof selectedFileField !== "undefined" && selectedFileField) ||
+          "image";
         formData.append(field, selectedImage);
       }
       if (replyTo?.id) formData.append("replyToId", replyTo.id);
@@ -626,8 +676,18 @@ const MessagesPage = () => {
         setReplyTo(null);
       } else {
         // Replace optimistic (clientKey) with the server message and clear loader
-        setMessages((prev) => prev.map((m) => (String(m.id) === String(clientKey) ? { ...serverMessage, status: "sent" } : m)));
-        setUploadProgress((prev) => { const next = { ...prev }; delete next[clientKey]; return next; });
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.id) === String(clientKey)
+              ? { ...serverMessage, status: "sent" }
+              : m
+          )
+        );
+        setUploadProgress((prev) => {
+          const next = { ...prev };
+          delete next[clientKey];
+          return next;
+        });
         setSelectedImage(null);
         setImagePreview(null);
         setSelectedImages([]);
@@ -669,7 +729,9 @@ const MessagesPage = () => {
   const handleReact = async (messageId, emoji) => {
     try {
       const token = localStorage.getItem("token");
-      const to = selectedUser?._id || messages.find((m) => String(m.id) === String(messageId))?.recipientId;
+      const to =
+        selectedUser?._id ||
+        messages.find((m) => String(m.id) === String(messageId))?.recipientId;
       const resp = await axios.post(
         `${baseURL}/api/messages/react`,
         { messageId: String(messageId), emoji, to },
@@ -702,14 +764,21 @@ const MessagesPage = () => {
   // Delete entire chat for current user like WhatsApp
   const handleDeleteEntireChat = async () => {
     if (!selectedUser) return;
-    if (!window.confirm("Delete this chat for you? This can't be undone.")) return;
+    if (!window.confirm("Delete this chat for you? This can't be undone."))
+      return;
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`${baseURL}/api/messages/${selectedUser._id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setMessages([]);
-      setConnections((prev) => prev.map((c) => c.user?._id === selectedUser._id ? { ...c, lastMessage: "", lastMessageTime: null } : c));
+      setConnections((prev) =>
+        prev.map((c) =>
+          c.user?._id === selectedUser._id
+            ? { ...c, lastMessage: "", lastMessageTime: null }
+            : c
+        )
+      );
       toast.success("Chat deleted");
     } catch (e) {
       toast.error("Failed to delete chat");
@@ -720,14 +789,14 @@ const MessagesPage = () => {
     try {
       const ids = Array.from(selectedMessageIds);
       if (ids.length === 0) return;
-      if (scope === 'everyone') {
+      if (scope === "everyone") {
         // Ensure only my messages are in the selection for delete-everyone
         const invalid = ids.some((id) => {
           const m = messages.find((mm) => String(mm.id) === String(id));
           return !m || String(m.senderId) !== String(user._id);
         });
         if (invalid) {
-          toast.error('Only your messages can be deleted for everyone');
+          toast.error("Only your messages can be deleted for everyone");
           return;
         }
       }
@@ -815,15 +884,19 @@ const MessagesPage = () => {
     const vid = [];
     const docs = [];
     for (const f of files) {
-      if (f.type?.startsWith('image/')) img.push(f);
-      else if (f.type?.startsWith('video/')) vid.push(f);
+      if (f.type?.startsWith("image/")) img.push(f);
+      else if (f.type?.startsWith("video/")) vid.push(f);
       else docs.push(f);
     }
     setSelectedImages((prev) => prev.concat(img).slice(0, 5));
     setSelectedVideos((prev) => prev.concat(vid).slice(0, 5));
     setSelectedDocs((prev) => prev.concat(docs).slice(0, 3));
     // Keep a single primary preview if an image exists
-    const previewSrc = img[0] ? URL.createObjectURL(img[0]) : (vid[0] ? URL.createObjectURL(vid[0]) : null);
+    const previewSrc = img[0]
+      ? URL.createObjectURL(img[0])
+      : vid[0]
+      ? URL.createObjectURL(vid[0])
+      : null;
     if (previewSrc) setImagePreview(previewSrc);
   };
 
@@ -849,7 +922,10 @@ const MessagesPage = () => {
 
   const handleBulkDeleteChats = async () => {
     try {
-      if (!window.confirm("Delete all selected chats and their history for you?")) return;
+      if (
+        !window.confirm("Delete all selected chats and their history for you?")
+      )
+        return;
       const ids = Array.from(selectedChatIds);
       if (ids.length === 0) return;
       const token = localStorage.getItem("token");
@@ -1152,6 +1228,7 @@ const MessagesPage = () => {
                         }
                         alt={connection.user?.name}
                         className="w-12 h-12 rounded-full object-cover"
+                        onError={(e) => (e.target.src = "/default-avatar.png")}
                       />
                       {connection.user?.isOnline && (
                         <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
@@ -1175,7 +1252,9 @@ const MessagesPage = () => {
                           <p className="text-sm text-gray-600 truncate">
                             {getLastMessagePreview(connection)}
                           </p>
-                          <p className="text-[11px] text-gray-400 truncate">@{connection.user?.username}</p>
+                          <p className="text-[11px] text-gray-400 truncate">
+                            @{connection.user?.username}
+                          </p>
                         </div>
 
                         {/* Unread badge */}
@@ -1261,7 +1340,7 @@ const MessagesPage = () => {
         {selectedUser ? (
           <>
             {/* Chat Header */}
-              <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
                   className="lg:hidden p-2 rounded-full hover:bg-gray-200"
@@ -1307,7 +1386,7 @@ const MessagesPage = () => {
                 </div>
               </div>
 
-          <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSelectionMode(!selectionMode)}
                   className={`p-2 rounded-full hover:bg-gray-200 ${
@@ -1339,12 +1418,18 @@ const MessagesPage = () => {
                       >
                         <FiInfo /> Contact info
                       </button>
-                  <button
-                    onClick={() => navigate(selectedUser.username ? `/profile/${selectedUser.username}` : `/profile/id/${selectedUser._id}`)}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
-                  >
-                    <FiUsers /> View profile
-                  </button>
+                      <button
+                        onClick={() =>
+                          navigate(
+                            selectedUser.username
+                              ? `/profile/${selectedUser.username}`
+                              : `/profile/id/${selectedUser._id}`
+                          )
+                        }
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
+                      >
+                        <FiUsers /> View profile
+                      </button>
                       <button
                         onClick={() => {
                           setSelectionMode(!selectionMode);
@@ -1353,6 +1438,15 @@ const MessagesPage = () => {
                         className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
                       >
                         <FiCheckSquare /> Select messages
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleDeleteEntireChat();
+                          setOpenHeaderMenu(false);
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3 text-red-600"
+                      >
+                        <FiTrash2 /> Clear Chat
                       </button>
                       <button
                         onClick={() => {
@@ -1380,48 +1474,57 @@ const MessagesPage = () => {
                 </div>
               </div>
 
-            {/* Pinned message header */}
-            {pinnedMessages.size > 0 && (
-              <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center gap-3">
-                <span className="text-yellow-600">📌</span>
-                {(() => {
-                  const firstId = Array.from(pinnedMessages)[0];
-                  const pmIndex = messages.findIndex((m) => String(m.id) === String(firstId));
-                  const pm = messages[pmIndex];
-                  const preview = pm?.content || (pm?.attachments?.length ? "Media" : "Pinned");
-                  return (
-                    <button
-                      onClick={() => {
-                        const el = document.querySelector(`[data-mid="${firstId}"]`);
-                        if (el && messageContainerRef.current) {
-                          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }
-                      }}
-                      className="flex-1 text-left truncate text-sm text-gray-800 hover:underline"
-                    >
-                      {preview}
-                    </button>
-                  );
-                })()}
-                <button
-                  onClick={async () => {
-                    const id = Array.from(pinnedMessages)[0];
-                    try {
-                      const token = localStorage.getItem("token");
-                      await axios.post(
-                        `${baseURL}/api/messages/pin`,
-                        { messageId: id, pin: false },
-                        { headers: { Authorization: `Bearer ${token}` } }
-                      );
-                    } catch {}
-                    setPinnedMessages(new Set());
-                  }}
-                  className="text-xs text-gray-600 hover:text-gray-800"
-                >
-                  Unpin
-                </button>
-              </div>
-            )}
+              {/* Pinned message header */}
+              {pinnedMessages.size > 0 && (
+                <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center gap-3">
+                  <span className="text-yellow-600">📌</span>
+                  {(() => {
+                    const firstId = Array.from(pinnedMessages)[0];
+                    const pmIndex = messages.findIndex(
+                      (m) => String(m.id) === String(firstId)
+                    );
+                    const pm = messages[pmIndex];
+                    const preview =
+                      pm?.content ||
+                      (pm?.attachments?.length ? "Media" : "Pinned");
+                    return (
+                      <button
+                        onClick={() => {
+                          const el = document.querySelector(
+                            `[data-mid="${firstId}"]`
+                          );
+                          if (el && messageContainerRef.current) {
+                            el.scrollIntoView({
+                              behavior: "smooth",
+                              block: "center",
+                            });
+                          }
+                        }}
+                        className="flex-1 text-left truncate text-sm text-gray-800 hover:underline"
+                      >
+                        {preview}
+                      </button>
+                    );
+                  })()}
+                  <button
+                    onClick={async () => {
+                      const id = Array.from(pinnedMessages)[0];
+                      try {
+                        const token = localStorage.getItem("token");
+                        await axios.post(
+                          `${baseURL}/api/messages/pin`,
+                          { messageId: id, pin: false },
+                          { headers: { Authorization: `Bearer ${token}` } }
+                        );
+                      } catch {}
+                      setPinnedMessages(new Set());
+                    }}
+                    className="text-xs text-gray-600 hover:text-gray-800"
+                  >
+                    Unpin
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Messages */}
@@ -1462,6 +1565,7 @@ const MessagesPage = () => {
 
                         {/* Message */}
                         <motion.div
+                          key={message.uniqueKey || message.id}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -20 }}
@@ -1528,41 +1632,100 @@ const MessagesPage = () => {
 
                               {/* Attachments */}
                               {/* Attachments + implicit media URL in text */}
-                              {(message.attachments && message.attachments.length > 0) || isOnlyUrlText(message.content) ? (
+                              {(message.attachments &&
+                                message.attachments.length > 0) ||
+                              isOnlyUrlText(message.content) ? (
                                 <div className="mt-2 space-y-2">
-                                  {(message.attachments && message.attachments.length > 0 ? message.attachments : extractUrls(message.content)).map((attachment, idx) => {
-                                    const lower = String(attachment).toLowerCase();
-                                    const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower);
-                                    const isVideo = /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower);
-                                    const isAudio = /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower);
-                                    const filename = attachment.split('/').pop();
+                                  {(message.attachments &&
+                                  message.attachments.length > 0
+                                    ? message.attachments
+                                    : extractUrls(message.content)
+                                  ).map((attachment, idx) => {
+                                    const lower =
+                                      String(attachment).toLowerCase();
+                                    const isImage =
+                                      /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(
+                                        lower
+                                      );
+                                    const isVideo =
+                                      /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(
+                                        lower
+                                      );
+                                    const isAudio =
+                                      /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(
+                                        lower
+                                      );
+                                    const filename = attachment
+                                      .split("/")
+                                      .pop();
                                     if (isImage) {
                                       return (
                                         <div key={idx} className="relative">
-                                          <img
-                                            src={resolveMediaUrl(attachment)}
-                                            alt="attachment"
-                                            className="max-w-full h-auto rounded-lg cursor-pointer"
-                                            onClick={() => setLightboxSrc(resolveMediaUrl(attachment))}
-                                            onLoad={() => setMediaLoaded((p)=>({ ...p, [attachment]: true }))}
-                                          />
-                                          {(!mediaLoaded[attachment]) && (
-                                            <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
-                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                          {message.uploading ? (
+                                            <div className="w-full h-24 bg-gray-200 flex items-center justify-center rounded-lg">
+                                              <div className="w-8 h-8 rounded-full border-4 border-gray-400 border-t-transparent animate-spin" />
                                             </div>
+                                          ) : (
+                                            <>
+                                              <img
+                                                src={resolveMediaUrl(
+                                                  attachment
+                                                )}
+                                                alt="attachment"
+                                                className="max-w-full h-auto rounded-lg cursor-pointer"
+                                                onClick={() =>
+                                                  setLightboxSrc(
+                                                    resolveMediaUrl(attachment)
+                                                  )
+                                                }
+                                                onLoad={() =>
+                                                  setMediaLoaded((p) => ({
+                                                    ...p,
+                                                    [attachment]: true,
+                                                  }))
+                                                }
+                                              />
+                                              {!mediaLoaded[attachment] && (
+                                                <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
+                                                  <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
+                                                </div>
+                                              )}
+                                              <div className="absolute top-2 right-2 flex gap-1">
+                                                <button
+                                                  onClick={async () => {
+                                                    try {
+                                                      await navigator.clipboard.writeText(
+                                                        resolveMediaUrl(
+                                                          attachment
+                                                        )
+                                                      );
+                                                      toast.success(
+                                                        "Link copied to clipboard"
+                                                      );
+                                                    } catch (e) {
+                                                      toast.error(
+                                                        "Failed to copy link"
+                                                      );
+                                                    }
+                                                  }}
+                                                  className="bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
+                                                  title="Share"
+                                                >
+                                                  <FiShare2 size={16} />
+                                                </button>
+                                                <a
+                                                  href={resolveMediaUrl(
+                                                    attachment
+                                                  )}
+                                                  download
+                                                  className="bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
+                                                  title="Download"
+                                                >
+                                                  <FiDownload size={16} />
+                                                </a>
+                                              </div>
+                                            </>
                                           )}
-                                          {message.uploading && (
-                                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
-                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
-                                            </div>
-                                          )}
-                                          <a
-                                            href={resolveMediaUrl(attachment)}
-                                            download
-                                            className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
-                                          >
-                                            <FiDownload size={16} />
-                                          </a>
                                         </div>
                                       );
                                     }
@@ -1570,13 +1733,25 @@ const MessagesPage = () => {
                                       return (
                                         <div key={idx} className="relative">
                                           <div className="relative">
-                                            <video src={resolveMediaUrl(attachment)} controls className="max-w-full rounded-lg" onLoadedData={() => setMediaLoaded((p)=>({ ...p, [attachment]: true }))} />
+                                            <video
+                                              src={resolveMediaUrl(attachment)}
+                                              controls
+                                              className="max-w-full rounded-lg"
+                                              onLoadedData={() =>
+                                                setMediaLoaded((p) => ({
+                                                  ...p,
+                                                  [attachment]: true,
+                                                }))
+                                              }
+                                            />
                                             {/* Play overlay for aesthetics */}
                                             <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                              <span className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center text-white">▶</span>
+                                              <span className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center text-white">
+                                                ▶
+                                              </span>
                                             </span>
                                           </div>
-                                          {(!mediaLoaded[attachment]) && (
+                                          {!mediaLoaded[attachment] && (
                                             <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
                                               <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
                                             </div>
@@ -1597,7 +1772,10 @@ const MessagesPage = () => {
                                       );
                                     }
                                     return (
-                                      <div key={idx} className="p-2 bg-gray-100 rounded-lg flex items-center justify-between">
+                                      <div
+                                        key={idx}
+                                        className="p-2 bg-gray-100 rounded-lg flex items-center justify-between"
+                                      >
                                         <a
                                           href={resolveMediaUrl(attachment)}
                                           target="_blank"
@@ -1605,7 +1783,9 @@ const MessagesPage = () => {
                                           className="text-blue-600 hover:underline flex items-center gap-2 truncate max-w-[220px]"
                                         >
                                           <FiPaperclip />
-                                          <span className="truncate">{filename || 'Attachment'}</span>
+                                          <span className="truncate">
+                                            {filename || "Attachment"}
+                                          </span>
                                         </a>
                                         <a
                                           href={resolveMediaUrl(attachment)}
@@ -1774,18 +1954,32 @@ const MessagesPage = () => {
                                     </button>
                                     <button
                                       onClick={async () => {
-                                        const isPinned = pinnedMessages.has(message.id);
+                                        const isPinned = pinnedMessages.has(
+                                          message.id
+                                        );
                                         try {
-                                          const token = localStorage.getItem("token");
+                                          const token =
+                                            localStorage.getItem("token");
                                           await axios.post(
                                             `${baseURL}/api/messages/pin`,
-                                            { messageId: message.id, pin: !isPinned },
-                                            { headers: { Authorization: `Bearer ${token}` } }
+                                            {
+                                              messageId: message.id,
+                                              pin: !isPinned,
+                                            },
+                                            {
+                                              headers: {
+                                                Authorization: `Bearer ${token}`,
+                                              },
+                                            }
                                           );
                                           setPinnedMessages((prev) => {
                                             const next = new Set(prev);
-                                            if (isPinned) next.delete(message.id);
-                                            else { next.clear(); next.add(message.id); }
+                                            if (isPinned)
+                                              next.delete(message.id);
+                                            else {
+                                              next.clear();
+                                              next.add(message.id);
+                                            }
                                             return next;
                                           });
                                         } catch {}
@@ -1849,10 +2043,14 @@ const MessagesPage = () => {
                     Delete for me
                   </button>
                   {(() => {
-                    const allMine = Array.from(selectedMessageIds).every((id) => {
-                      const m = messages.find((mm) => String(mm.id) === String(id));
-                      return m && String(m.senderId) === String(user._id);
-                    });
+                    const allMine = Array.from(selectedMessageIds).every(
+                      (id) => {
+                        const m = messages.find(
+                          (mm) => String(mm.id) === String(id)
+                        );
+                        return m && String(m.senderId) === String(user._id);
+                      }
+                    );
                     if (!allMine) return null;
                     return (
                       <button
@@ -1898,32 +2096,85 @@ const MessagesPage = () => {
               ) : (
                 <>
                   {/* Attachment preview chips (WhatsApp-like) */}
-                  {(selectedImages.length>0 || selectedVideos.length>0 || selectedDocs.length>0) && (
+                  {(selectedImages.length > 0 ||
+                    selectedVideos.length > 0 ||
+                    selectedDocs.length > 0) && (
                     <div className="mb-3">
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                        {selectedImages.slice(0,5).map((f, idx) => (
+                        {selectedImages.slice(0, 5).map((f, idx) => (
                           <div key={`img-${idx}`} className="relative group">
-                            <img src={URL.createObjectURL(f)} alt="preview" className="w-full h-24 object-cover rounded" />
-                            <button title="Remove" onClick={() => setSelectedImages((prev)=>prev.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90">×</button>
+                            <img
+                              src={URL.createObjectURL(f)}
+                              alt="preview"
+                              className="w-full h-24 object-cover rounded"
+                            />
+                            <button
+                              title="Remove"
+                              onClick={() =>
+                                setSelectedImages((prev) =>
+                                  prev.filter((_, i) => i !== idx)
+                                )
+                              }
+                              className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90"
+                            >
+                              ×
+                            </button>
                           </div>
                         ))}
-                        {selectedVideos.slice(0,5).map((f, idx) => (
+                        {selectedVideos.slice(0, 5).map((f, idx) => (
                           <div key={`vid-${idx}`} className="relative">
-                            <video src={URL.createObjectURL(f)} className="w-full h-24 object-cover rounded" />
-                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="w-10 h-10 bg-black/40 rounded-full text-white flex items-center justify-center">▶</span></span>
-                            <button title="Remove" onClick={() => setSelectedVideos((prev)=>prev.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90">×</button>
+                            <video
+                              src={URL.createObjectURL(f)}
+                              className="w-full h-24 object-cover rounded"
+                            />
+                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <span className="w-10 h-10 bg-black/40 rounded-full text-white flex items-center justify-center">
+                                ▶
+                              </span>
+                            </span>
+                            <button
+                              title="Remove"
+                              onClick={() =>
+                                setSelectedVideos((prev) =>
+                                  prev.filter((_, i) => i !== idx)
+                                )
+                              }
+                              className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90"
+                            >
+                              ×
+                            </button>
                           </div>
                         ))}
-                        {selectedDocs.slice(0,3).map((f, idx) => (
-                          <div key={`doc-${idx}`} className="relative p-2 bg-gray-50 border rounded flex flex-col text-xs">
+                        {selectedDocs.slice(0, 3).map((f, idx) => (
+                          <div
+                            key={`doc-${idx}`}
+                            className="relative p-2 bg-gray-50 border rounded flex flex-col text-xs"
+                          >
                             <div className="font-medium truncate">{f.name}</div>
-                            <div className="text-gray-500">{formatBytes(f.size)}</div>
-                            <button title="Remove" onClick={() => setSelectedDocs((prev)=>prev.filter((_,i)=>i!==idx))} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90">×</button>
+                            <div className="text-gray-500">
+                              {formatBytes(f.size)}
+                            </div>
+                            <button
+                              title="Remove"
+                              onClick={() =>
+                                setSelectedDocs((prev) =>
+                                  prev.filter((_, i) => i !== idx)
+                                )
+                              }
+                              className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-90"
+                            >
+                              ×
+                            </button>
                           </div>
                         ))}
                       </div>
                       <div className="mt-2 text-right">
-                        <button onClick={removeImage} className="text-sm text-red-600">Clear all</button>
+                        <button
+                          onClick={removeImage}
+                          className="text-sm text-red-600"
+                        >
+                          Clear all
+                        </button>
                       </div>
                     </div>
                   )}
@@ -2069,135 +2320,144 @@ const MessagesPage = () => {
             className="h-full w-full sm:w-[380px] bg-white border-l border-gray-200 shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-          <div className="p-4 border-b flex items-center justify-between">
-            <div className="font-semibold">Chat details</div>
-            <button
-              onClick={() => setShowRightPanel(false)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <FiX />
-            </button>
-          </div>
-          <div className="p-4 flex items-center gap-3 border-b">
-            <img
-              src={
-                selectedUser.avatarUrl
-                  ? getAvatarUrl(selectedUser.avatarUrl)
-                  : "/default-avatar.png"
-              }
-              alt={selectedUser.name}
-              className="w-12 h-12 rounded-full object-cover"
-            />
-            <div>
-              <div className="font-medium">{selectedUser.name}</div>
-              <div className="text-sm text-gray-500">
-                @{selectedUser.username}
-              </div>
-              <div className="mt-1">
-                <Link
-                  to={
-                    selectedUser.username
-                      ? `/profile/${selectedUser.username}`
-                      : `/profile/id/${selectedUser._id}`
-                  }
-                  className="text-sm text-indigo-600 hover:underline"
-                >
-                  View profile
-                </Link>
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="font-semibold">Chat details</div>
+              <button
+                onClick={() => setShowRightPanel(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <FiX />
+              </button>
+            </div>
+            <div className="p-4 flex items-center gap-3 border-b">
+              <img
+                src={
+                  selectedUser.avatarUrl
+                    ? getAvatarUrl(selectedUser.avatarUrl)
+                    : "/default-avatar.png"
+                }
+                alt={selectedUser.name}
+                className="w-12 h-12 rounded-full object-cover"
+              />
+              <div>
+                <div className="font-medium">{selectedUser.name}</div>
+                <div className="text-sm text-gray-500">
+                  @{selectedUser.username}
+                </div>
+                <div className="mt-1">
+                  <Link
+                    to={
+                      selectedUser.username
+                        ? `/profile/${selectedUser.username}`
+                        : `/profile/id/${selectedUser._id}`
+                    }
+                    className="text-sm text-indigo-600 hover:underline"
+                  >
+                    View profile
+                  </Link>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="px-4 pt-2 flex gap-2">
-            {[
-              { key: "media", label: "Media" },
-              { key: "docs", label: "Docs" },
-              { key: "links", label: "Links" },
-            ].map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setRightPanelTab(t.key)}
-                className={`px-3 py-1 rounded-full text-sm ${
-                  rightPanelTab === t.key
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-600"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="p-4 flex-1 overflow-y-auto">
+            <div className="px-4 pt-2 flex gap-2">
+              {[
+                { key: "media", label: "Media" },
+                { key: "docs", label: "Docs" },
+                { key: "links", label: "Links" },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setRightPanelTab(t.key)}
+                  className={`px-3 py-1 rounded-full text-sm ${
+                    rightPanelTab === t.key
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto">
               {rightPanelTab === "media" && (
-              <div className="grid grid-cols-3 gap-2">
-                {sharedMedia
-                  .filter((m) => m.type === "image" || m.type === "video")
-                  .map((m) => (
-                    <a key={m.id + String(m.url)} href={m.url} target="_blank" rel="noreferrer">
-                      {/* simple thumbnail: image tag even for video will show poster from Cloudinary if available */}
-                      <img src={m.url} alt="" className="w-full h-24 object-cover rounded" />
-                    </a>
-                  ))}
-              </div>
-            )}
-            {rightPanelTab === "docs" && (
-              <div className="space-y-2">
-                {sharedMedia
-                  .filter((m) => m.type === "document" || m.type === "audio")
-                  .map((m) => (
-                    <a
-                      key={m.id + String(m.url)}
-                      href={m.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate"
-                    >
-                      {m.url}
-                    </a>
-                  ))}
-              </div>
-            )}
-            {rightPanelTab === "links" && (
-              <div className="space-y-2">
-                {sharedMedia
-                  .filter((m) => m.type === "link")
-                  .map((m) => (
-                    <a
-                      key={m.id + String(m.url)}
-                      href={m.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate"
-                    >
-                      {m.url}
-                    </a>
-                  ))}
-              </div>
-            )}
-          </div>
-          <div className="p-4 border-t flex gap-2">
-            {blockedUsers.has(selectedUser._id) ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {sharedMedia
+                    .filter((m) => m.type === "image" || m.type === "video")
+                    .map((m) => (
+                      <a
+                        key={m.id + String(m.url)}
+                        href={m.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {/* simple thumbnail: image tag even for video will show poster from Cloudinary if available */}
+                        <img
+                          src={m.url}
+                          alt=""
+                          className="w-full h-24 object-cover rounded"
+                        />
+                      </a>
+                    ))}
+                </div>
+              )}
+              {rightPanelTab === "docs" && (
+                <div className="space-y-2">
+                  {sharedMedia
+                    .filter((m) => m.type === "document" || m.type === "audio")
+                    .map((m) => (
+                      <a
+                        key={m.id + String(m.url)}
+                        href={m.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate"
+                      >
+                        {m.url}
+                      </a>
+                    ))}
+                </div>
+              )}
+              {rightPanelTab === "links" && (
+                <div className="space-y-2">
+                  {sharedMedia
+                    .filter((m) => m.type === "link")
+                    .map((m) => (
+                      <a
+                        key={m.id + String(m.url)}
+                        href={m.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate"
+                      >
+                        {m.url}
+                      </a>
+                    ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t flex gap-2">
+              {blockedUsers.has(selectedUser._id) ? (
+                <button
+                  onClick={() => setShowUnblockDialog(true)}
+                  className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white"
+                >
+                  Unblock
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleBlock(true)}
+                  className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white"
+                >
+                  Block
+                </button>
+              )}
               <button
-                onClick={() => setShowUnblockDialog(true)}
-                className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white"
+                onClick={handleReport}
+                className="px-3 py-2 rounded-lg bg-orange-500 text-white"
               >
-                Unblock
+                Report
               </button>
-            ) : (
-              <button
-                onClick={() => handleBlock(true)}
-                className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white"
-              >
-                Block
-              </button>
-            )}
-            <button
-              onClick={handleReport}
-              className="px-3 py-2 rounded-lg bg-orange-500 text-white"
-            >
-              Report
-            </button>
+            </div>
           </div>
-        </div>
         </div>
       )}
 

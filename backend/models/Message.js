@@ -32,15 +32,6 @@ const MessageSchema = new mongoose.Schema(
       },
     ],
 
-    // Per-message emoji reactions
-    reactions: [
-      {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        emoji: { type: String, required: true, maxlength: 16 },
-        reactedAt: { type: Date, default: Date.now },
-      },
-    ],
-
     // Enhanced message status tracking
     isRead: {
       type: Boolean,
@@ -71,11 +62,11 @@ const MessageSchema = new mongoose.Schema(
       default: "text",
     },
 
-    // Reactions (normalized)
+    // Per-message emoji reactions
     reactions: [
       {
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-        emoji: { type: String, required: true },
+        emoji: { type: String, required: true, maxlength: 16 },
         reactedAt: { type: Date, default: Date.now },
       },
     ],
