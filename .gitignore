@@ -22,6 +22,10 @@ frontend/build/
 backend/dist/
 backend/build/
 
+# Local uploads (now using Cloudinary)
+backend/uploads/
+uploads/
+
 # System files
 .DS_Store
 Thumbs.db

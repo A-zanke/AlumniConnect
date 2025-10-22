@@ -24,10 +24,11 @@ const MessageSchema = new mongoose.Schema(
       default: "",
       maxlength: 4096, // WhatsApp-like message length limit
     },
+    // For Cloudinary URLs or remote media
     attachments: [
       {
         type: String,
-        maxlength: 500,
+        maxlength: 1000,
       },
     ],
 
@@ -183,25 +184,12 @@ MessageSchema.virtual("isRecent").get(function () {
 // Pre-save middleware to set message type based on attachments
 MessageSchema.pre("save", function (next) {
   if (this.attachments && this.attachments.length > 0) {
-    const firstAttachment = this.attachments[0];
-    if (
-      typeof firstAttachment === "string" &&
-      firstAttachment.startsWith("/uploads/")
-    ) {
-      const ext = firstAttachment.split(".").pop().toLowerCase();
-
-      if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
-        this.messageType = "image";
-      } else if (["mp4", "webm", "ogg", "mov"].includes(ext)) {
-        this.messageType = "video";
-      } else if (["mp3", "wav", "ogg", "m4a", "aac"].includes(ext)) {
-        this.messageType = "audio";
-      } else if (
-        ["pdf", "doc", "docx", "txt", "xlsx", "ppt", "pptx"].includes(ext)
-      ) {
-        this.messageType = "document";
-      }
-    }
+    const first = String(this.attachments[0]);
+    const lower = first.toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)) this.messageType = "image";
+    else if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)) this.messageType = "video";
+    else if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)) this.messageType = "audio";
+    else if (/\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/.test(lower)) this.messageType = "document";
   }
 
   // Set auto-delete timer if specified
@@ -331,16 +319,7 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
     recipientId: this.to,
     content: this.content,
     messageType: this.messageType,
-    attachments: this.attachments.filter(
-      (att) =>
-        typeof att === "string" &&
-        att.startsWith("/uploads/") &&
-        !att.includes("deletedFor:") &&
-        !att.includes("react:") && // filter legacy reaction markers
-        !att.includes("star:") &&
-        !att.includes("pin:") &&
-        !att.includes("reply:")
-    ),
+    attachments: (this.attachments || []).filter((att) => typeof att === "string" && /^https?:\/\//.test(att)),
     reactions: this.getReactions(),
     replyTo: this.getReplyTo(),
     isStarred: this.isStarredBy(viewerId),

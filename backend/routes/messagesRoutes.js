@@ -4,6 +4,8 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const cloudinary = require("../config/cloudinary");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const { protect } = require("../middleware/authMiddleware");
 const {
   getMessages,
@@ -34,30 +36,20 @@ const ensureDirectoryExists = (dirPath) => {
   }
 };
 
-// Configure enhanced multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadsDir = path.join(__dirname, "../uploads/messages");
-    ensureDirectoryExists(uploadsDir);
-
-    // Create subdirectories based on file type
-    let subDir = "documents";
-    if (file.mimetype.startsWith("image/")) subDir = "images";
-    else if (file.mimetype.startsWith("video/")) subDir = "videos";
-    else if (file.mimetype.startsWith("audio/")) subDir = "audio";
-
-    const finalDir = path.join(uploadsDir, subDir);
-    ensureDirectoryExists(finalDir);
-    cb(null, finalDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    const name = path
-      .basename(file.originalname, ext)
-      .replace(/[^a-zA-Z0-9]/g, "_")
-      .substring(0, 50); // Limit filename length
-    cb(null, `${name}-${uniqueSuffix}${ext}`);
+// Configure multer storage to Cloudinary (no local disk writes)
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    const base = path
+      .basename(file.originalname, path.extname(file.originalname))
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .substring(0, 100);
+    return {
+      folder: "alumni-connect/messages",
+      resource_type: "auto", // allow images, video, raw docs
+      public_id: `${Date.now()}_${base}`,
+      overwrite: false,
+    };
   },
 });
 
@@ -67,38 +59,13 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // 100MB limit
     files: 10, // Max 10 files per request
   },
+  // Let Cloudinary validate types (resource_type: auto); keep a basic guard
   fileFilter: (req, file, cb) => {
     const mime = file.mimetype || "";
-
-    // Enhanced file type support
-    const allowedTypes = {
-      // Images
-      images: /^image\/(jpeg|jpg|png|gif|webp|svg\+xml|bmp|tiff)$/i,
-      // Videos
-      videos:
-        /^video\/(mp4|webm|ogg|quicktime|x-msvideo|x-ms-wmv|3gpp|x-flv)$/i,
-      // Audio
-      audio: /^audio\/(mpeg|wav|ogg|m4a|aac|flac|wma|opus)$/i,
-      // Documents
-      documents:
-        /^application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-powerpoint|vnd\.openxmlformats-officedocument\.presentationml\.presentation|zip|x-rar-compressed|x-7z-compressed|json|xml)$/i,
-      // Text files
-      text: /^text\/(plain|csv|html|css|javascript|xml)$/i,
-    };
-
-    const isAllowed = Object.values(allowedTypes).some((regex) =>
-      regex.test(mime)
-    );
-
-    if (isAllowed) {
-      return cb(null, true);
-    }
-
-    cb(
-      new Error(
-        `File type ${mime} not supported! Allowed types: images, videos, audio, documents, text files`
-      )
-    );
+    if (!mime || typeof mime !== "string") return cb(null, true);
+    const allowed = /^(image|video|audio)\//i.test(mime) ||
+      /^(application|text)\/(pdf|msword|vnd\.|zip|json|xml|csv|plain)/i.test(mime);
+    return cb(allowed ? null : new Error(`Unsupported file type: ${mime}`));
   },
 });
 

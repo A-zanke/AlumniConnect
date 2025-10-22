@@ -1195,7 +1195,7 @@ const MessagesPage = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSelectionMode(!selectionMode)}
                   className={`p-2 rounded-full hover:bg-gray-200 ${
@@ -1227,6 +1227,12 @@ const MessagesPage = () => {
                       >
                         <FiInfo /> Contact info
                       </button>
+                  <button
+                    onClick={() => navigate(selectedUser.username ? `/profile/${selectedUser.username}` : `/profile/id/${selectedUser._id}`)}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-3"
+                  >
+                    <FiUsers /> View profile
+                  </button>
                       <button
                         onClick={() => {
                           setSelectionMode(!selectionMode);

@@ -3,6 +3,7 @@ const path = require("path");
 const mongoose = require("mongoose");
 // Use fs with both constants and promises APIs
 const fs = require("fs");
+const cloudinary = require("../config/cloudinary");
 const User = require("../models/User");
 const Message = require("../models/Message");
 const Thread = require("../models/Thread");
@@ -343,55 +344,28 @@ exports.sendMessage = async (req, res) => {
       body: req.body,
     });
 
-    // Health check: verify uploads directory exists and is writable
-    const uploadsDir = path.join(__dirname, "../uploads");
-    try {
-      await fs.promises.access(uploadsDir, fs.constants.F_OK | fs.constants.W_OK);
-    } catch (err) {
-      console.error("Uploads directory not accessible:", err);
-      return res
-        .status(500)
-        .json({ message: "File upload system unavailable", success: false });
-    }
-
-    // Process attachments
+    // Process attachments via Cloudinary
     const attachments = [];
     const files = req.files || {};
-
-    // Only check file validity IF files are present
     if (req.files && Object.keys(req.files).length > 0) {
-      // Handle different file types
       const fileFields = ["image", "media", "document", "audio", "video"];
       for (const field of fileFields) {
-        if (files[field]) {
-          const fileArray = Array.isArray(files[field])
-            ? files[field]
-            : [files[field]];
-          for (const file of fileArray) {
-            try {
-              // Build correct public URL from stored path
-              const uploadsRoot = path.join(__dirname, "../uploads");
-              const rel = path
-                .relative(uploadsRoot, file.path)
-                .replace(/\\/g, "/");
-              const publicUrl = `/uploads/${rel}`; // e.g., /uploads/messages/images/<file>
-              attachments.push(publicUrl);
-            } catch (fileError) {
-              console.error("Error constructing file path:", fileError, {
-                filePath: file.path,
-                field,
-              });
-              // Skip this file and continue
-            }
-          }
+        const arr = files[field];
+        if (!arr) continue;
+        const fileArray = Array.isArray(arr) ? arr : [arr];
+        for (const file of fileArray) {
+          // When using multer-storage-cloudinary the file will already have a path = Cloudinary URL
+          // Some versions provide file.path (url) and file.filename (public_id)
+          const url = file.path || file.secure_url || null;
+          if (url) attachments.push(url);
         }
       }
     }
 
-    // If no multer files came through but the frontend sent base64 or remote URLs, normalize them
+    // If frontend sent base64/remote URLs, normalize them
     if (Array.isArray(req.body.attachments)) {
       for (const a of req.body.attachments) {
-        if (typeof a === "string" && a.startsWith("/uploads/"))
+        if (typeof a === "string" && /^https?:\/\//i.test(a))
           attachments.push(a);
       }
     }
@@ -498,6 +472,21 @@ exports.sendMessage = async (req, res) => {
         clientKey,
         status: "delivered",
       });
+
+      // Create a realtime notification item for the recipient
+      try {
+        const note = await NotificationService.createNotification({
+          recipientId: to,
+          senderId: me,
+          type: "message",
+          content: dto.attachments && dto.attachments.length > 0 ? "sent you a media" : dto.content?.slice(0, 80) || "sent you a message",
+          relatedId: dto.id,
+          onModel: "Message",
+        });
+        if (note) {
+          req.io.to(String(to)).emit("notification:new", note);
+        }
+      } catch {}
 
       // Update unread counts for the conversation and total for recipient
       const [threadDoc, totalUnread] = await Promise.all([
