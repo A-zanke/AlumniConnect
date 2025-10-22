@@ -10,6 +10,63 @@ const Thread = require("../models/Thread");
 const Block = require("../models/Block");
 const NotificationService = require("../services/notificationService");
 
+// Transform a multer/cloudinary file into a normalized descriptor
+function normalizeUploadedFile(file) {
+  if (!file) return null;
+  const url = file.secure_url || file.path || file.url || null;
+  if (!url) return null;
+  const lower = String(url).toLowerCase();
+  let type = "document";
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)) type = "image";
+  else if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)) type = "video";
+  else if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)) type = "audio";
+  return {
+    url,
+    type,
+    originalname: file.originalname || null,
+    mimetype: file.mimetype || null,
+    size: file.size || file.bytes || null,
+    public_id: file.public_id || file.filename || null,
+    resource_type: file.resource_type || null,
+    width: file.width || null,
+    height: file.height || null,
+    duration: file.duration || null,
+  };
+}
+
+// Stage-1: Dedicated media upload endpoint (returns Cloudinary URLs)
+exports.uploadMedia = async (req, res) => {
+  try {
+    const me = req.user?._id;
+    // Accept fields: image, video, audio, document, media
+    const files = [];
+    const src = req.files || {};
+    Object.keys(src || {}).forEach((key) => {
+      const arr = Array.isArray(src[key]) ? src[key] : [src[key]];
+      for (const f of arr) {
+        const norm = normalizeUploadedFile(f);
+        if (norm) files.push(norm);
+      }
+    });
+
+    if (files.length === 0) {
+      return res.status(400).json({
+        message: "No media files uploaded",
+        success: false,
+      });
+    }
+
+    return res.status(201).json({
+      files, // [{ url, type, ... }]
+      urls: files.map((f) => f.url),
+      success: true,
+    });
+  } catch (e) {
+    console.error("Media upload error:", e);
+    return res.status(500).json({ message: "Upload failed", success: false });
+  }
+};
+
 // Helper functions
 async function isBlocked(userAId, userBId) {
   // Ensure proper ObjectId casting where needed
@@ -228,10 +285,8 @@ exports.getMessages = async (req, res) => {
       return res
         .status(403)
         .json({ message: "You can only message connected users" });
-    if (blocked)
-      return res
-        .status(403)
-        .json({ message: "Messaging is blocked between these users" });
+    // IMPORTANT: Do NOT block message history retrieval when blocked.
+    // Only sending new messages is blocked. History remains readable like WhatsApp.
 
     // Get messages with populated reply references
     const messages = await Message.find({
@@ -301,6 +356,7 @@ exports.getMessages = async (req, res) => {
 
     return res.json({
       messages: parsedMessages,
+      blocked,
       success: true,
     });
   } catch (error) {
