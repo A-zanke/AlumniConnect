@@ -113,9 +113,10 @@ const buildEventPayload = (req) => {
 		roleScope: target_roles
 	};
 
-	if (req.file && req.file.filename) {
-		payload.imageUrl = `/uploads/${req.file.filename}`;
-	}
+  if (req.file) {
+    // When using Cloudinary storage, req.file.path is the secure URL
+    payload.imageUrl = req.file.path || req.file.secure_url || payload.imageUrl;
+  }
 
 	return payload;
 };

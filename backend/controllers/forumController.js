@@ -22,13 +22,20 @@ exports.createPost = async (req, res) => {
       mentions: []
     });
 
-    // Handle multiple files
+    // Handle multiple files (Cloudinary URLs)
     if (req.files && req.files.length > 0) {
-      post.media = req.files.map(file => ({
-        url: `/uploads/${file.filename}`,
-        type: file.mimetype.startsWith('image/') ? 'image' : 'pdf',
-        filename: file.filename
-      }));
+      post.media = req.files.map(file => {
+        const url = file.path || file.secure_url;
+        const lower = (file.mimetype || '').toLowerCase();
+        const type = lower.startsWith('image/')
+          ? 'image'
+          : lower.startsWith('video/')
+          ? 'video'
+          : lower.startsWith('audio/')
+          ? 'audio'
+          : 'document';
+        return { url, type };
+      });
     }
 
     // Handle media links
