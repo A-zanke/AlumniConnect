@@ -344,6 +344,10 @@ const MessagesPage = () => {
           attachments = [],
           createdAt,
         }) => {
+          // Deduplicate message events by messageId
+          if (messageId && seenIdsRef.current.has(String(messageId))) return;
+          if (messageId) seenIdsRef.current.add(String(messageId));
+
           const currentSelected = selectedUserRef.current;
           const isCurrent =
             currentSelected && String(senderId) === String(currentSelected._id);
@@ -588,7 +592,7 @@ const MessagesPage = () => {
       const isTextOnly = !!newMessage.trim() && !hasAnyMedia;
       let clientKey = generateClientKey();
 
-      if (isTextOnly) {
+    if (isTextOnly) {
         clientKey = generateClientKey();
         const optimistic = {
           id: clientKey,
@@ -604,15 +608,20 @@ const MessagesPage = () => {
         setTimeout(scrollToBottom, 50);
 
         if (socket) {
-          socket.emit("chat:send", {
-            to: selectedUser._id,
-            content: newMessage,
-            clientKey,
-          });
+        const socketAttachments = [];
+        if (replyTo?.id) socketAttachments.push(`reply:${replyTo.id}`);
+        socket.emit("chat:send", {
+          to: selectedUser._id,
+          content: newMessage,
+          clientKey,
+          attachments: socketAttachments,
+        });
         }
 
         setNewMessage("");
         setReplyTo(null);
+      // Skip HTTP request for pure text messages to avoid duplicates
+      return;
       }
 
       if (clientKey) formData.append("clientKey", clientKey);

@@ -279,16 +279,13 @@ io.on("connection", (socket) => {
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-      let msg;
-      if (clientKey) {
-        msg = await Message.findOneAndUpdate(
-          { threadId, clientKey },
-          { $setOnInsert: messageData },
-          { upsert: true, new: true }
-        );
-      } else {
-        msg = await Message.create(messageData);
-      }
+      // Idempotent insert by (threadId, clientKey) to avoid duplicates
+      const query = clientKey ? { threadId, clientKey } : { _id: undefined };
+      const update = { $setOnInsert: messageData };
+      const options = { upsert: true, new: true }; 
+      let msg = clientKey
+        ? await Message.findOneAndUpdate(query, update, options)
+        : await Message.create(messageData);
       // Update per-user unread in Thread (upsert)
       const thread = await Thread.findOneAndUpdate(
         { participants: { $all: participants, $size: 2 } },
@@ -304,6 +301,7 @@ io.on("connection", (socket) => {
         messageId: String(msg._id),
         senderId: String(from),
         body: msg.content,
+        attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
         createdAt: msg.createdAt,
       };
       // Acknowledge to sender: sent (include clientKey if present)

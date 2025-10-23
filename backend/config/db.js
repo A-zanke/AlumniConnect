@@ -4,7 +4,7 @@ const connectDB = async () => {
   try {
     // Always use a real MongoDB instance
     const uri =
-      process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/AlumniConnect';
+      process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/alumni-connect';
 
     const conn = await mongoose.connect(uri, {
       useNewUrlParser: true,
