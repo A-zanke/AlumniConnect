@@ -359,8 +359,8 @@ exports.sendMessage = async (req, res) => {
         if (!arr) continue;
         const fileArray = Array.isArray(arr) ? arr : [arr];
         for (const file of fileArray) {
-          // Prefer Cloudinary secure_url; fallback to path/url
-          const url = file.secure_url || file.path || file.url || null;
+          // Prefer Cloudinary secure_url or url
+          const url = file.secure_url || file.url || file.path || null;
           if (url) attachments.push(url);
         }
       }
