@@ -3,7 +3,6 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
 const cloudinary = require("../config/cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const { protect } = require("../middleware/authMiddleware");
@@ -29,12 +28,7 @@ const {
   bulkReportUsers,
 } = require("../controllers/messagesController");
 
-// Ensure upload directories exist
-const ensureDirectoryExists = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-};
+// NOTE: No local directories are created; all uploads go to Cloudinary.
 
 // Configure multer storage to Cloudinary (no local disk writes)
 const storage = new CloudinaryStorage({
@@ -589,26 +583,13 @@ router.post(
   sendMessage
 );
 
-// Health check route
+// Health check route (no local filesystem dependency)
 router.get("/health", async (req, res) => {
   try {
     const healthStatus = {
-      fileSystem: false,
       database: false,
       socketIO: false,
     };
-
-    // Check uploads directory
-    const uploadsDir = path.join(__dirname, "../uploads");
-    try {
-      await fs.promises.access(
-        uploadsDir,
-        fs.constants.F_OK | fs.constants.W_OK
-      );
-      healthStatus.fileSystem = true;
-    } catch (err) {
-      console.error("Uploads directory check failed:", err);
-    }
 
     // Check database connection
     try {
@@ -616,9 +597,7 @@ router.get("/health", async (req, res) => {
       if (mongoose.connection.readyState === 1) {
         healthStatus.database = true;
       }
-    } catch (err) {
-      console.error("Database check failed:", err);
-    }
+    } catch {}
 
     // Check socket.io
     if (req.io) {
@@ -626,22 +605,11 @@ router.get("/health", async (req, res) => {
     }
 
     const overallStatus =
-      healthStatus.fileSystem && healthStatus.database && healthStatus.socketIO
-        ? "healthy"
-        : "unhealthy";
+      healthStatus.database && healthStatus.socketIO ? "healthy" : "unhealthy";
 
-    return res.json({
-      status: overallStatus,
-      checks: healthStatus,
-      success: true,
-    });
+    return res.json({ status: overallStatus, checks: healthStatus, success: true });
   } catch (error) {
-    console.error("Error in health check:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Health check failed",
-      success: false,
-    });
+    return res.status(500).json({ status: "error", message: "Health check failed", success: false });
   }
 });
 

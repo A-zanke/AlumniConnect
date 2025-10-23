@@ -58,8 +58,8 @@ function getAttachmentUrls(attachments) {
   return attachments
     .map((att) => {
       if (typeof att === "string") {
-        // Only surface real media URLs or legacy local files, ignore markers (react:, star:, reply:, deletedFor:)
-        if (/^https?:\/\//i.test(att) || att.startsWith('/uploads/')) return att;
+        // Only surface real media URLs; ignore any legacy local '/uploads' paths
+        if (/^https?:\/\//i.test(att)) return att;
         return null;
       }
       if (att && typeof att === "object" && att.url) return att.url;
