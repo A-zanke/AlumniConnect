@@ -1,38 +1,23 @@
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
 
+// Connect to real MongoDB only. No in-memory fallback.
+// Defaults to local AlumniConnect if MONGO_URI not provided.
 const connectDB = async () => {
   try {
-    const mongoUri = process.env.MONGO_URI;
-    let uriToUse = mongoUri;
-    if (!mongoUri) {
-      const mem = await MongoMemoryServer.create();
-      uriToUse = mem.getUri();
-      console.log('Using in-memory MongoDB instance');
-    }
-    const conn = await mongoose.connect(uriToUse, {
+    const uri =
+      process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/AlumniConnect';
+
+    const conn = await mongoose.connect(uri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
 
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log('✅ MongoDB Connected');
+    if (conn?.connection?.host) {
+      console.log(`Mongo Host: ${conn.connection.host}`);
+    }
   } catch (error) {
     console.error(`Mongo connection error: ${error.message}`);
-    if (process.env.NODE_ENV !== 'production') {
-      try {
-        const mem = await MongoMemoryServer.create();
-        const uri = mem.getUri();
-        const conn = await mongoose.connect(uri, {
-          useNewUrlParser: true,
-          useUnifiedTopology: true,
-        });
-        console.log('Fallback: Using in-memory MongoDB instance');
-        console.log(`MongoDB Connected: ${conn.connection.host}`);
-        return;
-      } catch (memErr) {
-        console.error('In-memory MongoDB start failed:', memErr.message);
-      }
-    }
     process.exit(1);
   }
 };

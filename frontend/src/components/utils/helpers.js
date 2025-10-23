@@ -17,11 +17,7 @@ export const getAvatarUrl = (avatarPath) => {
     return avatarPath;
   }
 
-  if (avatarPath.startsWith("/uploads")) {
-    const fullUrl = `${BACKEND_URL}${avatarPath}`;
-    avatarCache.set(avatarPath, fullUrl);
-    return fullUrl;
-  }
+  // No local uploads resolution; avatars should already be absolute (Cloudinary) or static
 
   avatarCache.set(avatarPath, avatarPath);
   return avatarPath;
