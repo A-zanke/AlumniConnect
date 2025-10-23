@@ -195,7 +195,7 @@ export default function MediaDownloadOverlay({
       setProgress(100);
       localStorage.setItem(isDownloadedKey, "1");
       onReady && onReady(url);
-      setTimeout(() => setOverlayGone(true), 200);
+      setTimeout(() => setOverlayGone(true), 220);
     } catch (e) {
       if (e.name === "AbortError") return;
       setState("error");
@@ -290,7 +290,7 @@ export default function MediaDownloadOverlay({
             <button
               type="button"
               className="flex items-center justify-center relative"
-              onClick={state === "error" ? retryDownload : startDownload}
+              onClick={() => (state === "error" ? retryDownload() : startDownload())}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") (state === "error" ? retryDownload() : startDownload());
               }}
