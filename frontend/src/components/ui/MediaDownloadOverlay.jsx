@@ -198,9 +198,9 @@ export default function MediaDownloadOverlay({
 
   const mediaContent = useMemo(() => {
     const transparent = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
-    // Sender: always show actual mediaUrl
-    // Receiver: show blur until ready, then sharp blob or url
-    const src = objectUrl || (isReceiver && state !== "ready" ? (blurHashDataUrl || transparent) : mediaUrl);
+    // Sender: always show actual mediaUrl (sharp), overlay shows progress
+    // Receiver: blur until ready, then sharp blob/url
+    const src = isSender ? mediaUrl : (objectUrl || (isReceiver && state !== "ready" ? (blurHashDataUrl || transparent) : mediaUrl));
     if (type === "image") {
       return (
         <img

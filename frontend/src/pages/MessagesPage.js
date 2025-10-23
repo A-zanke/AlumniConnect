@@ -627,23 +627,31 @@ const MessagesPage = () => {
 
       // For media messages, create an optimistic message with local previews and a loader
       if (!isTextOnly) {
-        const localUrls = [
-          ...selectedImages.map((f) => URL.createObjectURL(f)),
-          ...selectedVideos.map((f) => URL.createObjectURL(f)),
-          ...selectedDocs.map((f) => URL.createObjectURL(f)),
-        ];
+        const localImageObjs = selectedImages.map((f) => ({ url: URL.createObjectURL(f), type: "image" }));
+        const localVideoObjs = selectedVideos.map((f) => ({ url: URL.createObjectURL(f), type: "video" }));
+        const localDocObjs = selectedDocs.map((f) => ({ url: URL.createObjectURL(f), type: "doc" }));
+        const localAttachments = [...localImageObjs, ...localVideoObjs, ...localDocObjs];
         const optimistic = {
           id: clientKey,
           senderId: user._id,
           recipientId: selectedUser._id,
           content: newMessage,
-          attachments: localUrls,
+          attachments: localAttachments,
           timestamp: new Date().toISOString(),
           status: "sending",
           uploading: true,
           replyTo: replyTo,
         };
         setMessages((prev) => [...prev, optimistic]);
+        // Immediately reset composer (text + attachments)
+        setNewMessage("");
+        setSelectedImage(null);
+        setImagePreview(null);
+        setSelectedImages([]);
+        setSelectedVideos([]);
+        setSelectedDocs([]);
+        setReplyTo(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setTimeout(scrollToBottom, 50);
       }
 
@@ -1641,13 +1649,13 @@ const MessagesPage = () => {
                             <div
                               className={`relative px-4 py-2 rounded-2xl ${
                                 isMine
-                                  ? "bg-[#0EA5E9] text-white rounded-br-sm"  /* cyan-500 for better contrast */
+                                  ? "bg-[#F0F9FF] text-gray-900 rounded-br-sm border border-sky-100"  /* light sky for contrast */
                                   : "bg-white text-gray-900 rounded-bl-sm border border-gray-200"
                               } shadow-sm`}
                             >
                               {/* Forwarded label */}
                               {((message.isForwarded === true) || Boolean(message.forwardedFrom)) && (
-                                <div className={`text-[11px] font-medium mb-1 ${isMine ? "text-green-100" : "text-gray-500"}`}>
+                                <div className={`text-[11px] font-medium mb-1 ${"text-gray-500"}`}>
                                   Forwarded
                                 </div>
                               )}
@@ -1666,8 +1674,9 @@ const MessagesPage = () => {
                                     ? message.attachments
                                     : extractUrls(message.content)
                                   ).map((attachment, idx) => {
-                                    const lower =
-                                      String(attachment).toLowerCase();
+                                    // Support both string URLs and local preview objects
+                                    const url = typeof attachment === "string" ? attachment : attachment?.url;
+                                    const lower = String(url || '').toLowerCase();
                                     const isImage =
                                       /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(
                                         lower
@@ -1687,14 +1696,14 @@ const MessagesPage = () => {
                                       return (
                                         <div key={idx} className="relative">
                                           <MediaDownloadOverlay
-                                            mediaUrl={resolveMediaUrl(attachment)}
+                                                mediaUrl={resolveMediaUrl(url)}
                                             type="image"
                                             isSender={isMine && message.uploading}
                                             isReceiver={!isMine}
                                             accent="#25D366"
                                             externalProgress={isMine ? (uploadProgress[message.id] || uploadProgress[String(message.id)] || 0) : undefined}
                                             onReady={(blobUrl) => {
-                                              setMediaLoaded((p) => ({ ...p, [attachment]: true }));
+                                              setMediaLoaded((p) => ({ ...p, [url]: true }));
                                             }}
                                           />
                                         </div>
@@ -1704,13 +1713,13 @@ const MessagesPage = () => {
                                       return (
                                         <div key={idx} className="relative">
                                           <MediaDownloadOverlay
-                                            mediaUrl={resolveMediaUrl(attachment)}
+                                            mediaUrl={resolveMediaUrl(url)}
                                             type={isVideo ? "video" : "doc"}
                                             isSender={isMine && message.uploading}
                                             isReceiver={!isMine}
                                             accent="#25D366"
                                             externalProgress={isMine ? (uploadProgress[message.id] || uploadProgress[String(message.id)] || 0) : undefined}
-                                            onReady={() => setMediaLoaded((p) => ({ ...p, [attachment]: true }))}
+                                            onReady={() => setMediaLoaded((p) => ({ ...p, [url]: true }))}
                                           />
                                         </div>
                                       );
@@ -1718,7 +1727,7 @@ const MessagesPage = () => {
                                     return (
                                       <div key={idx} className="relative">
                                         <MediaDownloadOverlay
-                                          mediaUrl={resolveMediaUrl(attachment)}
+                                          mediaUrl={resolveMediaUrl(url)}
                                           type="doc"
                                           isSender={isMine && message.uploading}
                                           isReceiver={!isMine}
@@ -1732,11 +1741,7 @@ const MessagesPage = () => {
                               ) : null}
 
                               {/* Message time and status */}
-                              <div
-                                className={`flex items-center justify-end gap-1 mt-1 text-xs ${
-                                  isMine ? "text-green-100" : "text-gray-500"
-                                }`}
-                              >
+                              <div className={`flex items-center justify-end gap-1 mt-1 text-xs text-gray-500`}>
                                 <span>{formatTime(message.timestamp)}</span>
                                 <span className="opacity-90">{getMessageStatusIcon(message.status, isMine)}</span>
                               </div>
