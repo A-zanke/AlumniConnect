@@ -206,7 +206,7 @@ export default function MediaDownloadOverlay({
         <img
           src={src}
           alt="media"
-          className={state === "ready" || isSender ? "media-sharp" : "media-blur"}
+          className={isReceiver ? (state === "ready" ? "media-sharp" : "media-blur") : "media-sharp"}
           crossOrigin="anonymous"
         />
       );
@@ -215,7 +215,7 @@ export default function MediaDownloadOverlay({
       return (
         <video
           src={src}
-          className={state === "ready" || isSender ? "media-sharp" : "media-blur"}
+          className={isReceiver ? (state === "ready" ? "media-sharp" : "media-blur") : "media-sharp"}
           controls={state === "ready"}
           preload="metadata"
           crossOrigin="anonymous"

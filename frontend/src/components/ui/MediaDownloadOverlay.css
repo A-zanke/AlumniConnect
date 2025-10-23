@@ -17,6 +17,10 @@
   display: block;
 }
 
+.media-tile.clickable {
+  cursor: zoom-in;
+}
+
 .media-blur {
   filter: blur(12px);
   transform: scale(1.08);

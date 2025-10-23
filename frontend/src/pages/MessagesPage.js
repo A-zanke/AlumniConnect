@@ -1649,7 +1649,7 @@ const MessagesPage = () => {
                             <div
                               className={`relative px-4 py-2 rounded-2xl ${
                                 isMine
-                                  ? "bg-[#F0F9FF] text-gray-900 rounded-br-sm border border-sky-100"  /* light sky for contrast */
+                                  ? "bg-[#F5F5FF] text-gray-900 rounded-br-sm border border-indigo-100"  /* light indigo for contrast */
                                   : "bg-white text-gray-900 rounded-bl-sm border border-gray-200"
                               } shadow-sm`}
                             >
@@ -1702,7 +1702,7 @@ const MessagesPage = () => {
                                     })();
                                     if (isImage) {
                                       return (
-                                        <div key={idx} className="relative">
+                                        <div key={idx} className="relative group">
                                           <MediaDownloadOverlay
                                                 mediaUrl={resolveMediaUrl(url)}
                                             type="image"
@@ -1713,6 +1713,13 @@ const MessagesPage = () => {
                                             onReady={(blobUrl) => {
                                               setMediaLoaded((p) => ({ ...p, [url]: true }));
                                             }}
+                                          />
+                                          {/* Fullscreen on click */}
+                                          <button
+                                            type="button"
+                                            className="absolute inset-0 w-full h-full clickable"
+                                            onClick={() => setLightboxSrc(resolveMediaUrl(url))}
+                                            aria-label="Open image"
                                           />
                                         </div>
                                       );
@@ -1727,8 +1734,18 @@ const MessagesPage = () => {
                                             isReceiver={!isMine}
                                             accent="#25D366"
                                             externalProgress={isMine ? (uploadProgress[message.id] || uploadProgress[String(message.id)] || 0) : undefined}
-                                            onReady={() => setMediaLoaded((p) => ({ ...p, [url]: true }))}
+                                                onReady={() => setMediaLoaded((p) => ({ ...p, [url]: true }))}
                                           />
+                                          {isVideo && (
+                                            <a
+                                              href={resolveMediaUrl(url)}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="absolute bottom-2 right-2 text-xs bg-black/50 text-white px-2 py-1 rounded"
+                                            >
+                                              Open
+                                            </a>
+                                          )}
                                         </div>
                                       );
                                     }
@@ -1742,6 +1759,14 @@ const MessagesPage = () => {
                                           accent="#25D366"
                                           onReady={() => {}}
                                         />
+                                        <a
+                                          href={resolveMediaUrl(url)}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="absolute bottom-2 right-2 text-xs bg-black/50 text-white px-2 py-1 rounded"
+                                        >
+                                          Open
+                                        </a>
                                       </div>
                                     );
                                   })}
