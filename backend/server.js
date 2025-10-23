@@ -36,8 +36,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", process.env.FRONTEND_ORIGIN].filter(Boolean),
     credentials: true,
+    exposedHeaders: ["Content-Length", "Content-Type"],
   })
 );
 app.use(helmet());

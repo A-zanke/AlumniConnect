@@ -34,7 +34,6 @@ import {
   FiStar,
   FiInfo,
   FiCopy,
-  FiShare2,
   FiCheckSquare,
   FiCheck,
   FiPhone,
@@ -49,7 +48,6 @@ import {
   FiShield,
   FiUserX,
   FiAlertTriangle,
-  FiDownload,
   FiExternalLink,
   FiClock,
   FiEye,
@@ -69,6 +67,7 @@ import { MdOutlineEmojiEmotions } from "react-icons/md";
 import { HiOutlineEmojiHappy } from "react-icons/hi";
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
+import MediaDownloadOverlay from "../components/ui/MediaDownloadOverlay";
 
 const MessagesPage = () => {
   const { user } = useAuth();
@@ -1635,9 +1634,15 @@ const MessagesPage = () => {
                                   : "bg-white text-gray-900 rounded-bl-sm border border-gray-200"
                               } shadow-sm`}
                             >
+                              {/* Forwarded label */}
+                              {message.isForwarded && (
+                                <div className={`text-[11px] font-medium mb-1 ${isMine ? "text-green-100" : "text-gray-500"}`}>
+                                  Forwarded
+                                </div>
+                              )}
+
                               {/* Message content */}
-                              {message.content &&
-                                renderMessageContent(message.content)}
+                              {message.content && renderMessageContent(message.content)}
 
                               {/* Attachments */}
                               {/* Attachments + implicit media URL in text */}
@@ -1670,139 +1675,45 @@ const MessagesPage = () => {
                                     if (isImage) {
                                       return (
                                         <div key={idx} className="relative">
-                                          {message.uploading ? (
-                                            <div className="w-full h-24 bg-gray-200 flex items-center justify-center rounded-lg">
-                                              <div className="w-8 h-8 rounded-full border-4 border-gray-400 border-t-transparent animate-spin" />
-                                            </div>
-                                          ) : (
-                                            <>
-                                              <img
-                                                src={resolveMediaUrl(
-                                                  attachment
-                                                )}
-                                                alt="attachment"
-                                                className="max-w-full h-auto rounded-lg cursor-pointer"
-                                                onClick={() =>
-                                                  setLightboxSrc(
-                                                    resolveMediaUrl(attachment)
-                                                  )
-                                                }
-                                                onLoad={() =>
-                                                  setMediaLoaded((p) => ({
-                                                    ...p,
-                                                    [attachment]: true,
-                                                  }))
-                                                }
-                                              />
-                                              {!mediaLoaded[attachment] && (
-                                                <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
-                                                  <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
-                                                </div>
-                                              )}
-                                              <div className="absolute top-2 right-2 flex gap-1">
-                                                <button
-                                                  onClick={async () => {
-                                                    try {
-                                                      await navigator.clipboard.writeText(
-                                                        resolveMediaUrl(
-                                                          attachment
-                                                        )
-                                                      );
-                                                      toast.success(
-                                                        "Link copied to clipboard"
-                                                      );
-                                                    } catch (e) {
-                                                      toast.error(
-                                                        "Failed to copy link"
-                                                      );
-                                                    }
-                                                  }}
-                                                  className="bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
-                                                  title="Share"
-                                                >
-                                                  <FiShare2 size={16} />
-                                                </button>
-                                                <a
-                                                  href={resolveMediaUrl(
-                                                    attachment
-                                                  )}
-                                                  download
-                                                  className="bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
-                                                  title="Download"
-                                                >
-                                                  <FiDownload size={16} />
-                                                </a>
-                                              </div>
-                                            </>
-                                          )}
+                                          <MediaDownloadOverlay
+                                            mediaUrl={resolveMediaUrl(attachment)}
+                                            type="image"
+                                            isSender={isMine && message.uploading}
+                                            isReceiver={!isMine}
+                                            accent="#25D366"
+                                            externalProgress={isMine ? (uploadProgress[message.id] || uploadProgress[String(message.id)] || 0) : undefined}
+                                            onReady={(blobUrl) => {
+                                              setMediaLoaded((p) => ({ ...p, [attachment]: true }));
+                                            }}
+                                          />
                                         </div>
                                       );
                                     }
                                     if (isVideo || isAudio) {
                                       return (
                                         <div key={idx} className="relative">
-                                          <div className="relative">
-                                            <video
-                                              src={resolveMediaUrl(attachment)}
-                                              controls
-                                              className="max-w-full rounded-lg"
-                                              onLoadedData={() =>
-                                                setMediaLoaded((p) => ({
-                                                  ...p,
-                                                  [attachment]: true,
-                                                }))
-                                              }
-                                            />
-                                            {/* Play overlay for aesthetics */}
-                                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                              <span className="w-12 h-12 bg-black/40 rounded-full flex items-center justify-center text-white">
-                                                ▶
-                                              </span>
-                                            </span>
-                                          </div>
-                                          {!mediaLoaded[attachment] && (
-                                            <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-lg">
-                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
-                                            </div>
-                                          )}
-                                          {message.uploading && (
-                                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
-                                              <div className="w-10 h-10 rounded-full border-4 border-white/60 border-t-transparent animate-spin" />
-                                            </div>
-                                          )}
-                                          <a
-                                            href={resolveMediaUrl(attachment)}
-                                            download
-                                            className="absolute top-2 right-2 bg-black bg-opacity-60 text-white p-2 rounded-full hover:scale-110 transition-transform"
-                                          >
-                                            <FiDownload size={16} />
-                                          </a>
+                                          <MediaDownloadOverlay
+                                            mediaUrl={resolveMediaUrl(attachment)}
+                                            type={isVideo ? "video" : "doc"}
+                                            isSender={isMine && message.uploading}
+                                            isReceiver={!isMine}
+                                            accent="#25D366"
+                                            externalProgress={isMine ? (uploadProgress[message.id] || uploadProgress[String(message.id)] || 0) : undefined}
+                                            onReady={() => setMediaLoaded((p) => ({ ...p, [attachment]: true }))}
+                                          />
                                         </div>
                                       );
                                     }
                                     return (
-                                      <div
-                                        key={idx}
-                                        className="p-2 bg-gray-100 rounded-lg flex items-center justify-between"
-                                      >
-                                        <a
-                                          href={resolveMediaUrl(attachment)}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-blue-600 hover:underline flex items-center gap-2 truncate max-w-[220px]"
-                                        >
-                                          <FiPaperclip />
-                                          <span className="truncate">
-                                            {filename || "Attachment"}
-                                          </span>
-                                        </a>
-                                        <a
-                                          href={resolveMediaUrl(attachment)}
-                                          download
-                                          className="ml-3 text-gray-700 hover:text-gray-900 px-2 py-1 border rounded hover:bg-gray-200"
-                                        >
-                                          <FiDownload className="inline-block" />
-                                        </a>
+                                      <div key={idx} className="relative">
+                                        <MediaDownloadOverlay
+                                          mediaUrl={resolveMediaUrl(attachment)}
+                                          type="doc"
+                                          isSender={isMine && message.uploading}
+                                          isReceiver={!isMine}
+                                          accent="#25D366"
+                                          onReady={() => {}}
+                                        />
                                       </div>
                                     );
                                   })}
@@ -2531,21 +2442,22 @@ const MessagesPage = () => {
               </button>
               <button
                 onClick={async () => {
-                  // Forward to selected users
+                  // Forward to selected users (text + media)
                   for (const userId of forwardSelected) {
                     try {
                       const formData = new FormData();
-                      formData.append("content", forwardSource.content || "");
+                      formData.append("content", forwardSource?.content || "");
+                      const atts = Array.isArray(forwardSource?.attachments)
+                        ? forwardSource.attachments
+                        : [];
+                      // Include remote URLs in attachments so backend preserves them
+                      if (atts.length > 0) {
+                        atts.forEach((u) => formData.append("attachments[]", u));
+                      }
                       const token = localStorage.getItem("token");
-                      await axios.post(
-                        `${baseURL}/api/messages/${userId}`,
+                      await axios.post(`${baseURL}/api/messages/${userId}`,
                         formData,
-                        {
-                          headers: {
-                            "Content-Type": "multipart/form-data",
-                            Authorization: `Bearer ${token}`,
-                          },
-                        }
+                        { headers: { Authorization: `Bearer ${token}` } }
                       );
                     } catch (e) {
                       console.error("Failed to forward message", e);

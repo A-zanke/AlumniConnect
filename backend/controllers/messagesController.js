@@ -116,6 +116,7 @@ function parseMessage(doc, viewerId) {
       reactions,
       replyTo: getReplyFromAttachments(doc.attachments),
       isStarred,
+      isForwarded: !!doc.forwardedFrom,
     };
   } catch (e) {
     return null;
