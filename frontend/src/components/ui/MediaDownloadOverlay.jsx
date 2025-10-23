@@ -35,6 +35,7 @@ export default function MediaDownloadOverlay({
   const [state, setState] = useState("idle"); // idle | uploading | downloading | ready | error
   const [progress, setProgress] = useState(0);
   const [objectUrl, setObjectUrl] = useState(null);
+  const [downloadedBlob, setDownloadedBlob] = useState(null);
   const [overlayGone, setOverlayGone] = useState(false);
   const abortRef = useRef(null);
   const overlayId = useRef(`overlay_${Math.random().toString(36).slice(2)}`).current;
@@ -55,6 +56,24 @@ export default function MediaDownloadOverlay({
       if (abortRef.current) abortRef.current.abort();
     };
   }, [cleanupObjectUrl]);
+
+  // Derive a lightweight blurred preview for Cloudinary images (receiver idle state)
+  const previewUrl = useMemo(() => {
+    try {
+      if (!mediaUrl) return null;
+      if (type !== "image") return null;
+      // Only apply for Cloudinary URLs
+      if (mediaUrl.includes("/upload/")) {
+        const parts = mediaUrl.split("/upload/");
+        if (parts.length === 2) {
+          return `${parts[0]}/upload/c_fill,w_600,q_20,e_blur:200/${parts[1]}`;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [mediaUrl, type]);
 
   useEffect(() => {
     if (!mediaUrl) return;
@@ -171,6 +190,7 @@ export default function MediaDownloadOverlay({
       const blob = new Blob(chunks);
       const url = URL.createObjectURL(blob);
       setObjectUrl(url);
+      setDownloadedBlob(blob);
       setState("ready");
       setProgress(100);
       localStorage.setItem(isDownloadedKey, "1");
@@ -200,7 +220,9 @@ export default function MediaDownloadOverlay({
     const transparent = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
     // Sender: always show actual mediaUrl (sharp), overlay shows progress
     // Receiver: blur until ready, then sharp blob/url
-    const src = isSender ? mediaUrl : (objectUrl || (isReceiver && state !== "ready" ? (blurHashDataUrl || transparent) : mediaUrl));
+    const src = isSender
+      ? mediaUrl
+      : (objectUrl || (isReceiver && state !== "ready" ? (blurHashDataUrl || previewUrl || transparent) : mediaUrl));
     if (type === "image") {
       return (
         <img
@@ -212,14 +234,22 @@ export default function MediaDownloadOverlay({
       );
     }
     if (type === "video") {
+      if (state === "ready" || isSender) {
+        return (
+          <video
+            src={src}
+            className="media-sharp"
+            controls={true}
+            preload="metadata"
+            crossOrigin="anonymous"
+          />
+        );
+      }
+      // Receiver pre-download: show blurred placeholder with play hint
       return (
-        <video
-          src={src}
-          className={isReceiver ? (state === "ready" ? "media-sharp" : "media-blur") : "media-sharp"}
-          controls={state === "ready"}
-          preload="metadata"
-          crossOrigin="anonymous"
-        />
+        <div className="doc-tile media-blur">
+          <span className="doc-name">Video</span>
+        </div>
       );
     }
     // docs
@@ -236,11 +266,11 @@ export default function MediaDownloadOverlay({
         <span className="doc-name">{name}</span>
       </a>
     ) : (
-      <div className="doc-tile">
+      <div className="doc-tile media-blur">
         <span className="doc-name">{name}</span>
       </div>
     );
-  }, [type, mediaUrl, objectUrl, state, isSender]);
+  }, [type, mediaUrl, objectUrl, state, isSender, isReceiver, previewUrl, blurHashDataUrl]);
 
   const showOverlay = useMemo(() => {
     if (overlayGone) return false;
@@ -295,6 +325,33 @@ export default function MediaDownloadOverlay({
               )}
             </div>
           )}
+        </div>
+      )}
+      {state === "ready" && (
+        <div className="absolute top-2 right-2 z-10">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                if (downloadedBlob && navigator.canShare && navigator.canShare({ files: [new File([downloadedBlob], "media", { type: downloadedBlob.type || "application/octet-stream" })] })) {
+                  const file = new File([downloadedBlob], `media.${(downloadedBlob.type || "octet").split("/")[1] || "bin"}`, { type: downloadedBlob.type || "application/octet-stream" });
+                  await navigator.share({ files: [file], title: "Share media" });
+                } else if (objectUrl) {
+                  await navigator.clipboard.writeText(mediaUrl);
+                }
+              } catch {}
+            }}
+            aria-label="Share media"
+            style={{ background: "rgba(0,0,0,0.45)", color: "white" }}
+            className="px-2 py-1 rounded"
+            title="Share"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M16 6l-4-4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 2v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
       )}
     </div>
