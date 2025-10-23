@@ -34,6 +34,7 @@ import {
   FiStar,
   FiInfo,
   FiCopy,
+  FiShare2,
   FiCheckSquare,
   FiCheck,
   FiPhone,

@@ -245,7 +245,7 @@ export default function MediaDownloadOverlay({
   const showOverlay = useMemo(() => {
     if (overlayGone) return false;
     if (isSender) return state === "uploading" && progress < 100;
-    if (isReceiver) return state === "idle" || state === "downloading" || state === "error";
+    if (isReceiver) return state !== "ready"; // idle, downloading, error
     return false;
   }, [overlayGone, isSender, isReceiver, state, progress]);
 
@@ -256,33 +256,31 @@ export default function MediaDownloadOverlay({
       {mediaContent}
       {showOverlay && (
         <div className={`overlay-center ${overlayGone ? "overlay-fade-out" : ""}`}>
-          {state === "idle" && isReceiver && (
+          {(state === "idle" || state === "error") && isReceiver && (
             <button
               type="button"
               className="flex items-center justify-center relative"
-              onClick={startDownload}
+              onClick={state === "error" ? retryDownload : startDownload}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") startDownload();
+                if (e.key === "Enter" || e.key === " ") (state === "error" ? retryDownload() : startDownload());
               }}
               role="button"
-              aria-label="Download media"
+              aria-label={state === "error" ? "Retry download" : "Download media"}
               aria-labelledby={overlayId}
               disabled={disabled}
-              style={{ width: 64, height: 64, borderRadius: 9999, background: "rgba(0,0,0,0.4)" }}
+              style={{ width: 68, height: 68, borderRadius: 9999, background: "rgba(0,0,0,0.42)" }}
             >
               <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" opacity="0.25" />
                 <path d="M12 3v10m0 0l-4-4m4 4l4-4M5 21h14" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <svg className="download-icon" viewBox="0 0 24 24" fill="none">
-                <path d="M12 3v10m0 0l-4-4m4 4l4-4M5 21h14" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span id={overlayId} className="sr-only">Download media</span>
+              <span id={overlayId} className="sr-only">{state === "error" ? "Retry download" : "Download media"}</span>
             </button>
           )}
 
           {state === "downloading" && (
             <div className="flex flex-col items-center gap-2">
-              <ProgressRing size={60} stroke={6} progress={progress} indeterminate={indeterminate} accent={accent} />
+              <ProgressRing size={64} stroke={6} progress={progress} indeterminate={indeterminate} accent={accent} />
               {!indeterminate && (
                 <div className="text-white text-sm font-semibold">{Math.max(0, Math.min(100, progress))}%</div>
               )}
@@ -291,21 +289,11 @@ export default function MediaDownloadOverlay({
 
           {state === "uploading" && (
             <div className="flex flex-col items-center gap-2">
-              <ProgressRing size={60} stroke={6} progress={progress} indeterminate={indeterminate} accent={accent} />
+              <ProgressRing size={64} stroke={6} progress={progress} indeterminate={indeterminate} accent={accent} />
               {!indeterminate && (
                 <div className="text-white text-sm font-semibold">{Math.max(0, Math.min(100, progress))}%</div>
               )}
             </div>
-          )}
-
-          {state === "error" && (
-            <button
-              type="button"
-              onClick={retryDownload}
-              className="px-3 py-1.5 bg-white text-gray-900 rounded-md text-sm"
-            >
-              Retry
-            </button>
           )}
         </div>
       )}
