@@ -298,10 +298,15 @@ export default function MediaDownloadOverlay({
               aria-label={state === "error" ? "Retry download" : "Download media"}
               aria-labelledby={overlayId}
               disabled={disabled}
-              style={{ width: 68, height: 68, borderRadius: 9999, background: "rgba(0,0,0,0.42)" }}
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 9999,
+                background: WHATSAPP_GREEN,
+                boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+              }}
             >
-              <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2" opacity="0.25" />
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
                 <path d="M12 3v10m0 0l-4-4m4 4l4-4M5 21h14" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span id={overlayId} className="sr-only">{state === "error" ? "Retry download" : "Download media"}</span>
@@ -310,7 +315,7 @@ export default function MediaDownloadOverlay({
 
           {state === "downloading" && (
             <div className="flex flex-col items-center gap-2">
-              <ProgressRing size={64} stroke={6} progress={progress} indeterminate={indeterminate} accent={accent} />
+              <ProgressRing size={72} stroke={6} progress={progress} indeterminate={indeterminate} accent={WHATSAPP_GREEN} />
               {!indeterminate && (
                 <div className="text-white text-sm font-semibold">{Math.max(0, Math.min(100, progress))}%</div>
               )}
