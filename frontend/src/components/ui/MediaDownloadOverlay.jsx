@@ -64,10 +64,12 @@ export default function MediaDownloadOverlay({
       setProgress(100);
       setOverlayGone(true);
     } else if (isSender) {
-      // Sender view: show actual media immediately, overlay shows upload progress externally via props? We keep API internal and expose imperative setter via data-attr
+      // Sender sees clear media with loader overlay only
       setState("uploading");
+      setOverlayGone(false);
     } else if (isReceiver) {
       setState("idle");
+      setOverlayGone(false);
     }
   }, [mediaUrl, isSender, isReceiver, isDownloadedKey]);
 
@@ -185,6 +187,8 @@ export default function MediaDownloadOverlay({
 
   const mediaContent = useMemo(() => {
     const transparent = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+    // Sender: always show actual mediaUrl
+    // Receiver: show blur until ready, then sharp blob or url
     const src = objectUrl || (isReceiver && state !== "ready" ? (blurHashDataUrl || transparent) : mediaUrl);
     if (type === "image") {
       return (
@@ -255,7 +259,9 @@ export default function MediaDownloadOverlay({
               disabled={disabled}
               style={{ width: 64, height: 64, borderRadius: 9999, background: "rgba(0,0,0,0.4)" }}
             >
-              <ProgressRing size={56} stroke={6} progress={0} indeterminate={true} accent={accent} labelledby={overlayId} />
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v10m0 0l-4-4m4 4l4-4M5 21h14" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
               <svg className="download-icon" viewBox="0 0 24 24" fill="none">
                 <path d="M12 3v10m0 0l-4-4m4 4l4-4M5 21h14" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>

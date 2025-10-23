@@ -763,7 +763,18 @@ const MessagesPage = () => {
       await axios.delete(`${baseURL}/api/messages/${id}?for=${scope}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setMessages((prev) => prev.filter((m) => m.id !== id));
+        // Update UI instantly: if delete for everyone and it's my message, replace with placeholder like WhatsApp
+        if (scope === "everyone") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              String(m.id) === String(id)
+                ? { ...m, content: "This message was deleted", attachments: [], messageType: "text" }
+                : m
+            )
+          );
+        } else {
+          setMessages((prev) => prev.filter((m) => m.id !== id));
+        }
     } catch (e) {
       toast.error("Failed to delete message");
     }
@@ -1635,7 +1646,7 @@ const MessagesPage = () => {
                               } shadow-sm`}
                             >
                               {/* Forwarded label */}
-                              {message.isForwarded && (
+                              {(message.isForwarded || message.forwardedFrom) && (
                                 <div className={`text-[11px] font-medium mb-1 ${isMine ? "text-green-100" : "text-gray-500"}`}>
                                   Forwarded
                                 </div>
