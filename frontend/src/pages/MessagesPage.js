@@ -408,6 +408,33 @@ const MessagesPage = () => {
         if (id) updateMessageStatus(id, "seen");
       });
 
+      // Deletion events -> reflect placeholders
+      s.on("message:deleted", ({ messageId, scope }) => {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (String(m.id) !== String(messageId)) return m;
+            if (scope === "everyone") {
+              return {
+                ...m,
+                content: "This message was deleted",
+                attachments: [],
+                placeholder: true,
+                deletedScope: "everyone",
+                messageType: "text",
+              };
+            }
+            return {
+              ...m,
+              content: "You deleted this message (only visible to you)",
+              attachments: [],
+              placeholder: true,
+              deletedScope: "me",
+              messageType: "text",
+            };
+          })
+        );
+      });
+
       // Reactions
       s.on("message:reacted", ({ messageId, reactions }) => {
         setMessages((prev) =>
@@ -611,8 +638,14 @@ const MessagesPage = () => {
           });
         }
 
+        // Immediately clear inputs and previews
         setNewMessage("");
         setReplyTo(null);
+        setSelectedImage(null);
+        setSelectedImages([]);
+        setSelectedVideos([]);
+        setSelectedDocs([]);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
 
       if (clientKey) formData.append("clientKey", clientKey);
@@ -637,6 +670,14 @@ const MessagesPage = () => {
         };
         setMessages((prev) => [...prev, optimistic]);
         setTimeout(scrollToBottom, 50);
+        // Immediately clear composer for media too
+        setNewMessage("");
+        setReplyTo(null);
+        setSelectedImage(null);
+        setSelectedImages([]);
+        setSelectedVideos([]);
+        setSelectedDocs([]);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
 
       const resp = await axios.post(
@@ -667,13 +708,7 @@ const MessagesPage = () => {
             ]);
           }
         }
-        setNewMessage("");
-        setSelectedImage(null);
-        setImagePreview(null);
-        setSelectedImages([]);
-        setSelectedVideos([]);
-        setSelectedDocs([]);
-        setReplyTo(null);
+        // already cleared above for text-only path
       } else {
         // Replace optimistic (clientKey) with the server message and clear loader
         setMessages((prev) =>
@@ -688,12 +723,7 @@ const MessagesPage = () => {
           delete next[clientKey];
           return next;
         });
-        setSelectedImage(null);
-        setImagePreview(null);
-        setSelectedImages([]);
-        setSelectedVideos([]);
-        setSelectedDocs([]);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        // already cleared immediately after optimistic add
       }
 
       setTimeout(scrollToBottom, 100);
@@ -755,7 +785,38 @@ const MessagesPage = () => {
       await axios.delete(`${baseURL}/api/messages/${id}?for=${scope}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setMessages((prev) => prev.filter((m) => m.id !== id));
+      // Apply placeholders according to scope
+      if (scope === "everyone") {
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.id) === String(id)
+              ? {
+                  ...m,
+                  content: "This message was deleted",
+                  attachments: [],
+                  placeholder: true,
+                  deletedScope: "everyone",
+                  messageType: "text",
+                }
+              : m
+          )
+        );
+      } else {
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m.id) === String(id)
+              ? {
+                  ...m,
+                  content: "You deleted this message (only visible to you)",
+                  attachments: [],
+                  placeholder: true,
+                  deletedScope: "me",
+                  messageType: "text",
+                }
+              : m
+          )
+        );
+      }
     } catch (e) {
       toast.error("Failed to delete message");
     }
@@ -846,6 +907,21 @@ const MessagesPage = () => {
       );
       if (block) {
         setBlockedUsers((prev) => new Set([...prev, selectedUser._id]));
+        // Append a local system message banner (server also adds one visible only to me)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `sys_${Date.now()}`,
+            senderId: user._id,
+            recipientId: selectedUser._id,
+            content: `You blocked this contact on ${new Date().toLocaleString()}`,
+            attachments: [],
+            messageType: "text",
+            timestamp: new Date().toISOString(),
+            status: "sent",
+            placeholder: true,
+          },
+        ]);
       } else {
         setBlockedUsers((prev) => {
           const next = new Set(prev);
@@ -853,6 +929,20 @@ const MessagesPage = () => {
           return next;
         });
         setShowUnblockSuccess(true);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `sys_${Date.now()}`,
+            senderId: user._id,
+            recipientId: selectedUser._id,
+            content: `You unblocked this contact on ${new Date().toLocaleString()}`,
+            attachments: [],
+            messageType: "text",
+            timestamp: new Date().toISOString(),
+            status: "sent",
+            placeholder: true,
+          },
+        ]);
       }
       toast.success(block ? "User blocked" : "User unblocked");
     } catch (e) {
@@ -1622,13 +1712,26 @@ const MessagesPage = () => {
                             <div
                               className={`relative px-4 py-2 rounded-2xl ${
                                 isMine
-                                  ? "bg-green-500 text-white rounded-br-sm"
+                                  ? "rounded-br-sm text-white"
                                   : "bg-white text-gray-900 rounded-bl-sm border border-gray-200"
                               } shadow-sm`}
+                              style={
+                                isMine
+                                  ? {
+                                      background: "linear-gradient(135deg, #1BA098 0%, #17877F 100%)",
+                                    }
+                                  : undefined
+                              }
                             >
                               {/* Message content */}
-                              {message.content &&
-                                renderMessageContent(message.content)}
+                              {/* Message content or deletion placeholder */}
+                              {message.placeholder ? (
+                                <div className={`text-sm italic ${isMine ? "text-teal-50" : "text-gray-500"}`}>
+                                  {message.content}
+                                </div>
+                              ) : (
+                                message.content && renderMessageContent(message.content)
+                              )}
 
                               {/* Attachments */}
                               {/* Attachments + implicit media URL in text */}
@@ -1803,7 +1906,7 @@ const MessagesPage = () => {
                               {/* Message time and status */}
                               <div
                                 className={`flex items-center justify-end gap-1 mt-1 text-xs ${
-                                  isMine ? "text-green-100" : "text-gray-500"
+                                  isMine ? "text-teal-50" : "text-gray-500"
                                 }`}
                               >
                                 <span>{formatTime(message.timestamp)}</span>
@@ -2383,19 +2486,39 @@ const MessagesPage = () => {
                   {sharedMedia
                     .filter((m) => m.type === "image" || m.type === "video")
                     .map((m) => (
-                      <a
-                        key={m.id + String(m.url)}
-                        href={m.url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {/* simple thumbnail: image tag even for video will show poster from Cloudinary if available */}
-                        <img
-                          src={m.url}
-                          alt=""
-                          className="w-full h-24 object-cover rounded"
-                        />
-                      </a>
+                      <div key={m.id + String(m.url)} className="group relative">
+                        <a href={m.url} target="_blank" rel="noreferrer">
+                          <img src={m.url} alt="" className="w-full h-24 object-cover rounded" />
+                        </a>
+                        <div className="absolute inset-0 hidden group-hover:flex items-center justify-center gap-2 bg-black/40 rounded">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(m.url);
+                                toast.success("Link copied");
+                              } catch {}
+                            }}
+                            className="px-2 py-1 text-xs bg-white rounded shadow"
+                          >
+                            Share
+                          </button>
+                          <button
+                            onClick={() => {
+                              setForwardSource({ content: m.url });
+                              setShowForwardDialog(true);
+                            }}
+                            className="px-2 py-1 text-xs bg-white rounded shadow"
+                          >
+                            Forward
+                          </button>
+                          <button
+                            onClick={() => window.open(m.url, '_blank')}
+                            className="px-2 py-1 text-xs bg-white rounded shadow"
+                          >
+                            View
+                          </button>
+                        </div>
+                      </div>
                     ))}
                 </div>
               )}
@@ -2404,15 +2527,41 @@ const MessagesPage = () => {
                   {sharedMedia
                     .filter((m) => m.type === "document" || m.type === "audio")
                     .map((m) => (
-                      <a
+                      <div
                         key={m.id + String(m.url)}
-                        href={m.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate"
+                        className="p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate flex items-center justify-between"
                       >
-                        {m.url}
-                      </a>
+                        <a
+                          href={m.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate"
+                        >
+                          {m.url}
+                        </a>
+                        <div className="flex gap-2 ml-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(m.url);
+                                toast.success("Link copied");
+                              } catch {}
+                            }}
+                            className="px-2 py-1 text-xs bg-white rounded shadow"
+                          >
+                            Share
+                          </button>
+                          <button
+                            onClick={() => {
+                              setForwardSource({ content: m.url });
+                              setShowForwardDialog(true);
+                            }}
+                            className="px-2 py-1 text-xs bg-white rounded shadow"
+                          >
+                            Forward
+                          </button>
+                        </div>
+                      </div>
                     ))}
                 </div>
               )}

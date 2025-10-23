@@ -69,12 +69,16 @@ function getAttachmentUrls(attachments) {
 }
 
 function isDeletedForViewer(doc, viewerId) {
-  const atts = doc.attachments;
-  if (!Array.isArray(atts)) return false;
-  return (
-    atts.includes(`deletedFor:${viewerId}`) ||
-    atts.includes("deletedForEveryone")
-  );
+  // Consider both legacy attachment markers and structured fields
+  const atts = doc.attachments || [];
+  const deletedForArray = doc.deletedFor || [];
+  const viewerIdStr = String(viewerId);
+  const deletedForMe = Array.isArray(deletedForArray)
+    ? deletedForArray.some((id) => String(id) === viewerIdStr)
+    : false;
+  const deletedForEveryone = !!doc.deletedForEveryone || atts.includes("deletedForEveryone");
+  const legacyDeletedForMe = atts.includes(`deletedFor:${viewerIdStr}`);
+  return deletedForEveryone || deletedForMe || legacyDeletedForMe;
 }
 
 function getReplyFromAttachments(attachments) {
@@ -90,7 +94,11 @@ function getReplyFromAttachments(attachments) {
 // Robust message parser that works with lean docs
 function parseMessage(doc, viewerId) {
   try {
-    if (isDeletedForViewer(doc, viewerId)) return null;
+    const atts = doc.attachments || [];
+    const isDeletedEveryone = !!doc.deletedForEveryone || atts.includes("deletedForEveryone") || (doc.metadata && doc.metadata.deleted);
+    const deletedForArray = doc.deletedFor || [];
+    const viewerIdStr = String(viewerId);
+    const isDeletedForMe = atts.includes(`deletedFor:${viewerIdStr}`) || (Array.isArray(deletedForArray) && deletedForArray.some((id) => String(id) === viewerIdStr));
 
     const reactions = normalizeReactions(doc);
 
@@ -99,6 +107,52 @@ function parseMessage(doc, viewerId) {
       : false;
 
     const status = doc.isRead ? "seen" : doc.deliveredAt ? "delivered" : "sent";
+
+    // Deleted for everyone -> show a shared placeholder
+    if (isDeletedEveryone) {
+      return {
+        id: doc._id,
+        messageId: doc.messageId,
+        senderId: doc.from?._id || doc.from,
+        recipientId: doc.to?._id || doc.to,
+        content: "This message was deleted",
+        attachments: [],
+        messageType: "text",
+        timestamp: doc.createdAt,
+        status,
+        isRead: !!doc.isRead,
+        readAt: doc.readAt || null,
+        deliveredAt: doc.deliveredAt || null,
+        reactions,
+        replyTo: null,
+        isStarred,
+        placeholder: true,
+        deletedScope: "everyone",
+      };
+    }
+
+    // Deleted for viewer only -> show personal placeholder
+    if (isDeletedForMe) {
+      return {
+        id: doc._id,
+        messageId: doc.messageId,
+        senderId: doc.from?._id || doc.from,
+        recipientId: doc.to?._id || doc.to,
+        content: "You deleted this message (only visible to you)",
+        attachments: [],
+        messageType: "text",
+        timestamp: doc.createdAt,
+        status,
+        isRead: !!doc.isRead,
+        readAt: doc.readAt || null,
+        deliveredAt: doc.deliveredAt || null,
+        reactions,
+        replyTo: null,
+        isStarred,
+        placeholder: true,
+        deletedScope: "me",
+      };
+    }
 
     return {
       id: doc._id,
