@@ -177,8 +177,8 @@ const MessagesPage = () => {
       sizes[i]
     }`;
   };
-  const resolveMediaUrl = (u = "") =>
-    u && u.startsWith("/uploads") ? `${baseURL}${u}` : u;
+  // All media are absolute (Cloudinary). Never resolve local /uploads.
+  const resolveMediaUrl = (u = "") => u;
 
   // Message status update callback
   const updateMessageStatus = useCallback((messageId, status) => {

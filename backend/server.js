@@ -17,8 +17,6 @@ connectDB();
 
 // Initialize Express
 const app = express();
-// Serve uploads for backward compatibility and development
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const http = require("http").createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(http, {
@@ -133,38 +131,7 @@ app.use("/api/messages", messagesRoutes);
 app.use("/api", avatarRoutes);
 app.use("/api/ai", aiRoutes);
 
-// Do not proactively create uploads in production; keep for backward-compat only
-const fs = require("fs");
-const uploadsDir = path.join(__dirname, "uploads");
-try {
-  if (!fs.existsSync(uploadsDir)) {
-    if (process.env.NODE_ENV !== "production") {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-  }
-} catch {}
-
-// Serve uploaded files with CORS headers
-app.use(
-  "/uploads",
-  (req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
-    res.header("Access-Control-Allow-Credentials", "true");
-    next();
-  },
-  express.static(uploadsDir)
-);
-
-// Serve message images (explicit directory) - kept for backward compatibility
-app.use(
-  "/uploads/messages",
-  (req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
-    res.header("Access-Control-Allow-Credentials", "true");
-    next();
-  },
-  express.static(path.join(__dirname, "uploads/messages"))
-);
+// No local uploads are served; all media must be on Cloudinary.
 
 // Serve static assets in production
 if (process.env.NODE_ENV === "production") {
