@@ -227,7 +227,11 @@ function MediaDownloadOverlay({
   );
 
   const shouldShowPlay = type === "video" && state === "ready";
-  const mediaSrc = state === "ready" && blobUrl ? blobUrl : isSender ? mediaUrl : blurHashDataUrl || undefined;
+  const mediaSrc = state === "ready"
+    ? (blobUrl || mediaUrl)
+    : isSender
+    ? mediaUrl
+    : blurHashDataUrl || undefined;
 
   // Accessibility: keyboard activation
   const onKeyDown = (e) => {
