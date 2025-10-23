@@ -1689,9 +1689,17 @@ const MessagesPage = () => {
                                       /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(
                                         lower
                                       );
-                                    const filename = attachment
-                                      .split("/")
-                                      .pop();
+                                    const filename = (() => {
+                                      if (typeof attachment === "object") {
+                                        if (attachment?.name) return attachment.name;
+                                      }
+                                      try {
+                                        const u = new URL(url || "", window.location.origin);
+                                        return decodeURIComponent(u.pathname.split("/").pop() || "Attachment");
+                                      } catch {
+                                        return (url || "").split("/").pop() || "Attachment";
+                                      }
+                                    })();
                                     if (isImage) {
                                       return (
                                         <div key={idx} className="relative">
