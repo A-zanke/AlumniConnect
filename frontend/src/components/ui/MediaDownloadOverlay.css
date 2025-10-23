@@ -12,7 +12,7 @@
 .media-tile .doc-tile {
   width: 100%;
   height: auto;
-  max-height: 60vh; /* keep large and consistent like WhatsApp */
+  max-height: 70vh; /* a bit taller for clarity */
   object-fit: contain;
   display: block;
 }

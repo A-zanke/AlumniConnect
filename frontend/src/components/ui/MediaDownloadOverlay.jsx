@@ -63,14 +63,23 @@ export default function MediaDownloadOverlay({
       setState("ready");
       setProgress(100);
       setOverlayGone(true);
-    } else if (isSender) {
+      return;
+    }
+    if (isSender) {
       // Sender sees clear media with loader overlay only
       setState("uploading");
       setOverlayGone(false);
-    } else if (isReceiver) {
+      return;
+    }
+    if (isReceiver) {
+      // Receiver should tap to download
       setState("idle");
       setOverlayGone(false);
+      return;
     }
+    // Not receiver (i.e., it's my already-sent message): show sharp immediately
+    setState("ready");
+    setOverlayGone(true);
   }, [mediaUrl, isSender, isReceiver, isDownloadedKey]);
 
   // When sender upload completes (parent toggles isSender false), finalize overlay
@@ -126,9 +135,9 @@ export default function MediaDownloadOverlay({
       setProgress(0);
       const controller = new AbortController();
       abortRef.current = controller;
-      const resp = await fetch(mediaUrl, { signal: controller.signal, credentials: "include" });
+      const resp = await fetch(mediaUrl, { signal: controller.signal, mode: "cors", credentials: "omit" });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const reader = resp.body?.getReader();
+      const reader = resp.body && resp.body.getReader ? resp.body.getReader() : null;
       const contentLength = Number(resp.headers.get("Content-Length")) || 0;
       const chunks = [];
       let received = 0;
@@ -137,8 +146,10 @@ export default function MediaDownloadOverlay({
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          chunks.push(value);
-          received += value.length;
+          if (value) {
+            chunks.push(value);
+            received += value.length || value.byteLength || 0;
+          }
           if (contentLength) {
             const pct = Math.round((received / contentLength) * 100);
             setProgress(pct);

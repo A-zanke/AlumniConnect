@@ -1641,12 +1641,12 @@ const MessagesPage = () => {
                             <div
                               className={`relative px-4 py-2 rounded-2xl ${
                                 isMine
-                                  ? "bg-green-500 text-white rounded-br-sm"
+                                  ? "bg-[#0EA5E9] text-white rounded-br-sm"  /* cyan-500 for better contrast */
                                   : "bg-white text-gray-900 rounded-bl-sm border border-gray-200"
                               } shadow-sm`}
                             >
                               {/* Forwarded label */}
-                              {(message.isForwarded || message.forwardedFrom) && (
+                              {((message.isForwarded === true) || Boolean(message.forwardedFrom)) && (
                                 <div className={`text-[11px] font-medium mb-1 ${isMine ? "text-green-100" : "text-gray-500"}`}>
                                   Forwarded
                                 </div>
@@ -1738,7 +1738,7 @@ const MessagesPage = () => {
                                 }`}
                               >
                                 <span>{formatTime(message.timestamp)}</span>
-                                {getMessageStatusIcon(message.status, isMine)}
+                                <span className="opacity-90">{getMessageStatusIcon(message.status, isMine)}</span>
                               </div>
 
                               {/* Reactions */}
