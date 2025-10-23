@@ -4,7 +4,7 @@ const Department = require('../backend/models/Department');
 async function seedDepartments() {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/alumni_connect');
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/alumni-connect');
 
     const departments = ['CSE', 'AI-DS', 'E&TC', 'Mechanical', 'Civil', 'Other'];
 
