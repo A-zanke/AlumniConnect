@@ -53,14 +53,6 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // 100MB limit
     files: 13, // up to 5 images + 5 videos + 3 docs
   },
-  // Let Cloudinary validate types (resource_type: auto); keep a basic guard
-  fileFilter: (req, file, cb) => {
-    const mime = file.mimetype || "";
-    if (!mime || typeof mime !== "string") return cb(null, true);
-    const allowed = /^(image|video|audio)\//i.test(mime) ||
-      /^(application|text)\/(pdf|msword|vnd\.|zip|json|xml|csv|plain|vnd\.openxmlformats)/i.test(mime);
-    return cb(allowed ? null : new Error(`Unsupported file type: ${mime}`));
-  },
 });
 
 // Error handling middleware for multer

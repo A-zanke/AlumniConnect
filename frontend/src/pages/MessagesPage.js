@@ -653,7 +653,7 @@ const MessagesPage = () => {
         formData,
         {
           headers: {
-            "Content-Type": "multipart/form-data",
+            // Let the browser set the proper multipart boundary
             Authorization: `Bearer ${token}`,
           },
           onUploadProgress: (evt) => {
