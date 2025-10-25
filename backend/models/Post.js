@@ -34,10 +34,28 @@ const postSchema = new mongoose.Schema(
     media: [
       {
         url: { type: String, required: true },
-        type: { type: String, enum: ["image", "video"], required: true },
+        type: {
+          type: String,
+          enum: ["image", "video", "document"],
+          required: true,
+        },
         public_id: { type: String },
+        originalName: { type: String }, // Store original filename
       },
     ],
+    // NEW: Department-based visibility
+    departments: [
+      {
+        type: String,
+        enum: ["CSE", "AI-DS", "E&TC", "Mechanical", "Civil", "Other", "All"],
+        required: true,
+      },
+    ],
+    authorRole: {
+      type: String,
+      enum: ["student", "teacher", "alumni", "admin"],
+      required: true,
+    },
     visibility: {
       type: String,
       enum: ["public", "connections"],
@@ -54,7 +72,9 @@ const postSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Index for faster feed queries
+// Index for faster feed queries with department filtering
 postSchema.index({ deletedAt: 1, visibility: 1, createdAt: -1 });
+postSchema.index({ departments: 1, createdAt: -1 });
+postSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Post", postSchema);

@@ -11,6 +11,7 @@ const {
   commentOnPost,
   deletePost,
   toggleBookmark,
+  searchUsers,
 } = require("../controllers/postsController");
 
 const { protect } = require("../middleware/authMiddleware");
@@ -42,13 +43,18 @@ if (
         "mp4",
         "mov",
         "webm",
+        "pdf",
+        "doc",
+        "docx",
       ],
     },
   });
-  upload = multer({ storage });
+  upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 } else {
   // Enforce Cloudinary-only; reject if not configured to avoid local storage
-  console.error("[postsRoutes] Cloudinary env not found. Rejecting media uploads to avoid local storage.");
+  console.error(
+    "[postsRoutes] Cloudinary env not found. Rejecting media uploads to avoid local storage."
+  );
   const rejectStorage = multer.memoryStorage();
   upload = multer({ storage: rejectStorage });
 }
@@ -56,6 +62,7 @@ if (
 // Routes
 router.get("/", protect, getAllPosts);
 router.get("/saved", protect, getSavedPosts);
+router.get("/users/search", protect, searchUsers); // For @mentions
 
 router.post(
   "/",
