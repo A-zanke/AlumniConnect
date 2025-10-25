@@ -153,3 +153,14 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-400;
 }
+
+/* Media overlay indeterminate ring rotation */
+.media-ring-indeterminate {
+  animation: mediaRingSpin 1s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes mediaRingSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
