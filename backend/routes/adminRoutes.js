@@ -31,6 +31,11 @@ const {
   updateTestimonial,
   deleteTestimonial,
   getEventByIdAdmin,
+  listPostReports,
+  resolvePostReport,
+  deletePostReport,
+  getPostAnalytics,
+  bulkDeletePosts,
 } = require("../controllers/adminController");
 
 // Admin-only routes
@@ -64,6 +69,17 @@ router.get("/posts", listAllPosts);
 router.get("/posts/pending", listPendingPosts);
 router.post("/posts/:id/approve", approvePost);
 router.delete("/posts/:id", deletePost);
+
+// Post Reports
+router.get("/post-reports", listPostReports);
+router.put("/post-reports/:id/resolve", resolvePostReport);
+router.delete("/post-reports/:id", deletePostReport);
+
+// Post Analytics
+router.get("/posts/:id/analytics", getPostAnalytics);
+
+// Bulk Delete Posts
+router.post("/posts/bulk-delete", bulkDeletePosts);
 
 // ===================== Forum moderation =====================
 router.get("/forum/posts", listForumPosts);

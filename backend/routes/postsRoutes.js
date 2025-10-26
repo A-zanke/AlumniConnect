@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const { check } = require("express-validator");
+const rateLimit = require("express-rate-limit");
 
 const {
   getAllPosts,
@@ -12,6 +13,15 @@ const {
   deletePost,
   toggleBookmark,
   searchUsers,
+  searchPosts,
+  getMyAnalytics,
+  getReactions,
+  getPostAnalytics,
+  sharePost,
+  reportPost,
+  reactToComment,
+  getPopularTags,
+  searchTags,
 } = require("../controllers/postsController");
 
 const { protect } = require("../middleware/authMiddleware");
@@ -59,10 +69,28 @@ if (
   upload = multer({ storage: rejectStorage });
 }
 
+// Rate limiter for report endpoint to prevent abuse
+const reportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 reports per windowMs
+  message: "Too many reports submitted from this IP, please try again later.",
+});
+
+// Rate limiter for search endpoints to prevent abuse
+const searchLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 searches per windowMs
+  message: "Too many searches from this IP, please try again later.",
+});
+
 // Routes
 router.get("/", protect, getAllPosts);
 router.get("/saved", protect, getSavedPosts);
 router.get("/users/search", protect, searchUsers); // For @mentions
+
+// New tag routes
+router.get("/tags/popular", getPopularTags);
+router.get("/tags/search", protect, searchLimiter, searchTags);
 
 router.post(
   "/",
@@ -82,5 +110,14 @@ router.post(
 );
 router.delete("/:id", protect, deletePost);
 router.post("/:id/bookmark", protect, toggleBookmark);
+
+// New routes for enhanced features
+router.get("/search", protect, searchPosts);
+router.get("/my-analytics", protect, getMyAnalytics);
+router.get("/:id/reactions", protect, getReactions);
+router.get("/:id/analytics", protect, getPostAnalytics); // Authorization handled in controller for owners/admins
+router.post("/:id/share", protect, sharePost);
+router.post("/:id/report", protect, reportLimiter, reportPost);
+router.post("/comments/:commentId/react", protect, reactToComment);
 
 module.exports = router;

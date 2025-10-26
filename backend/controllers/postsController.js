@@ -1,19 +1,47 @@
 const Post = require("../models/Post");
 const User = require("../models/User");
 const NotificationService = require("../services/NotificationService");
+const PostReport = require("../models/PostReport");
+const Message = require("../models/Message");
 
 // Helper: shape a post for the client
-const shapePost = (post, currentUserId) => ({
-  ...post,
-  user: post.userId,
-  isBookmarked: Array.isArray(post.bookmarkedBy)
-    ? post.bookmarkedBy.some((id) => String(id) === String(currentUserId))
-    : false,
-  userReaction:
-    (post.reactions || []).find(
-      (r) => String(r.userId) === String(currentUserId)
-    ) || null,
-});
+const shapePost = (post, currentUserId) => {
+  const reactions = post.reactions || [];
+  const reactionCounts = reactions.reduce((acc, r) => {
+    acc[r.type] = (acc[r.type] || 0) + 1;
+    return acc;
+  }, {});
+  const userReaction =
+    reactions.find((r) => String(r.userId) === String(currentUserId))?.type ||
+    null;
+  const totalReactions = reactions.length;
+  const totalComments = (post.comments || []).length;
+  const totalShares = (post.shares || []).length;
+  const engagementRate =
+    totalReactions + totalComments + totalShares > 0
+      ? ((totalReactions + totalComments + totalShares) / (post.views || 1)) *
+        100
+      : 0;
+
+  return {
+    ...post,
+    user: post.userId,
+    isBookmarked: Array.isArray(post.bookmarkedBy)
+      ? post.bookmarkedBy.some((id) => String(id) === String(currentUserId))
+      : false,
+    userReaction,
+    reactionCounts,
+    totalReactions,
+    totalComments,
+    totalShares,
+    engagementRate,
+    tags: post.tags || [],
+    views: post.views || 0,
+    shareCount: totalShares,
+    reportsCount: post.reportsCount || 0,
+    isOwner: String(post.userId) === String(currentUserId),
+  };
+};
 
 // GET /api/posts - with department filtering
 exports.getAllPosts = async (req, res) => {
@@ -31,22 +59,134 @@ exports.getAllPosts = async (req, res) => {
     if (currentUser.role === "student") {
       // Students can only see posts from their department or "All" departments
       query.departments = { $in: [currentUser.department, "All"] };
-    } else {
-      // Teachers/Alumni/Admin can see all posts, but we still apply department filter for consistency
-      // They can see posts from any department they have access to
-      // For now, let them see all posts - this can be refined based on requirements
+    }
+
+    const { q, filter, sort, page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Search query
+    if (q) {
+      query.$or = [
+        { content: { $regex: q, $options: "i" } },
+        { tags: { $regex: q, $options: "i" } },
+      ];
+    }
+
+    // Filter
+    if (filter === "my-posts") {
+      query.userId = req.user.id;
+    } else if (filter === "by-department") {
+      query.departments = { $in: [currentUser.department] };
+    }
+
+    // Sort
+    let sortOption = { createdAt: -1 };
+    if (sort === "popular") {
+      sortOption = { views: -1, createdAt: -1 };
+    } else if (sort === "most-commented") {
+      sortOption = { "comments.length": -1, createdAt: -1 };
     }
 
     const posts = await Post.find(query)
-      .sort({ createdAt: -1 })
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limit)
       .populate("userId", "name username avatarUrl role department")
       .populate("comments.userId", "name username avatarUrl")
       .lean();
 
-    res.json(posts.map((p) => shapePost(p, req.user.id)));
+    // Track views
+    for (const post of posts) {
+      const viewedBy = post.viewedBy || [];
+      if (
+        !viewedBy.some((view) => String(view.userId) === String(req.user.id))
+      ) {
+        await Post.findByIdAndUpdate(post._id, {
+          $inc: { views: 1 },
+          $push: { viewedBy: { userId: req.user.id, viewedAt: new Date() } },
+        });
+      }
+    }
+
+    const total = await Post.countDocuments(query);
+
+    res.json({
+      posts: posts.map((p) => shapePost(p, req.user.id)),
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
   } catch (err) {
     console.error("getAllPosts error:", err);
     res.status(500).json({ message: "Failed to fetch posts." });
+  }
+};
+
+// GET /api/posts/search
+exports.searchPosts = async (req, res) => {
+  try {
+    const { q, tags, author, page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = { deletedAt: null };
+
+    // Search by tags
+    if (tags) {
+      const tagArray = tags.split(",").map((t) => t.trim());
+      query.tags = { $in: tagArray };
+    }
+
+    // Search by content
+    if (q) {
+      query.content = { $regex: q, $options: "i" };
+    }
+
+    // Search by author
+    if (author) {
+      const user = await User.findOne({
+        $or: [
+          { name: { $regex: author, $options: "i" } },
+          { username: { $regex: author, $options: "i" } },
+        ],
+      });
+      if (user) {
+        query.userId = user._id;
+      } else {
+        return res.json({
+          posts: [],
+          total: 0,
+          page: 1,
+          limit: parseInt(limit),
+        });
+      }
+    }
+
+    const posts = await Post.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("userId", "name username avatarUrl role department")
+      .lean();
+
+    const total = await Post.countDocuments(query);
+
+    // Highlight results (simple implementation)
+    const highlightedPosts = posts.map((post) => ({
+      ...shapePost(post, req.user.id),
+      highlightedContent: q
+        ? post.content.replace(new RegExp(q, "gi"), `<mark>${q}</mark>`)
+        : post.content,
+    }));
+
+    res.json({
+      posts: highlightedPosts,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  } catch (err) {
+    console.error("searchPosts error:", err);
+    res.status(500).json({ message: "Failed to search posts." });
   }
 };
 
@@ -93,6 +233,11 @@ exports.createPost = async (req, res) => {
       ? Array.isArray(req.body.departments)
         ? req.body.departments
         : [req.body.departments]
+      : [];
+    const tags = req.body.tags
+      ? Array.isArray(req.body.tags)
+        ? req.body.tags
+        : [req.body.tags]
       : [];
 
     // Get current user info
@@ -166,6 +311,7 @@ exports.createPost = async (req, res) => {
       authorRole: currentUser.role,
       visibility,
       mentions: mentionedUsers.map((u) => u._id),
+      tags,
     });
 
     // Notify mentions (non-blocking)
@@ -239,22 +385,64 @@ exports.reactToPost = async (req, res) => {
     }
     await post.save();
 
-    const updated = await Post.findById(post._id)
-      .populate("userId", "name username avatarUrl role department")
-      .populate("comments.userId", "name username avatarUrl")
-      .lean();
+    const reactionCounts = (post.reactions || []).reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+    const userReaction =
+      post.reactions.find((r) => String(r.userId) === String(req.user.id))
+        ?.type || null;
 
-    res.json(shapePost(updated, req.user.id));
+    // Emit socket.io event
+    if (global.io) {
+      global.io.to(`post_${post._id}`).emit("post:reaction_updated", {
+        postId: post._id,
+        reactionCounts,
+        userReaction,
+      });
+    }
+
+    res.json({ reactionCounts, userReaction });
   } catch (err) {
     console.error("reactToPost error:", err);
     res.status(500).json({ message: "Failed to react to post." });
   }
 };
 
+// GET /api/posts/:id/reactions
+exports.getReactions = async (req, res) => {
+  try {
+    const { type } = req.query;
+    const post = await Post.findById(req.params.id).populate(
+      "reactions.userId",
+      "name username avatarUrl role department"
+    );
+    if (!post || post.deletedAt) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+
+    let reactions = post.reactions || [];
+    if (type) {
+      reactions = reactions.filter((r) => r.type === type);
+    }
+
+    const grouped = reactions.reduce((acc, r) => {
+      if (!acc[r.type]) acc[r.type] = [];
+      acc[r.type].push(r.userId);
+      return acc;
+    }, {});
+
+    res.json({ reactions: grouped });
+  } catch (err) {
+    console.error("getReactions error:", err);
+    res.status(500).json({ message: "Failed to get reactions." });
+  }
+};
+
 // POST /api/posts/:id/comment
 exports.commentOnPost = async (req, res) => {
   try {
-    const { content } = req.body;
+    const { content, parentCommentId, mentions } = req.body;
     if (!content || !content.trim()) {
       return res.status(400).json({ message: "Comment content is required." });
     }
@@ -276,7 +464,13 @@ exports.commentOnPost = async (req, res) => {
       return res.status(403).json({ message: "Access denied." });
     }
 
-    const comment = { userId: req.user.id, content };
+    const comment = {
+      userId: req.user.id,
+      content,
+      parentCommentId: parentCommentId || null,
+      mentions: mentions || [],
+      reactions: [],
+    };
     post.comments.push(comment);
     await post.save();
 
@@ -291,14 +485,309 @@ exports.commentOnPost = async (req, res) => {
       }).catch((e) => console.error("notify comment error:", e));
     }
 
+    // Notify mentions
+    if (mentions && mentions.length > 0) {
+      Promise.all(
+        mentions.map((u) =>
+          NotificationService.createNotification({
+            recipientId: u,
+            senderId: req.user.id,
+            type: "mention",
+            content: `${currentUser.name} mentioned you in a comment.`,
+            relatedId: post._id,
+            onModel: "Post",
+          })
+        )
+      ).catch((e) => console.error("notify comment mentions error:", e));
+    }
+
     const populated = await Post.findById(post._id)
       .populate("comments.userId", "name username avatarUrl")
       .lean();
 
-    res.status(201).json(populated.comments[populated.comments.length - 1]);
+    const newComment = populated.comments[populated.comments.length - 1];
+
+    // Emit socket.io event
+    if (global.io) {
+      global.io.to(`post_${post._id}`).emit("post:comment_added", {
+        postId: post._id,
+        comment: newComment,
+      });
+    }
+
+    res.json(newComment);
   } catch (err) {
     console.error("commentOnPost error:", err);
     res.status(500).json({ message: "Failed to add comment." });
+  }
+};
+
+// POST /api/posts/comments/:commentId/react
+exports.reactToComment = async (req, res) => {
+  try {
+    const { type } = req.body;
+    const post = await Post.findOne({ "comments._id": req.params.commentId });
+    if (!post) {
+      return res.status(404).json({ message: "Comment not found." });
+    }
+
+    const comment = post.comments.id(req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ message: "Comment not found." });
+    }
+
+    const idx = (comment.reactions || []).findIndex(
+      (r) => String(r.userId) === String(req.user.id)
+    );
+
+    if (idx > -1) {
+      if (comment.reactions[idx].type === type) {
+        comment.reactions.splice(idx, 1);
+      } else {
+        comment.reactions[idx].type = type;
+      }
+    } else {
+      comment.reactions.push({ userId: req.user.id, type });
+      if (String(comment.userId) !== String(req.user.id)) {
+        const currentUser = await User.findById(req.user.id).select("name");
+        NotificationService.createNotification({
+          recipientId: comment.userId,
+          senderId: req.user.id,
+          type: "reaction",
+          content: `${currentUser.name} reacted to your comment.`,
+          relatedId: post._id,
+          onModel: "Post",
+        }).catch((e) => console.error("notify comment react error:", e));
+      }
+    }
+    await post.save();
+
+    const reactionCounts = (comment.reactions || []).reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+
+    res.json({ reactionCounts });
+  } catch (err) {
+    console.error("reactToComment error:", err);
+    res.status(500).json({ message: "Failed to react to comment." });
+  }
+};
+
+// POST /api/posts/:id/share
+exports.sharePost = async (req, res) => {
+  try {
+    const { connectionIds, message } = req.body;
+    const post = await Post.findById(req.params.id);
+    if (!post || post.deletedAt) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+
+    const currentUser = await User.findById(req.user.id).select(
+      "connections name"
+    );
+    const validConnections = connectionIds.filter((id) =>
+      currentUser.connections.some((c) => String(c) === String(id))
+    );
+
+    if (validConnections.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "No valid connections selected." });
+    }
+
+    // Track share
+    post.shares.push({
+      userId: req.user.id,
+      sharedWith: validConnections,
+      sharedAt: new Date(),
+      message,
+    });
+    await post.save();
+
+    // Create chat messages
+    await Promise.all(
+      validConnections.map(async (connId) => {
+        await Message.create({
+          from: req.user.id,
+          to: connId,
+          content: message
+            ? `${message}\n\nShared post: ${post.content.substring(0, 100)}...`
+            : `Shared post: ${post.content.substring(0, 100)}...`,
+          attachments: [`/posts/${post._id}`],
+        });
+
+        NotificationService.createNotification({
+          recipientId: connId,
+          senderId: req.user.id,
+          type: "share",
+          content: `${currentUser.name} shared a post with you.`,
+          relatedId: post._id,
+          onModel: "Post",
+        }).catch((e) => console.error("notify share error:", e));
+
+        // Emit socket.io event
+        if (global.io) {
+          global.io.to(connId).emit("chat:receive", {
+            from: req.user.id,
+            to: connId,
+            content: message || `Shared post`,
+            attachments: [`/posts/${post._id}`],
+          });
+        }
+      })
+    );
+
+    res.json({
+      message: `Post shared with ${validConnections.length} connections.`,
+    });
+  } catch (err) {
+    console.error("sharePost error:", err);
+    res.status(500).json({ message: "Failed to share post." });
+  }
+};
+
+// POST /api/posts/:id/report
+exports.reportPost = async (req, res) => {
+  try {
+    const { reason, description } = req.body;
+    const post = await Post.findById(req.params.id);
+    if (!post || post.deletedAt) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+
+    await PostReport.create({
+      targetType: "post",
+      targetId: req.params.id,
+      reporter: req.user.id,
+      reason,
+      description,
+    });
+
+    await Post.findByIdAndUpdate(req.params.id, {
+      $inc: { reportsCount: 1 },
+      isReported: true,
+    });
+
+    // Notify admins
+    const admins = await User.find({ role: "admin" }).select("_id");
+    Promise.all(
+      admins.map((admin) =>
+        NotificationService.createNotification({
+          recipientId: admin._id,
+          senderId: req.user.id,
+          type: "report",
+          content: `A post has been reported.`,
+          relatedId: post._id,
+          onModel: "Post",
+        })
+      )
+    ).catch((e) => console.error("notify report error:", e));
+
+    res.json({ message: "Post reported." });
+  } catch (err) {
+    console.error("reportPost error:", err);
+    res.status(500).json({ message: "Failed to report post." });
+  }
+};
+
+// GET /api/posts/my-analytics
+exports.getMyAnalytics = async (req, res) => {
+  try {
+    const posts = await Post.find({ userId: req.user.id, deletedAt: null })
+      .select("content views reactions comments shares createdAt")
+      .lean();
+
+    const totalPosts = posts.length;
+    const totalViews = posts.reduce((sum, p) => sum + (p.views || 0), 0);
+    const totalReactions = posts.reduce(
+      (sum, p) => sum + (p.reactions?.length || 0),
+      0
+    );
+    const totalComments = posts.reduce(
+      (sum, p) => sum + (p.comments?.length || 0),
+      0
+    );
+    const totalShares = posts.reduce(
+      (sum, p) => sum + (p.shares?.length || 0),
+      0
+    );
+
+    const overview = {
+      totalPosts,
+      totalViews,
+      totalReactions,
+      totalComments,
+      totalShares,
+    };
+
+    const postsData = posts.map((p) => ({
+      title: p.content.substring(0, 50),
+      views: p.views || 0,
+      reactions: p.reactions?.length || 0,
+      comments: p.comments?.length || 0,
+      shares: p.shares?.length || 0,
+      date: p.createdAt,
+    }));
+
+    res.json({
+      overview,
+      posts: postsData,
+    });
+  } catch (err) {
+    console.error("getMyAnalytics error:", err);
+    res.status(500).json({ message: "Failed to get analytics." });
+  }
+};
+
+// GET /api/posts/:id/analytics
+exports.getPostAnalytics = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id).populate(
+      "comments.userId",
+      "name"
+    );
+    if (!post || post.deletedAt) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+
+    if (
+      String(post.userId) !== String(req.user.id) &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    const views = post.views || 0;
+    const reactionBreakdown = (post.reactions || []).reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+    const topCommenters = (post.comments || []).reduce((acc, c) => {
+      const key = String(c.userId);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const topCommentersList = Object.entries(topCommenters)
+      .map(([userId, count]) => ({ userId, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    const shareCount = (post.shares || []).length;
+    const viewHistory = (post.viewedBy || []).map((v) => ({
+      userId: v.userId,
+      viewedAt: v.viewedAt,
+    }));
+
+    res.json({
+      views,
+      reactionBreakdown,
+      topCommenters: topCommentersList,
+      shareCount,
+      viewHistory,
+    });
+  } catch (err) {
+    console.error("getPostAnalytics error:", err);
+    res.status(500).json({ message: "Failed to get post analytics." });
   }
 };
 
@@ -364,6 +853,43 @@ exports.toggleBookmark = async (req, res) => {
   } catch (err) {
     console.error("toggleBookmark error:", err);
     res.status(500).json({ message: "Failed to toggle bookmark." });
+  }
+};
+
+// GET /api/posts/tags/popular
+exports.getPopularTags = async (req, res) => {
+  try {
+    const tags = await Post.aggregate([
+      { $match: { deletedAt: null } },
+      { $unwind: "$tags" },
+      { $group: { _id: "$tags", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+    ]);
+
+    res.json(tags.map((t) => t._id));
+  } catch (err) {
+    console.error("getPopularTags error:", err);
+    res.status(500).json({ message: "Failed to fetch popular tags." });
+  }
+};
+
+// GET /api/posts/tags/search
+exports.searchTags = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) {
+      return res.json([]);
+    }
+
+    const tags = await Post.distinct("tags", {
+      tags: { $regex: q, $options: "i" },
+      deletedAt: null,
+    });
+    res.json(tags.slice(0, 10));
+  } catch (err) {
+    console.error("searchTags error:", err);
+    res.status(500).json({ message: "Failed to search tags." });
   }
 };
 

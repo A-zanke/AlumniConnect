@@ -213,6 +213,22 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex lg:items-center lg:space-x-2">
+            {/* Search Button - moved before nav items */}
+            <motion.button
+              onClick={() => navigate("/search")}
+              className="mr-4 p-3 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group navbar-icon-btn search-icon"
+              whileHover={{ scale: 1.1, rotate: 15 }}
+              whileTap={{ scale: 0.9 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
+              <FiSearch
+                size={22}
+                className="text-indigo-600 group-hover:text-purple-600 transition-colors duration-300"
+              />
+            </motion.button>
+
             {isStudent ? (
               <>
                 {/* Home first for students */}
@@ -321,22 +337,6 @@ const Navbar = () => {
                 </motion.div>
               ))
             )}
-
-            {/* Search Button */}
-            <motion.button
-              onClick={() => navigate("/search")}
-              className="ml-4 p-3 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group navbar-icon-btn search-icon"
-              whileHover={{ scale: 1.1, rotate: 15 }}
-              whileTap={{ scale: 0.9 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              <FiSearch
-                size={22}
-                className="text-indigo-600 group-hover:text-purple-600 transition-colors duration-300"
-              />
-            </motion.button>
 
             {user ? (
               <motion.div

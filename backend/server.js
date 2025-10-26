@@ -36,7 +36,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: ["http://localhost:3000", process.env.FRONTEND_ORIGIN].filter(Boolean),
+    origin: ["http://localhost:3000", process.env.FRONTEND_ORIGIN].filter(
+      Boolean
+    ),
     credentials: true,
     exposedHeaders: ["Content-Length", "Content-Type"],
   })
@@ -283,7 +285,7 @@ io.on("connection", (socket) => {
       // Idempotent insert by (threadId, clientKey) to avoid duplicates
       const query = clientKey ? { threadId, clientKey } : { _id: undefined };
       const update = { $setOnInsert: messageData };
-      const options = { upsert: true, new: true }; 
+      const options = { upsert: true, new: true };
       let msg = clientKey
         ? await Message.findOneAndUpdate(query, update, options)
         : await Message.create(messageData);
@@ -449,6 +451,21 @@ io.on("connection", (socket) => {
     try {
       const postId = payload?.postId;
       if (postId) socket.leave(`forum_post_${postId}`);
+    } catch (e) {}
+  });
+
+  // Posts rooms
+  socket.on("post:join", (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.join(`post_${postId}`);
+    } catch (e) {}
+  });
+
+  socket.on("post:leave", (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.leave(`post_${postId}`);
     } catch (e) {}
   });
 });

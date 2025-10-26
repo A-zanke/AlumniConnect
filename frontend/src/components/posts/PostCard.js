@@ -13,7 +13,7 @@ import {
   FiTrendingUp,
   FiEye,
   FiSend,
-  FiFile ,
+  FiFile,
 } from "react-icons/fi";
 import axios from "axios";
 import { toast } from "react-hot-toast";
