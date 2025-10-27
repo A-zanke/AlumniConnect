@@ -461,10 +461,14 @@ exports.sendMessage = async (req, res) => {
       messageId:
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       deliveredAt: new Date(),
-      isForwarded,
-      originalMessageId,
-      forwardedFrom,
     };
+    
+    // Only add forward-related fields if actually forwarded
+    if (isForwarded && forwardedFrom) {
+      messageData.isForwarded = true;
+      messageData.originalMessageId = originalMessageId;
+      messageData.forwardedFrom = forwardedFrom;
+    }
 
     // Handle location messages
     if (messageType === "location" && req.body.location) {
@@ -474,10 +478,6 @@ exports.sendMessage = async (req, res) => {
     // Handle contact messages
     if (messageType === "contact" && req.body.contact) {
       messageData.contact = req.body.contact;
-    }
-
-    if (forwardedFrom) {
-      messageData.forwardedFrom = forwardedFrom;
     }
 
     const message = await Message.create(messageData);
@@ -520,11 +520,36 @@ exports.sendMessage = async (req, res) => {
 
       // Create a realtime notification item for the recipient
       try {
+        // Determine notification content based on message type
+        let notificationContent;
+        if (dto.attachments && dto.attachments.length > 0) {
+          // Check if it's an image, video, or document
+          const hasImage = dto.attachments.some(att => {
+            const url = typeof att === 'string' ? att : att?.url;
+            return /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(url);
+          });
+          const hasVideo = dto.attachments.some(att => {
+            const url = typeof att === 'string' ? att : att?.url;
+            return /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(url);
+          });
+          const hasDoc = dto.attachments.some(att => {
+            const url = typeof att === 'string' ? att : att?.url;
+            return /\.(pdf|doc|docx|txt|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(url);
+          });
+          
+          if (hasImage) notificationContent = "sent you a photo";
+          else if (hasVideo) notificationContent = "sent you a video";
+          else if (hasDoc) notificationContent = "sent you a document";
+          else notificationContent = "sent you media";
+        } else {
+          notificationContent = "sent you a message";
+        }
+        
         const note = await NotificationService.createNotification({
           recipientId: to,
           senderId: me,
           type: "message",
-          content: dto.attachments && dto.attachments.length > 0 ? "sent you a media" : dto.content?.slice(0, 80) || "sent you a message",
+          content: notificationContent,
           relatedId: dto.id,
           onModel: "Message",
         });
@@ -674,7 +699,7 @@ exports.react = async (req, res) => {
             recipientId,
             senderId: me,
             type: "reaction",
-            content: `reacted to your message`,
+            content: `reacted ${emoji} to your message`,
             relatedId: String(message._id),
             onModel: "Message",
           });
@@ -1150,17 +1175,33 @@ exports.getMedia = async (req, res) => {
 
     if (!other) return res.status(400).json({ message: "Missing userId" });
 
-    const query = {
+    // Build query based on type
+    const baseQuery = {
       $or: [
         { from: me, to: other },
         { from: other, to: me },
       ],
-      "attachments.0": { $exists: true },
     };
 
-    // Filter by media type
-    if (type !== "all") {
-      query["attachments.type"] = type;
+    let query;
+    if (type === "link" || type === "all") {
+      // For links, we need messages with content OR attachments
+      query = {
+        ...baseQuery,
+        $or: [
+          { "attachments.0": { $exists: true } },
+          { content: { $exists: true, $ne: "" } },
+        ],
+      };
+    } else {
+      // For specific media types, require attachments
+      query = {
+        ...baseQuery,
+        "attachments.0": { $exists: true },
+      };
+      if (type !== "all") {
+        query["attachments.type"] = type;
+      }
     }
 
     const messagesAll = await Message.find(query)
@@ -1197,12 +1238,14 @@ exports.getMedia = async (req, res) => {
           messageId: msg.messageId,
           url,
           type,
-          filename: undefined,
+          filename: url.split('/').pop() || 'file',
           size: undefined,
           mimeType: undefined,
           thumbnail: undefined,
           timestamp: msg.createdAt,
           sender: msg.from,
+          // Include flag to indicate if this is sent by the current user
+          isMine: String(msg.from._id || msg.from) === String(me),
           isStarred: Array.isArray(msg.isStarred)
             ? msg.isStarred.includes(me)
             : false,
@@ -1227,6 +1270,8 @@ exports.getMedia = async (req, res) => {
               title: extractLinkTitle(link),
               timestamp: msg.createdAt,
               sender: msg.from,
+              // Include flag to indicate if this is sent by the current user
+              isMine: String(msg.from._id || msg.from) === String(me),
               isStarred: Array.isArray(msg.isStarred)
                 ? msg.isStarred.includes(me)
                 : false,

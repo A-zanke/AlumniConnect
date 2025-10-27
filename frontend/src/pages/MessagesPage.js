@@ -144,6 +144,16 @@ const MessagesPage = () => {
   const [uploadProgress, setUploadProgress] = useState({}); // id -> 0..100
   const [mediaLoaded, setMediaLoaded] = useState({}); // url -> boolean
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [downloadedMedia, setDownloadedMedia] = useState(() => {
+    // Load downloaded media from localStorage
+    try {
+      const saved = localStorage.getItem('downloadedMedia');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }); // url -> boolean (for receiver)
+  const [downloadProgress, setDownloadProgress] = useState({}); // url -> 0..100
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
@@ -201,6 +211,50 @@ const MessagesPage = () => {
 
   const generateClientKey = () =>
     `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  // Handle media download with progress tracking
+  const handleMediaDownload = async (url) => {
+    if (downloadedMedia[url]) return; // Already downloaded
+    
+    try {
+      setDownloadProgress((prev) => ({ ...prev, [url]: 0 }));
+      
+      // Don't use withCredentials for Cloudinary URLs to avoid CORS issues
+      const response = await axios.get(url, {
+        responseType: 'blob',
+        withCredentials: false, // Important: avoid CORS issues with Cloudinary
+        onDownloadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+          setDownloadProgress((prev) => ({ ...prev, [url]: percentCompleted }));
+        },
+      });
+      
+      // Mark as downloaded and save to localStorage
+      const updatedDownloaded = { ...downloadedMedia, [url]: true };
+      setDownloadedMedia(updatedDownloaded);
+      
+      // Persist to localStorage
+      try {
+        localStorage.setItem('downloadedMedia', JSON.stringify(updatedDownloaded));
+      } catch (e) {
+        console.error('Failed to save to localStorage:', e);
+      }
+      
+      setDownloadProgress((prev) => {
+        const next = { ...prev };
+        delete next[url];
+        return next;
+      });
+    } catch (error) {
+      console.error('Download failed:', error);
+      setDownloadProgress((prev) => {
+        const next = { ...prev };
+        delete next[url];
+        return next;
+      });
+      toast.error('Failed to load media');
+    }
+  };
 
   // Load conversations + merge with connections
   useEffect(() => {
@@ -352,6 +406,8 @@ const MessagesPage = () => {
           body,
           attachments = [],
           createdAt,
+          isForwarded,
+          forwardedFrom,
         }) => {
           // Deduplicate message events by messageId
           if (messageId && seenIdsRef.current.has(String(messageId))) return;
@@ -373,6 +429,8 @@ const MessagesPage = () => {
                 attachments: Array.isArray(attachments) ? attachments : [],
                 timestamp: createdAt,
                 status: "delivered",
+                isForwarded,
+                forwardedFrom,
               },
             ]);
             if (s && conversationId)
@@ -643,166 +701,143 @@ const MessagesPage = () => {
       !!selectedImage;
     if ((!newMessage.trim() && !hasAnyMedia) || !selectedUser) return;
 
+    const token = localStorage.getItem("token");
+    const textContent = newMessage.trim();
+    
+    // Reset form immediately to clear input area
+    const savedReplyTo = replyTo;
+    setNewMessage("");
+    setSelectedImage(null);
+    setImagePreview(null);
+    const imagesToSend = [...selectedImages];
+    const videosToSend = [...selectedVideos];
+    const docsToSend = [...selectedDocs];
+    setSelectedImages([]);
+    setSelectedVideos([]);
+    setSelectedDocs([]);
+    setReplyTo(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    
     try {
-      const formData = new FormData();
-      formData.append("content", newMessage);
-      // Append all selected media with server-supported field names
-      selectedImages
-        .slice(0, 5)
-        .forEach((file) => formData.append("image", file));
-      selectedVideos
-        .slice(0, 5)
-        .forEach((file) => formData.append("video", file));
-      selectedDocs
-        .slice(0, 3)
-        .forEach((file) => formData.append("document", file));
-      if (selectedImage) {
-        const field =
-          (typeof selectedFileField !== "undefined" && selectedFileField) ||
-          "image";
-        formData.append(field, selectedImage);
+      // WhatsApp-style: Send text message first if there's text with media
+      if (textContent && hasAnyMedia) {
+        const textFormData = new FormData();
+        textFormData.append("content", textContent);
+        const clientKey = generateClientKey();
+        textFormData.append("clientKey", clientKey);
+        
+        if (savedReplyTo?.id) {
+          textFormData.append("replyToId", savedReplyTo.id);
+        }
+        
+        // Create optimistic text message
+        const optimisticText = {
+          id: clientKey,
+          senderId: user._id,
+          recipientId: selectedUser._id,
+          content: textContent,
+          attachments: [],
+          timestamp: new Date().toISOString(),
+          status: "sending",
+        };
+        setMessages((prev) => [...prev, optimisticText]);
+        
+        // Send text message
+        await axios.post(
+          `${baseURL}/api/messages/${selectedUser._id}`,
+          textFormData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
       }
-      if (replyTo?.id) formData.append("replyToId", replyTo.id);
-
-      const token = localStorage.getItem("token");
-      const isTextOnly = !!newMessage.trim() && !hasAnyMedia;
-      let clientKey = generateClientKey();
-
-      if (isTextOnly) {
-        clientKey = generateClientKey();
+      
+      // Collect all media files
+      const allMediaFiles = [
+        ...imagesToSend.slice(0, 5).map(f => ({ file: f, type: 'image' })),
+        ...videosToSend.slice(0, 5).map(f => ({ file: f, type: 'video' })),
+        ...docsToSend.slice(0, 3).map(f => ({ file: f, type: 'document' })),
+      ];
+      
+      // Send each media file as a separate message
+      for (const mediaItem of allMediaFiles) {
+        const formData = new FormData();
+        formData.append("content", ""); // Empty content for media-only messages
+        formData.append(mediaItem.type, mediaItem.file);
+        
+        const clientKey = generateClientKey();
+        formData.append("clientKey", clientKey);
+        
+        // Create optimistic message for this media
+        const localUrl = URL.createObjectURL(mediaItem.file);
+        const optimisticMedia = {
+          id: clientKey,
+          senderId: user._id,
+          recipientId: selectedUser._id,
+          content: "",
+          attachments: [{
+            url: localUrl,
+            type: mediaItem.type,
+            name: mediaItem.file.name,
+          }],
+          timestamp: new Date().toISOString(),
+          status: "sending",
+          uploading: true,
+        };
+        setMessages((prev) => [...prev, optimisticMedia]);
+        
+        // Send media message
+        await axios.post(
+          `${baseURL}/api/messages/${selectedUser._id}`,
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            onUploadProgress: (evt) => {
+              const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
+              setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
+            },
+          }
+        );
+      }
+      
+      // Handle text-only message
+      if (textContent && !hasAnyMedia) {
+        const clientKey = generateClientKey();
         const optimistic = {
           id: clientKey,
           senderId: user._id,
           recipientId: selectedUser._id,
-          content: newMessage,
+          content: textContent,
           attachments: [],
           timestamp: new Date().toISOString(),
           status: "sent",
-          replyTo: replyTo,
+          replyTo: savedReplyTo,
         };
         setMessages((prev) => [...prev, optimistic]);
-        setTimeout(scrollToBottom, 50);
-
+        
         if (socket) {
           const socketAttachments = [];
-          if (replyTo?.id) socketAttachments.push(`reply:${replyTo.id}`);
+          if (savedReplyTo?.id) socketAttachments.push(`reply:${savedReplyTo.id}`);
           socket.emit("chat:send", {
             to: selectedUser._id,
-            content: newMessage,
+            content: textContent,
             clientKey,
             attachments: socketAttachments,
           });
         }
-
-        setNewMessage("");
-        setReplyTo(null);
-        // Skip HTTP request for pure text messages to avoid duplicates
-        return;
       }
-
-      if (clientKey) formData.append("clientKey", clientKey);
-
-      // For media messages, create an optimistic message with local previews and a loader
-      if (!isTextOnly) {
-        const localImageObjs = selectedImages.map((f) => ({
-          url: URL.createObjectURL(f),
-          type: "image",
-        }));
-        const localVideoObjs = selectedVideos.map((f) => ({
-          url: URL.createObjectURL(f),
-          type: "video",
-        }));
-        const localDocObjs = selectedDocs.map((f) => ({
-          url: URL.createObjectURL(f),
-          type: "doc",
-        }));
-        const localAttachments = [
-          ...localImageObjs,
-          ...localVideoObjs,
-          ...localDocObjs,
-        ];
-        const optimistic = {
-          id: clientKey,
-          senderId: user._id,
-          recipientId: selectedUser._id,
-          content: newMessage,
-          attachments: localAttachments,
-          timestamp: new Date().toISOString(),
-          status: "sending",
-          uploading: true,
-          replyTo: replyTo,
-        };
-        setMessages((prev) => [...prev, optimistic]);
-        // Immediately reset composer (text + attachments)
-        setNewMessage("");
-        setSelectedImage(null);
-        setImagePreview(null);
-        setSelectedImages([]);
-        setSelectedVideos([]);
-        setSelectedDocs([]);
-        setReplyTo(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        setTimeout(scrollToBottom, 50);
-      }
-
-      const resp = await axios.post(
-        `/api/messages/${selectedUser._id}`,
-        formData,
-        {
-          headers: {
-            // Let the browser set the proper multipart boundary
-            Authorization: `Bearer ${token}`,
-          },
-          onUploadProgress: (evt) => {
-            const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
-            setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
-          },
-        }
-      );
-
-      const payload = resp.data;
-      const serverMessage = payload && payload.message ? payload.message : null;
-      if (!clientKey) {
-        const idStr = serverMessage?.id ? String(serverMessage.id) : null;
-        if (!idStr || !seenIdsRef.current.has(idStr)) {
-          if (idStr) seenIdsRef.current.add(idStr);
-          if (serverMessage) {
-            setMessages((prev) => [
-              ...prev,
-              { ...serverMessage, status: "sent" },
-            ]);
-          }
-        }
-        setNewMessage("");
-        setSelectedImage(null);
-        setImagePreview(null);
-        setSelectedImages([]);
-        setSelectedVideos([]);
-        setSelectedDocs([]);
-        setReplyTo(null);
-      } else {
-        // Replace optimistic (clientKey) with the server message and clear loader
-        setMessages((prev) =>
-          prev.map((m) =>
-            String(m.id) === String(clientKey)
-              ? { ...serverMessage, status: "sent" }
-              : m
-          )
-        );
-        setUploadProgress((prev) => {
-          const next = { ...prev };
-          delete next[clientKey];
-          return next;
-        });
-        setSelectedImage(null);
-        setImagePreview(null);
-        setSelectedImages([]);
-        setSelectedVideos([]);
-        setSelectedDocs([]);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-
-      setTimeout(scrollToBottom, 100);
+      
+      setTimeout(scrollToBottom, 50);
+      
+      // Refresh messages after all uploads
+      setTimeout(() => {
+        fetchMessagesData();
+      }, 1000);
+      
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error("Failed to send message. Please try again.");
@@ -1904,21 +1939,15 @@ const MessagesPage = () => {
                                   : "bg-white text-gray-900 rounded-bl-sm border border-gray-200 bubble--other"
                               }`}
                             >
-                              {/* Forwarded label with count-based icon */}
-                              {(message.isForwarded === true || Boolean(message.forwardedFrom)) && (
-                                <div className={`forwarded-chip text-[10px] font-semibold mb-1 flex items-center gap-1 ${isMine ? "text-gray-900 bg-white/30 px-2 py-0.5 rounded" : "text-gray-800 bg-gray-100 px-2 py-0.5 rounded"}`}>
-                                  {(() => {
-                                    const count = Math.max(1, (message.forwardedFrom && message.forwardedFrom.forwardCount) || 1);
-                                    const repeat = Math.min(3, count); // cap icons at 3 like WhatsApp UX feel
-                                    return (
-                                      <span className="inline-flex items-center">
-                                        {Array.from({ length: repeat }).map((_, i) => (
-                                          <FiCornerUpLeft key={i} className="inline-block mr-[2px]" style={{strokeWidth: 2.5}} />
-                                        ))}
-                                      </span>
-                                    );
-                                  })()}
-                                  <span className="font-semibold">Forwarded</span>
+                              {/* Forwarded label - WhatsApp style (only for actually forwarded messages) */}
+                              {(message.isForwarded === true && message.forwardedFrom && message.forwardedFrom.originalSender) && (
+                                <div className={`text-xs mb-2 flex items-center gap-1 italic ${isMine ? "text-white/80" : "text-gray-600"}`}>
+                                  <FiCornerUpLeft className="inline-block" size={12} />
+                                  <span>
+                                    {message.forwardedFrom?.forwardCount > 5 
+                                      ? "Forwarded many times" 
+                                      : "Forwarded"}
+                                  </span>
                                 </div>
                               )}
 
@@ -1937,6 +1966,16 @@ const MessagesPage = () => {
                                 // Group multiple images into a grid like WhatsApp
                                 const parsed = allAttachments
                                   .map((attachment) => {
+                                    // Handle both string URLs and object attachments
+                                    if (typeof attachment === 'object' && attachment?.url) {
+                                      // Object attachment (from optimistic message)
+                                      return {
+                                        url: attachment.url,
+                                        type: attachment.type,
+                                        name: attachment.name,
+                                      };
+                                    }
+                                    // String URL
                                     const url = typeof attachment === 'string' ? attachment : attachment?.url;
                                     const t = getMediaTypeFromUrl(url || '');
                                     // Only treat recognized media types as attachments; plain http links are not attachments
@@ -1948,28 +1987,84 @@ const MessagesPage = () => {
                                 const images = parsed.filter((a) => a.type === 'image');
                                 const nonImages = parsed.filter((a) => a.type !== 'image');
                                 return (
-                                  <div className="mt-2 space-y-2">
+                                  <div className="mt-2 space-y-3">
                                     {images.length > 0 && (
-                                      <div className={`grid gap-2 ${images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                                        {images.map((att, idx) => (
-                                          <div key={`img-${idx}`} className="relative">
-                                            <img
-                                              src={resolveMediaUrl(att.url)}
-                                              alt="attachment"
-                                              className="w-full h-40 object-cover rounded-lg cursor-pointer"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (!message.uploading) setLightboxSrc(resolveMediaUrl(att.url));
-                                              }}
-                                              onLoad={() => setMediaLoaded((prev) => ({ ...prev, [att.url]: true }))}
-                                            />
-                                            {message.uploading && (
-                                              <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center">
-                                                <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        ))}
+                                      <div className={`grid gap-1 ${images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : images.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                        {images.map((att, idx) => {
+                                          const mediaUrl = resolveMediaUrl(att.url);
+                                          const isDownloaded = downloadedMedia[mediaUrl] || isMine;
+                                          const isDownloading = downloadProgress[mediaUrl] !== undefined;
+                                          
+                                          return (
+                                            <div key={`img-${idx}`} className="relative group overflow-hidden rounded-lg" style={{ maxWidth: images.length === 1 ? '300px' : '100%' }}>
+                                              <img
+                                                src={mediaUrl}
+                                                alt="attachment"
+                                                className={`w-full object-cover rounded-lg cursor-pointer transition-all ${
+                                                  !isMine && !isDownloaded ? 'blur-md' : ''
+                                                }`}
+                                                style={{ height: images.length === 1 ? 'auto' : '200px', maxHeight: images.length === 1 ? '400px' : '200px' }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  if (!message.uploading && isDownloaded) {
+                                                    setLightboxSrc(mediaUrl);
+                                                  }
+                                                }}
+                                                onLoad={() => setMediaLoaded((prev) => ({ ...prev, [att.url]: true }))}
+                                              />
+                                              
+                                              {/* Upload Progress (for sender) */}
+                                              {message.uploading && (
+                                                <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center">
+                                                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent mb-2"></div>
+                                                  {uploadProgress[message.id] !== undefined && (
+                                                    <div className="text-white text-sm font-semibold">
+                                                      {uploadProgress[message.id]}%
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                              
+                                              {/* Download Button (for receiver) */}
+                                              {!isMine && !isDownloaded && !message.uploading && (
+                                                <div className="absolute inset-0 bg-black/40 rounded-lg flex flex-col items-center justify-center">
+                                                  {isDownloading ? (
+                                                    <>
+                                                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent mb-2"></div>
+                                                      <div className="text-white text-sm font-semibold">
+                                                        {downloadProgress[mediaUrl]}%
+                                                      </div>
+                                                    </>
+                                                  ) : (
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleMediaDownload(mediaUrl);
+                                                      }}
+                                                      className="p-3 bg-white/90 rounded-full hover:bg-white transition-colors"
+                                                      title="Download to view"
+                                                    >
+                                                      <FiDownload size={24} className="text-gray-700" />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )}
+                                              
+                                              {/* Download to device button (always visible on hover for downloaded images) */}
+                                              {isDownloaded && !message.uploading && (
+                                                <a
+                                                  href={mediaUrl}
+                                                  download={`image-${idx}.jpg`}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="absolute top-2 right-2 p-2 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                  title="Download to device"
+                                                >
+                                                  <FiDownload size={16} className="text-white" />
+                                                </a>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     )}
                                     {nonImages.map((att, idx) => {
@@ -1979,13 +2074,18 @@ const MessagesPage = () => {
                                       const isDoc = !isVideo && !isAudio;
                                       if (isVideo) {
                                         return (
-                                          <div key={`vid-${idx}`} className="relative">
-                                            <video controls className="w-full rounded-lg">
+                                          <div key={`vid-${idx}`} className="relative rounded-lg overflow-hidden" style={{ maxWidth: '400px' }}>
+                                            <video controls className="w-full rounded-lg" style={{ maxHeight: '300px' }}>
                                               <source src={resolveMediaUrl(att.url)} />
                                             </video>
                                             {message.uploading && (
-                                              <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center pointer-events-none">
-                                                <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
+                                              <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center pointer-events-none">
+                                                <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent mb-2"></div>
+                                                {uploadProgress[message.id] !== undefined && (
+                                                  <div className="text-white text-sm font-semibold">
+                                                    {uploadProgress[message.id]}%
+                                                  </div>
+                                                )}
                                               </div>
                                             )}
                                           </div>
@@ -1998,27 +2098,89 @@ const MessagesPage = () => {
                                           </audio>
                                         );
                                       }
-                                      // Document tile
+                                      // Document tile - WhatsApp style
+                                      const fileName = att.name || att.url.split('/').pop() || 'Document';
+                                      const fileExt = fileName.split('.').pop()?.toUpperCase() || 'FILE';
                                       return (
-                                        <div key={`doc-${idx}`} className="relative">
-                                          <a
-                                            href={resolveMediaUrl(att.url)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (message.uploading) e.preventDefault();
-                                            }}
-                                          >
-                                            <span className="text-gray-600">📄</span>
-                                            <span className="truncate text-sm text-gray-800">{att.url.split('/').pop()}</span>
-                                            {message.uploading && (
-                                              <div className="ml-auto">
-                                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent"></div>
+                                        <div key={`doc-${idx}`} className="relative" style={{ maxWidth: '350px' }}>
+                                          <div className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${
+                                            isMine 
+                                              ? 'bg-white/20 border-white/30' 
+                                              : 'bg-white border-gray-200'
+                                          }`}>
+                                            {/* File Icon */}
+                                            <div className={`flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center ${
+                                              isMine ? 'bg-white/30' : 'bg-blue-100'
+                                            }`}>
+                                              <div className={`text-xs font-bold ${
+                                                isMine ? 'text-white' : 'text-blue-600'
+                                              }`}>
+                                                {fileExt}
+                                              </div>
+                                            </div>
+                                            
+                                            {/* File Info */}
+                                            <div className="flex-1 min-w-0">
+                                              <div className={`text-sm font-medium truncate ${
+                                                isMine ? 'text-white' : 'text-gray-900'
+                                              }`}>
+                                                {fileName}
+                                              </div>
+                                              <div className={`text-xs ${
+                                                isMine ? 'text-white/70' : 'text-gray-500'
+                                              }`}>
+                                                {message.uploading ? 'Uploading...' : 'Document'}
+                                              </div>
+                                            </div>
+                                            
+                                            {/* Download/Upload Status */}
+                                            {message.uploading ? (
+                                              <div className="flex items-center gap-2">
+                                                <div className={`animate-spin rounded-full h-5 w-5 border-2 ${
+                                                  isMine ? 'border-white/50 border-t-white' : 'border-gray-300 border-t-gray-600'
+                                                }`}></div>
+                                                {uploadProgress[message.id] !== undefined && (
+                                                  <span className={`text-xs font-semibold ${
+                                                    isMine ? 'text-white' : 'text-gray-600'
+                                                  }`}>
+                                                    {uploadProgress[message.id]}%
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <div className="flex items-center gap-1">
+                                                {/* Open button */}
+                                                <a
+                                                  href={resolveMediaUrl(att.url)}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className={`flex-shrink-0 p-2 rounded-full transition-colors ${
+                                                    isMine 
+                                                      ? 'hover:bg-white/20 text-white' 
+                                                      : 'hover:bg-gray-100 text-gray-600'
+                                                  }`}
+                                                  title="Open document"
+                                                >
+                                                  <FiExternalLink size={18} />
+                                                </a>
+                                                {/* Download button */}
+                                                <a
+                                                  href={resolveMediaUrl(att.url)}
+                                                  download={fileName}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className={`flex-shrink-0 p-2 rounded-full transition-colors ${
+                                                    isMine 
+                                                      ? 'hover:bg-white/20 text-white' 
+                                                      : 'hover:bg-gray-100 text-gray-600'
+                                                  }`}
+                                                  title="Download to device"
+                                                >
+                                                  <FiDownload size={18} />
+                                                </a>
                                               </div>
                                             )}
-                                          </a>
+                                          </div>
                                         </div>
                                       );
                                     })}
@@ -2602,9 +2764,9 @@ const MessagesPage = () => {
             </div>
             <div className="px-4 pt-2 flex gap-2">
               {[
-                { key: "media", label: "Media" },
-                { key: "docs", label: "Docs" },
-                { key: "links", label: "Links" },
+                { key: "media", label: "Media", count: sharedMedia.filter((m) => m.type === "image" || m.type === "video").length },
+                { key: "docs", label: "Docs", count: sharedMedia.filter((m) => m.type === "document" || m.type === "audio").length },
+                { key: "links", label: "Links", count: sharedLinks.length },
               ].map((t) => (
                 <button
                   key={t.key}
@@ -2615,7 +2777,7 @@ const MessagesPage = () => {
                       : "bg-gray-100 text-gray-600"
                   }`}
                 >
-                  {t.label}
+                  {t.label} {t.count > 0 && `(${t.count})`}
                 </button>
               ))}
             </div>
@@ -2627,7 +2789,7 @@ const MessagesPage = () => {
                     .map((m) => (
                       <button
                         key={m.id + String(m.url)}
-                        className="block"
+                        className="block relative group"
                         onClick={() => {
                           setShowRightPanel(false);
                           const el = document.querySelector(`[data-mid="${m.id}"]`);
@@ -2635,9 +2797,11 @@ const MessagesPage = () => {
                             el.scrollIntoView({ behavior: "smooth", block: "center" });
                           }
                         }}
-                        title="Go to message"
+                        title={m.isMine ? "You sent this" : `${selectedUser?.name} sent this`}
                       >
                         <img src={m.url} alt="" className="w-full h-24 object-cover rounded" />
+                        {/* Indicator badge */}
+                        <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${m.isMine ? 'bg-green-500' : 'bg-blue-500'} opacity-0 group-hover:opacity-100 transition-opacity`}></div>
                       </button>
                     ))}
                 </div>
@@ -2649,7 +2813,7 @@ const MessagesPage = () => {
                     .map((m) => (
                       <button
                         key={m.id + String(m.url)}
-                        className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate text-left w-full"
+                        className="flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-gray-100 text-left w-full"
                         onClick={() => {
                           setShowRightPanel(false);
                           const el = document.querySelector(`[data-mid="${m.id}"]`);
@@ -2657,9 +2821,10 @@ const MessagesPage = () => {
                             el.scrollIntoView({ behavior: "smooth", block: "center" });
                           }
                         }}
-                        title="Go to message"
+                        title={m.isMine ? "You sent this" : `${selectedUser?.name} sent this`}
                       >
-                        {m.url}
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${m.isMine ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                        <span className="truncate text-sm">{m.filename || m.url.split('/').pop() || 'Document'}</span>
                       </button>
                     ))}
                 </div>
@@ -2669,7 +2834,7 @@ const MessagesPage = () => {
                   {sharedLinks.map((m) => (
                     <button
                       key={m.id + String(m.url)}
-                      className="block p-2 bg-gray-50 rounded border hover:bg-gray-100 truncate text-left w-full"
+                      className="flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-gray-100 text-left w-full"
                       onClick={() => {
                         setShowRightPanel(false);
                         const el = document.querySelector(`[data-mid=\"${m.id}\"]`);
@@ -2677,9 +2842,10 @@ const MessagesPage = () => {
                           el.scrollIntoView({ behavior: "smooth", block: "center" });
                         }
                       }}
-                      title="Go to message"
+                      title={m.isMine ? "You sent this" : `${selectedUser?.name} sent this`}
                     >
-                      {m.url}
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${m.isMine ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                      <span className="truncate text-sm">{m.url}</span>
                     </button>
                   ))}
                 </div>

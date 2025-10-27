@@ -43,6 +43,8 @@ const storage = new CloudinaryStorage({
       resource_type: "auto", // allow images, video, raw docs
       public_id: `${Date.now()}_${base}`,
       overwrite: false,
+      type: "upload", // Ensure files are publicly accessible
+      access_mode: "public", // Make files public
     };
   },
 });

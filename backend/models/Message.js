@@ -324,6 +324,7 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
     isStarred: this.isStarredBy(viewerId),
     isPinned: this.isPinnedBy(viewerId),
     isForwarded: this.isForwarded,
+    forwardedFrom: this.forwardedFrom,
     timestamp: this.createdAt,
     readAt: this.readAt,
     deliveredAt: this.deliveredAt,

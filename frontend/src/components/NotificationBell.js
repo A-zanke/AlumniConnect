@@ -257,15 +257,33 @@ const NotificationBell = () => {
                   <p>No notifications yet</p>
                 </div>
               ) : (
-                items.map((n) => (
+                items
+                  .filter((n) => {
+                    // Filter out forward notifications - only show message, reaction, and connection_request types
+                    const allowedTypes = ['message', 'reaction', 'connection_request', 'comment', 'like', 'post'];
+                    return allowedTypes.includes(n.type);
+                  })
+                  .map((n) => (
                   <div
                     key={n._id}
-                    className={`flex items-start gap-3 p-4 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 rounded-xl transition-all duration-200 border-b border-gray-100 last:border-b-0 ${
+                    className={`flex items-start gap-3 p-4 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 rounded-xl transition-all duration-200 border-b border-gray-100 last:border-b-0 cursor-pointer ${
                       !n.read ? "bg-blue-50 border-l-4 border-l-blue-500" : ""
                     }`}
+                    onClick={() => {
+                      // Redirect based on notification type
+                      if (n.type === 'message' || n.type === 'reaction') {
+                        // Redirect to messages page with the sender
+                        window.location.href = `/messages?user=${n.sender?._id}`;
+                      } else {
+                        goProfile(n.sender, n._id, n);
+                      }
+                    }}
                   >
                     <div
-                      onClick={() => goProfile(n.sender, n._id, n)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        goProfile(n.sender, n._id, n);
+                      }}
                       className="cursor-pointer transform hover:scale-105 transition-transform duration-200"
                     >
                       <Avatar
@@ -278,7 +296,10 @@ const NotificationBell = () => {
                       <div className="text-sm">
                         <span
                           className="font-semibold text-gray-900 hover:text-blue-600 cursor-pointer transition-colors duration-200"
-                          onClick={() => goProfile(n.sender, n._id, n)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            goProfile(n.sender, n._id, n);
+                          }}
                         >
                           {n.sender?.name || "User"}
                         </span>{" "}
