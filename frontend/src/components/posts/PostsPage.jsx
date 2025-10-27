@@ -22,21 +22,20 @@ import { io } from "socket.io-client";
 
 import PostCard from "./PostCard";
 import CreatePost from "./CreatePost";
-import PostAnalytics from "./PostAnalytics";
 import { useAuth } from "../../context/AuthContext";
 import "../../styles/PostsPage.css";
 
 const PostsPage = () => {
   const { user } = useAuth();
   const [posts, setPosts] = useState([]);
-  const [view, setView] = useState("feed"); // 'feed', 'saved', 'my-posts', 'analytics'
+  const [view, setView] = useState("feed"); // 'feed', 'saved', 'my-posts'
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showComposer, setShowComposer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchTags, setSearchTags] = useState([]);
-  const [filter, setFilter] = useState("all"); // 'all', 'my-posts', 'saved', 'by-department'
+  const [filter, setFilter] = useState("all"); // 'all', 'saved'
   const [sort, setSort] = useState("recent"); // 'recent', 'most-reactions', 'most-comments'
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -45,6 +44,8 @@ const PostsPage = () => {
   const [newPostsCount, setNewPostsCount] = useState(0);
   const [showNewPostsBanner, setShowNewPostsBanner] = useState(false);
   const [socket, setSocket] = useState(null);
+  const [reportingPostId, setReportingPostId] = useState(null);
+  const [reportReason, setReportReason] = useState("");
   const observerRef = useRef();
   const lastPostRef = useCallback(
     (node) => {
@@ -63,8 +64,6 @@ const PostsPage = () => {
   const canCreatePost =
     user && ["alumni", "teacher", "admin"].includes(user.role);
   const isAdmin = user && user.role === "admin";
-  const canViewAnalytics =
-    user && ["alumni", "teacher", "admin"].includes(user.role);
 
   // Debounce search query
   useEffect(() => {
@@ -111,7 +110,6 @@ const PostsPage = () => {
 
         if (view === "saved") url = "/api/posts/saved";
         else if (view === "my-posts") url = "/api/posts?userId=me";
-        else if (view === "analytics") return; // Analytics handled separately
 
         const response = await axios.get(`${url}?${params.toString()}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -136,9 +134,7 @@ const PostsPage = () => {
   );
 
   useEffect(() => {
-    if (view !== "analytics") {
-      fetchPosts();
-    }
+    fetchPosts();
   }, [fetchPosts, view]);
 
   useEffect(() => {
@@ -163,6 +159,27 @@ const PostsPage = () => {
   const handlePostDelete = (postId) => {
     setPosts((prev) => prev.filter((p) => p._id !== postId));
     setSelectedPosts((prev) => prev.filter((id) => id !== postId));
+    toast.success("Post deleted successfully");
+  };
+
+  const handleReportPost = async (postId) => {
+    if (!reportReason.trim()) {
+      toast.error("Please provide a reason for reporting");
+      return;
+    }
+    try {
+      await axios.post(
+        `/api/posts/${postId}/report`,
+        { reason: reportReason },
+        { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
+      );
+      toast.success("Post reported successfully. Admins will review it.");
+      setReportingPostId(null);
+      setReportReason("");
+    } catch (error) {
+      toast.error("Failed to report post");
+      console.error("Report error:", error);
+    }
   };
 
   const handleRefresh = () => {
@@ -349,31 +366,7 @@ const PostsPage = () => {
           </div>
         )}
 
-        {/* Tag Chips */}
-        {view !== "analytics" && (
-          <div className="tag-chips">
-            {searchTags.map((tag) => (
-              <motion.span
-                key={tag}
-                className="tag-chip"
-                whileHover={{ scale: 1.05 }}
-                onClick={() => removeTag(tag)}
-              >
-                #{tag} <FiX />
-              </motion.span>
-            ))}
-            <motion.span
-              className="tag-chip add-tag"
-              whileHover={{ scale: 1.05 }}
-              onClick={() => {
-                const tag = prompt("Add tag:");
-                if (tag) addTag(tag);
-              }}
-            >
-              + Add Tag
-            </motion.span>
-          </div>
-        )}
+        {/* Tag Chips - Hidden */}
       </header>
 
       {/* Navigation Tabs */}
@@ -405,15 +398,6 @@ const PostsPage = () => {
               <span>My Posts</span>
             </button>
           )}
-          {canViewAnalytics && (
-            <button
-              className={`nav-tab ${view === "analytics" ? "active" : ""}`}
-              onClick={() => setView("analytics")}
-            >
-              <FiBarChart2 />
-              <span>Analytics</span>
-            </button>
-          )}
         </div>
       </nav>
 
@@ -443,11 +427,46 @@ const PostsPage = () => {
         </div>
       )}
 
+      {/* Report Modal */}
+      {reportingPostId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-lg p-6 max-w-md w-full"
+          >
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Report Post</h3>
+            <textarea
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              placeholder="Please explain why you're reporting this post..."
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4 resize-none"
+              rows="4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setReportingPostId(null);
+                  setReportReason("");
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleReportPost(reportingPostId)}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+              >
+                Report
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Main Feed */}
       <main className="posts-feed">
-        {view === "analytics" ? (
-          <PostAnalytics />
-        ) : loading && page === 1 ? (
+        {loading && page === 1 ? (
           <div className="loading-container">
             {Array.from({ length: 5 }).map((_, i) => (
               <SkeletonPost key={i} />
@@ -532,6 +551,7 @@ const PostsPage = () => {
                     post={post}
                     onUpdate={handlePostUpdate}
                     onDelete={handlePostDelete}
+                    onReport={(postId) => setReportingPostId(postId)}
                     searchQuery={debouncedQuery}
                   />
                 </div>

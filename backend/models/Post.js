@@ -4,8 +4,14 @@ const reactionSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   type: {
     type: String,
-    enum: ["like", "love", "celebrate", "support", "insightful", "curious"],
+    enum: [
+      // Forum/UI set
+      "like", "love", "laugh", "wow", "sad", "angry",
+      // Legacy values retained for backward compatibility
+      "celebrate", "support", "insightful", "curious",
+    ],
     required: true,
+    default: "like",
   },
 });
 

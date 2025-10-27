@@ -968,6 +968,49 @@ body {
   background-color: rgba(229, 62, 62, 0.1);
 }
 
+/* Ensure inline message actions dropdown renders above sticky header */
+.message-actions-menu {
+  z-index: 1200 !important;
+}
+
+/* Ensure the message options dropdown panel is always on top */
+.message-menu-dropdown {
+  z-index: 1300 !important;
+}
+
+/* Links inside sender (blue) bubbles - force white color */
+.bubble--mine a,
+.bubble--mine a:link,
+.bubble--mine a:visited,
+.bubble--mine a:active {
+  color: #ffffff !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+  font-weight: 500;
+}
+.bubble--mine a:hover {
+  color: #ffffff !important;
+  opacity: 0.9;
+  text-decoration: underline !important;
+}
+
+/* Forwarded chip inside sender bubble */
+.bubble--mine .forwarded-chip {
+  color: rgba(255,255,255,0.9) !important;
+}
+
+/* Links inside receiver (white) bubbles - blue color */
+.bubble--other a,
+.bubble--other a:link,
+.bubble--other a:visited {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+.bubble--other a:hover {
+  color: #1d4ed8 !important;
+}
+
 /* Quick reactions */
 .quick-reactions {
   position: absolute;

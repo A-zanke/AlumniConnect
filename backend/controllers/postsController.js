@@ -383,6 +383,11 @@ exports.reactToPost = async (req, res) => {
         }).catch((e) => console.error("notify react error:", e));
       }
     }
+    const allowedReactions = new Set(["like", "love", "laugh", "wow", "sad", "angry"]);
+    post.reactions = (post.reactions || []).map((r) => ({
+      userId: r.userId,
+      type: allowedReactions.has(r.type) ? r.type : "like",
+    }));
     await post.save();
 
     const reactionCounts = (post.reactions || []).reduce((acc, r) => {
@@ -392,6 +397,10 @@ exports.reactToPost = async (req, res) => {
     const userReaction =
       post.reactions.find((r) => String(r.userId) === String(req.user.id))
         ?.type || null;
+    const counts = { ...reactionCounts };
+    const hasReacted = (post.reactions || []).some(
+      (r) => String(r.userId) === String(req.user.id)
+    );
 
     // Emit socket.io event
     if (global.io) {
@@ -399,10 +408,11 @@ exports.reactToPost = async (req, res) => {
         postId: post._id,
         reactionCounts,
         userReaction,
+        counts,
       });
     }
 
-    res.json({ reactionCounts, userReaction });
+    res.json({ reactionCounts, counts, userReaction, hasReacted });
   } catch (err) {
     console.error("reactToPost error:", err);
     res.status(500).json({ message: "Failed to react to post." });

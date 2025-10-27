@@ -52,6 +52,7 @@ const CreatePost = ({ onClose, onPostCreated }) => {
   const [altTexts, setAltTexts] = useState({});
   const [uploadProgress, setUploadProgress] = useState({});
   const [isDragging, setIsDragging] = useState(false);
+  const [showEmojiModal, setShowEmojiModal] = useState(false);
 
   const departments = ["CSE", "AI-DS", "E&TC", "Mechanical", "Civil", "Other"];
   const emojis = ["😊", "😂", "❤️", "👍", "🎉", "🔥", "💡", "👏", "🚀", "💯"];
@@ -386,6 +387,17 @@ const CreatePost = ({ onClose, onPostCreated }) => {
       toast.success("Post created successfully!");
       localStorage.removeItem("createPostDraft");
       onPostCreated(response.data);
+      
+      // Reset form
+      setContent("");
+      setSelectedDepartments([]);
+      setMediaFiles([]);
+      setTags([]);
+      setTagInput("");
+      setAltTexts({});
+      setCharCount(0);
+      setValidationErrors({});
+      setLinkPreviews([]);
     } catch (error) {
       console.error("Failed to create post:", error);
       toast.error(error.response?.data?.message || "Failed to create post");
@@ -434,38 +446,6 @@ const CreatePost = ({ onClose, onPostCreated }) => {
         </header>
 
         <form onSubmit={handleSubmit} className="create-post-form">
-          {/* Visibility Selector */}
-          <div className="visibility-selection">
-            <label>Visibility:</label>
-            <div className="visibility-options">
-              <button
-                type="button"
-                className={`visibility-btn ${
-                  visibility === "public" ? "selected" : ""
-                }`}
-                onClick={() => setVisibility("public")}
-              >
-                <FiEye />
-                Public
-              </button>
-              <button
-                type="button"
-                className={`visibility-btn ${
-                  visibility === "connections" ? "selected" : ""
-                }`}
-                onClick={() => setVisibility("connections")}
-              >
-                <FiUsers />
-                Connections Only
-              </button>
-            </div>
-            <p className="visibility-preview">
-              {visibility === "public"
-                ? "Visible to all alumni"
-                : "Visible only to your connections"}
-            </p>
-          </div>
-
           {/* Department Selection */}
           <div className="department-selection">
             <label>Visible to departments:</label>
@@ -675,13 +655,8 @@ const CreatePost = ({ onClose, onPostCreated }) => {
             )}
           </AnimatePresence>
 
-          {/* Media Upload Zone */}
-          <div
-            className={`media-upload-zone ${isDragging ? "dragging" : ""}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
+          {/* Media Upload Zone - Improved */}
+          <div className="media-upload-section">
             <input
               ref={fileInputRef}
               type="file"
@@ -690,15 +665,24 @@ const CreatePost = ({ onClose, onPostCreated }) => {
               onChange={handleFileChange}
               accept="image/*,video/*,.pdf,.doc,.docx"
             />
-            <button
-              type="button"
-              className="upload-btn"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Upload media"
-            >
-              <FiUpload />
-              Drag & drop files or click to upload
-            </button>
+            <div className="media-upload-buttons">
+              <button
+                type="button"
+                className="media-upload-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Add images"
+              >
+                <FiImage size={24} />
+              </button>
+              <button
+                type="button"
+                className="media-upload-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Add video"
+              >
+                <FiVideo size={24} />
+              </button>
+            </div>
           </div>
 
           {/* Media Preview */}
@@ -782,27 +766,39 @@ const CreatePost = ({ onClose, onPostCreated }) => {
             )}
           </AnimatePresence>
 
-          {/* Emoji Picker */}
+          {/* Emoji Picker Modal */}
           <AnimatePresence>
             {showEmojiPicker && (
-              <motion.div
-                className="emoji-picker"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-              >
-                {emojis.map((emoji, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    className="emoji-btn"
-                    onClick={() => addEmoji(emoji)}
-                    aria-label={`Add ${emoji}`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </motion.div>
+              <>
+                <motion.div
+                  className="fixed inset-0 bg-black bg-opacity-50 z-1999"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowEmojiPicker(false)}
+                />
+                <motion.div
+                  className="emoji-picker"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                >
+                  {emojis.map((emoji, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className="emoji-btn"
+                      onClick={() => {
+                        addEmoji(emoji);
+                        setShowEmojiPicker(false);
+                      }}
+                      aria-label={`Add ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </motion.div>
+              </>
             )}
           </AnimatePresence>
 
@@ -823,32 +819,12 @@ const CreatePost = ({ onClose, onPostCreated }) => {
             <div className="footer-actions">
               <button
                 type="button"
-                className="action-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title="Add images"
-                aria-label="Add images"
-              >
-                <FiImage />
-              </button>
-
-              <button
-                type="button"
-                className="action-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title="Add video"
-                aria-label="Add video"
-              >
-                <FiVideo />
-              </button>
-
-              <button
-                type="button"
-                className="action-btn"
+                className="emoji-action-btn"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 title="Add emoji"
                 aria-label="Add emoji"
               >
-                <FiSmile />
+                <FiSmile size={20} />
               </button>
             </div>
 

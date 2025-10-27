@@ -270,10 +270,7 @@ io.on("connection", (socket) => {
       }
       if (ab || ba) return;
       const participants = [String(from), String(to)].sort();
-      const threadId = `${participants[0]}_${participants[1]}`;
       const messageData = {
-        threadId,
-        clientKey,
         from,
         to,
         content: content || "",
@@ -282,23 +279,30 @@ io.on("connection", (socket) => {
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
+      // Ensure a Thread exists without trying to $set participants in an update (avoids NotSingleValueField)
+      let thread = await Thread.findOne({
+        participants: { $all: participants, $size: 2 },
+      });
+      if (!thread) {
+        thread = await Thread.create({ participants });
+      }
+      const threadId = String(thread._id);
+      messageData.threadId = threadId;
+
       // Idempotent insert by (threadId, clientKey) to avoid duplicates
       const query = clientKey ? { threadId, clientKey } : { _id: undefined };
-      const update = { $setOnInsert: messageData };
+      const update = { $setOnInsert: { ...messageData, clientKey } };
       const options = { upsert: true, new: true };
       let msg = clientKey
         ? await Message.findOneAndUpdate(query, update, options)
         : await Message.create(messageData);
-      // Update per-user unread in Thread (upsert)
-      const thread = await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
-        {
-          $setOnInsert: { participants },
-          $set: { lastMessageAt: new Date(), lastMessage: msg._id },
-          $inc: { [`unreadCount.${to}`]: 1 },
-        },
-        { upsert: true, new: true }
-      );
+
+      // Update thread fields separately without touching participants
+      thread.lastMessageAt = new Date();
+      thread.lastMessage = msg._id;
+      const currentUnread = thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0;
+      if (thread.unreadCount?.set) thread.unreadCount.set(String(to), currentUnread + 1);
+      await thread.save();
       const messagePayload = {
         conversationId: String(thread._id),
         messageId: String(msg._id),

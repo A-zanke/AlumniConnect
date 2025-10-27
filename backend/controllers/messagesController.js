@@ -71,10 +71,8 @@ function getAttachmentUrls(attachments) {
 function isDeletedForViewer(doc, viewerId) {
   const atts = doc.attachments;
   if (!Array.isArray(atts)) return false;
-  return (
-    atts.includes(`deletedFor:${viewerId}`) ||
-    atts.includes("deletedForEveryone")
-  );
+  // Only hide if deleted for THIS viewer. Do NOT hide delete-for-everyone here.
+  return atts.includes(`deletedFor:${viewerId}`);
 }
 
 function getReplyFromAttachments(attachments) {
@@ -91,6 +89,11 @@ function getReplyFromAttachments(attachments) {
 function parseMessage(doc, viewerId) {
   try {
     if (isDeletedForViewer(doc, viewerId)) return null;
+    // If deleted for everyone (metadata.deleted or attachment flag), return tombstone
+    const deletedForEveryone =
+      (doc.metadata && doc.metadata.deleted === true) ||
+      (Array.isArray(doc.attachments) && doc.attachments.includes('deletedForEveryone')) ||
+      (typeof doc.content === 'string' && doc.content === 'This message was deleted');
 
     const reactions = normalizeReactions(doc);
 
@@ -99,6 +102,29 @@ function parseMessage(doc, viewerId) {
       : false;
 
     const status = doc.isRead ? "seen" : doc.deliveredAt ? "delivered" : "sent";
+
+    if (deletedForEveryone) {
+      return {
+        id: doc._id,
+        messageId: doc.messageId,
+        senderId: doc.from?._id || doc.from,
+        recipientId: doc.to?._id || doc.to,
+        content: "This message was deleted",
+        attachments: [],
+        messageType: "text",
+        timestamp: doc.createdAt,
+        status,
+        isRead: !!doc.isRead,
+        readAt: doc.readAt || null,
+        deliveredAt: doc.deliveredAt || null,
+        reactions: [],
+        replyTo: null,
+        isStarred: false,
+        isForwarded: false,
+        isSystem: false,
+        systemCode: undefined,
+      };
+    }
 
     return {
       id: doc._id,
@@ -117,6 +143,9 @@ function parseMessage(doc, viewerId) {
       replyTo: getReplyFromAttachments(doc.attachments),
       isStarred,
       isForwarded: !!doc.forwardedFrom,
+      forwardedFrom: doc.forwardedFrom || null,
+      isSystem: !!(doc.metadata && doc.metadata.system === true),
+      systemCode: doc.metadata && doc.metadata.systemCode ? doc.metadata.systemCode : undefined,
     };
   } catch (e) {
     return null;
@@ -220,19 +249,14 @@ exports.getMessages = async (req, res) => {
       return res.status(400).json({ message: "Invalid user ID" });
     }
 
-    const [connected, blocked] = await Promise.all([
+    const [connected] = await Promise.all([
       areConnected(me, other),
-      isBlocked(me, other),
     ]);
 
     if (!connected)
       return res
         .status(403)
         .json({ message: "You can only message connected users" });
-    if (blocked)
-      return res
-        .status(403)
-        .json({ message: "Messaging is blocked between these users" });
 
     // Get messages with populated reply references
     const messages = await Message.find({
@@ -391,12 +415,16 @@ exports.sendMessage = async (req, res) => {
 
     // Handle forward
     let forwardedFrom = null;
+    let isForwarded = false;
+    let originalMessageId = null;
     if (req.body.forwardedFromId) {
       if (!mongoose.Types.ObjectId.isValid(req.body.forwardedFromId)) {
         return res.status(400).json({ message: "Invalid forward message ID" });
       }
       const originalMessage = await Message.findById(req.body.forwardedFromId);
       if (originalMessage) {
+        isForwarded = true;
+        originalMessageId = originalMessage._id;
         forwardedFrom = {
           originalSender: originalMessage.from,
           forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
@@ -433,6 +461,9 @@ exports.sendMessage = async (req, res) => {
       messageId:
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       deliveredAt: new Date(),
+      isForwarded,
+      originalMessageId,
+      forwardedFrom,
     };
 
     // Handle location messages
@@ -443,6 +474,10 @@ exports.sendMessage = async (req, res) => {
     // Handle contact messages
     if (messageType === "contact" && req.body.contact) {
       messageData.contact = req.body.contact;
+    }
+
+    if (forwardedFrom) {
+      messageData.forwardedFrom = forwardedFrom;
     }
 
     const message = await Message.create(messageData);
@@ -472,6 +507,8 @@ exports.sendMessage = async (req, res) => {
         body: dto.content,
         attachments: dto.attachments || [],
         createdAt: dto.timestamp,
+        isForwarded: dto.isForwarded === true,
+        forwardedFrom: populatedMessage?.forwardedFrom || null,
       });
 
       // Send delivery confirmation to sender
@@ -628,6 +665,24 @@ exports.react = async (req, res) => {
         reactedBy: String(me),
         emoji,
       });
+
+      // Create and push a notification to the other participant
+      try {
+        const recipientId = String(message.from) === String(me) ? String(message.to) : String(message.from);
+        if (recipientId !== String(me)) {
+          const note = await NotificationService.createNotification({
+            recipientId,
+            senderId: me,
+            type: "reaction",
+            content: `reacted to your message`,
+            relatedId: String(message._id),
+            onModel: "Message",
+          });
+          if (note) {
+            req.io.to(recipientId).emit("notification:new", note);
+          }
+        }
+      } catch {}
     }
 
     return res.json({
@@ -779,21 +834,16 @@ exports.deleteMessage = async (req, res) => {
           .json({ message: "Only sender can delete for everyone" });
       }
 
-      // Check if message is within delete time limit (e.g., 1 hour)
-      const deleteTimeLimit = 60 * 60 * 1000; // 1 hour
-      const messageAge = Date.now() - new Date(message.createdAt).getTime();
-
-      if (messageAge > deleteTimeLimit) {
-        return res
-          .status(403)
-          .json({ message: "Delete for everyone time limit exceeded" });
-      }
-
       // Replace content and strip media so both sides see a placeholder
       message.content = "This message was deleted";
       message.attachments = [];
       message.messageType = "text";
-      message.metadata = { ...(message.metadata || {}), deleted: true };
+      // Add explicit markers to ensure persistence on all code paths
+      message.set("metadata.deleted", true);
+      message.attachments = [
+        ...(Array.isArray(message.attachments) ? message.attachments : []),
+        'deletedForEveryone',
+      ];
       await message.save();
 
       if (req.io) {
@@ -832,7 +882,7 @@ exports.deleteMessage = async (req, res) => {
   }
 };
 
-// Bulk delete messages
+// Bulk delete messages (using marker-based deletion for persistence)
 exports.bulkDelete = async (req, res) => {
   try {
     const me = req.user._id;
@@ -862,13 +912,23 @@ exports.bulkDelete = async (req, res) => {
           continue;
         }
 
-        message.deletedForEveryone = true;
-        message.deletedAt = new Date();
+        // Replace with placeholder
+        message.content = "This message was deleted";
+        message.attachments = [];
+        message.messageType = "text";
+        message.set("metadata.deleted", true);
+        message.attachments = [
+          ...(Array.isArray(message.attachments) ? message.attachments : []),
+          'deletedForEveryone',
+        ];
         await message.save();
         result.deleted += 1;
       } else {
-        if (!message.deletedFor.includes(me)) {
-          message.deletedFor.push(me);
+        // Delete for me only: add marker to attachments
+        message.attachments = message.attachments || [];
+        const marker = `deletedFor:${me}`;
+        if (!message.attachments.includes(marker)) {
+          message.attachments.push(marker);
           await message.save();
         }
         result.updated += 1;
@@ -1095,8 +1155,6 @@ exports.getMedia = async (req, res) => {
         { from: me, to: other },
         { from: other, to: me },
       ],
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
       "attachments.0": { $exists: true },
     };
 
@@ -1105,12 +1163,16 @@ exports.getMedia = async (req, res) => {
       query["attachments.type"] = type;
     }
 
-    const messages = await Message.find(query)
+    const messagesAll = await Message.find(query)
       .populate("from", "name username avatarUrl")
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
       .lean();
+    const messages = messagesAll.filter((msg) => {
+      const atts = msg.attachments || [];
+      const hasDeletedForMe = atts.includes(`deletedFor:${me}`);
+      const hasDeletedForEveryone = atts.includes("deletedForEveryone") || msg?.metadata?.deleted === true;
+      return !hasDeletedForMe && !hasDeletedForEveryone;
+    }).slice((page - 1) * limit, (page - 1) * limit + parseInt(limit));
 
     const media = [];
     const links = [];
@@ -1118,7 +1180,8 @@ exports.getMedia = async (req, res) => {
     messages.forEach((msg) => {
       (msg.attachments || []).forEach((attachment) => {
         const url = typeof attachment === "string" ? attachment : attachment?.url;
-        if (!url) return;
+        // Only treat http(s) URLs as media; skip markers like react:*, reply:*, deletedFor:*
+        if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
         const lower = url.toLowerCase();
         const type =
           /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)
@@ -1164,7 +1227,9 @@ exports.getMedia = async (req, res) => {
               title: extractLinkTitle(link),
               timestamp: msg.createdAt,
               sender: msg.from,
-              isStarred: msg.isStarred.includes(me),
+              isStarred: Array.isArray(msg.isStarred)
+                ? msg.isStarred.includes(me)
+                : false,
             });
           });
         }
@@ -1244,16 +1309,17 @@ exports.getStarredMessages = async (req, res) => {
 exports.searchMessages = async (req, res) => {
   try {
     const me = req.user._id;
-    const { query, userId, page = 1, limit = 20 } = req.query;
+    const { query, userId, page = 1, limit = 20, dateFrom, dateTo } = req.query;
 
     if (!query)
       return res.status(400).json({ message: "Search query required" });
 
     const searchQuery = {
       $or: [{ from: me }, { to: me }],
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
       $text: { $search: query },
+      // Exclude messages hidden for this viewer and global-deleted tombstones
+      attachments: { $not: { $in: [`deletedFor:${me}`, 'deletedForEveryone'] } },
+      "metadata.deleted": { $ne: true },
     };
 
     // Filter by specific user if provided
@@ -1263,6 +1329,12 @@ exports.searchMessages = async (req, res) => {
         { from: userId, to: me },
       ];
     }
+
+    // Optional date filtering
+    const createdAt = {};
+    if (dateFrom && !isNaN(Date.parse(dateFrom))) createdAt.$gte = new Date(dateFrom);
+    if (dateTo && !isNaN(Date.parse(dateTo))) createdAt.$lte = new Date(dateTo);
+    if (Object.keys(createdAt).length > 0) searchQuery.createdAt = createdAt;
 
     const messages = await Message.find(searchQuery)
       .populate("from to", "name username avatarUrl")
@@ -1363,8 +1435,8 @@ exports.block = async (req, res) => {
         messageType: "text",
         threadId: String(thread._id),
         metadata: { system: true, systemCode: action },
-        // hide from the other participant
-        deletedFor: [targetUserId],
+        // hide from the other participant using attachments marker parsed elsewhere
+        attachments: [`deletedFor:${targetUserId}`],
       });
 
       // Emit to blocker timeline only
@@ -1554,7 +1626,7 @@ exports.getMessageInfo = async (req, res) => {
   }
 };
 
-// Delete entire chat
+// Delete entire chat (marker-based, WhatsApp-like persistence)
 exports.deleteChat = async (req, res) => {
   try {
     const me = req.user._id;
@@ -1563,26 +1635,27 @@ exports.deleteChat = async (req, res) => {
 
     if (!other) return res.status(400).json({ message: "Missing userId" });
 
+    const match = {
+      $or: [
+        { from: me, to: other },
+        { from: other, to: me },
+      ],
+    };
+
     if (scope === "everyone") {
-      // Delete all messages between users
-      await Message.updateMany(
-        {
-          $or: [
-            { from: me, to: other },
-            { from: other, to: me },
-          ],
+      // Convert all messages between users to tombstones and mark deleted for everyone
+      await Message.updateMany(match, {
+        $set: {
+          content: "This message was deleted",
+          messageType: "text",
+          "metadata.deleted": true,
         },
-        {
-          $set: {
-            deletedForEveryone: true,
-            deletedAt: new Date(),
-          },
-        }
-      );
+        $addToSet: { attachments: "deletedForEveryone" },
+      });
 
       if (req.io) {
         req.io.to(String(me)).emit("chat:deleted", {
-          userId: other,
+          userId: String(other),
           scope: "everyone",
         });
         req.io.to(String(other)).emit("chat:deleted", {
@@ -1591,22 +1664,14 @@ exports.deleteChat = async (req, res) => {
         });
       }
     } else {
-      // Mark as deleted for current user only
-      await Message.updateMany(
-        {
-          $or: [
-            { from: me, to: other },
-            { from: other, to: me },
-          ],
-        },
-        {
-          $addToSet: { deletedFor: me },
-        }
-      );
+      // Mark as deleted for current user only using per-user marker
+      await Message.updateMany(match, {
+        $addToSet: { attachments: `deletedFor:${me}` },
+      });
 
       if (req.io) {
         req.io.to(String(me)).emit("chat:deleted", {
-          userId: other,
+          userId: String(other),
           scope: "me",
         });
       }

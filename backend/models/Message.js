@@ -81,6 +81,10 @@ const MessageSchema = new mongoose.Schema(
       ref: "Message",
       default: null,
     },
+    forwardedFrom: {
+      originalSender: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      forwardCount: { type: Number, default: 0 },
+    },
 
     // Message metadata
     metadata: {
@@ -106,6 +110,11 @@ const MessageSchema = new mongoose.Schema(
         name: String,
         phone: String,
         email: String,
+      },
+      // Tombstone flag for delete-for-everyone
+      deleted: {
+        type: Boolean,
+        default: false,
       },
     },
 
@@ -238,15 +247,14 @@ MessageSchema.statics.getUnreadCount = function (userId) {
   return this.countDocuments({
     to: userId,
     isRead: false,
-    attachments: { $not: { $in: [`deletedFor:${userId}`, 'deletedForEveryone'] } },
+    attachments: { $not: { $in: [`deletedFor:${userId}`] } },
   });
 };
 
 // Instance method to check if message is deleted for user
 MessageSchema.methods.isDeletedFor = function (userId) {
   return (
-    (this.attachments && this.attachments.includes(`deletedFor:${userId}`)) ||
-    (this.attachments && this.attachments.includes('deletedForEveryone'))
+    this.attachments && this.attachments.includes(`deletedFor:${userId}`)
   );
 };
 
@@ -273,37 +281,37 @@ MessageSchema.methods.getReactions = function () {
     });
 };
 
-// Instance method to check if starred by user
-MessageSchema.methods.isStarredBy = function (userId) {
-  return this.attachments && this.attachments.includes(`star:${userId}`);
-};
-
-// Instance method to check if pinned by user
-MessageSchema.methods.isPinnedBy = function (userId) {
-  return this.attachments && this.attachments.includes(`pin:${userId}`);
-};
-
-// Instance method to get reply reference
-MessageSchema.methods.getReplyTo = function () {
-  if (!this.attachments) return null;
-
-  const replyAtt = this.attachments.find(
-    (att) => typeof att === "string" && att.startsWith("reply:")
-  );
-
-  if (replyAtt) {
-    const refId = replyAtt.split(":")[1];
-    return { id: refId };
-  }
-
-  return null;
-};
-
 // Instance method to format for API response
 MessageSchema.methods.toAPIResponse = function (viewerId) {
-  // Check if deleted for viewer
+  // 1) Delete for me: hide entirely for the viewer
   if (this.isDeletedFor(viewerId)) return null;
 
+  // 2) Delete for everyone: show tombstone to both sides
+  const deletedForEveryone = this.attachments && this.attachments.includes('deletedForEveryone');
+  if (deletedForEveryone) {
+    return {
+      id: this._id,
+      senderId: this.from,
+      recipientId: this.to,
+      isDeleted: true,
+      deletedForEveryone: true,
+      content: "This message was deleted",
+      messageType: "text",
+      attachments: [],
+      reactions: [],
+      replyTo: null,
+      isStarred: false,
+      isPinned: false,
+      isForwarded: false,
+      timestamp: this.createdAt,
+      readAt: this.readAt,
+      deliveredAt: this.deliveredAt,
+      status: this.isRead ? "seen" : this.deliveredAt ? "delivered" : "sent",
+      metadata: {},
+    };
+  }
+
+  // 3) Normal message
   return {
     id: this._id,
     senderId: this.from,

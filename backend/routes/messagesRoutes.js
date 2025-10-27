@@ -158,23 +158,80 @@ router.post("/forward", protect, async (req, res) => {
 
     for (const recipientId of recipients) {
       try {
+        // Check if connected and not blocked
+        const [connected, blocked] = await Promise.all([
+          areConnected(req.user._id, recipientId),
+          isBlocked(req.user._id, recipientId),
+        ]);
+
+        if (!connected) {
+          forwardResults.push({
+            recipientId,
+            success: false,
+            error: "You can only message connected users",
+          });
+          continue;
+        }
+        if (blocked) {
+          forwardResults.push({
+            recipientId,
+            success: false,
+            error: "Messaging is blocked between these users",
+          });
+          continue;
+        }
+
+        // Ensure thread exists
+        const participants = [String(req.user._id), String(recipientId)].sort();
+        let thread = await Thread.findOne({
+          participants: { $all: participants, $size: 2 },
+        });
+        if (!thread) {
+          thread = await Thread.create({ participants });
+        }
+
         // Create forwarded message
-        const forwardedMessage = {
+        const messageData = {
           from: req.user._id,
           to: recipientId,
           content: originalMessage.content,
           attachments: originalMessage.attachments,
           messageType: originalMessage.messageType,
+          isForwarded: true,
+          originalMessageId: originalMessage._id,
           forwardedFrom: {
             originalSender: originalMessage.from._id,
-            forwardCount:
-              (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
+            forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
           },
-          location: originalMessage.location,
-          contact: originalMessage.contact,
+          threadId: String(thread._id),
+          messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          deliveredAt: new Date(),
         };
 
-        const newMessage = await Message.create(forwardedMessage);
+        // Handle location/contact if present
+        if (originalMessage.metadata?.location) {
+          messageData.metadata = { location: originalMessage.metadata.location };
+        }
+        if (originalMessage.metadata?.contact) {
+          messageData.metadata = { ...messageData.metadata, contact: originalMessage.metadata.contact };
+        }
+
+        const newMessage = await Message.create(messageData);
+        const populatedMessage = await Message.findById(newMessage._id).populate(
+          "from to",
+          "name username avatarUrl"
+        );
+
+        const dto = parseMessage(populatedMessage.toObject(), req.user._id);
+
+        // Update thread
+        thread.lastMessageAt = new Date();
+        thread.lastMessage = newMessage._id;
+        thread.lastReadAt.set(String(req.user._id), new Date());
+        const currentUnread = thread.unreadCount.get(String(recipientId)) || 0;
+        thread.unreadCount.set(String(recipientId), currentUnread + 1);
+        await thread.save();
+
         forwardResults.push({
           recipientId,
           success: true,
@@ -184,11 +241,49 @@ router.post("/forward", protect, async (req, res) => {
         // Emit real-time notification
         if (req.io) {
           req.io.to(String(recipientId)).emit("message:new", {
-            message: newMessage,
-            conversationId: `${req.user._id}_${recipientId}`,
+            conversationId: String(thread._id),
+            messageId: String(dto.id),
             senderId: String(req.user._id),
+            body: dto.content,
+            attachments: dto.attachments || [],
+            createdAt: dto.timestamp,
             isForwarded: true,
+            forwardedFrom: populatedMessage.forwardedFrom,
           });
+
+          // Send delivery confirmation to sender
+          req.io.to(String(req.user._id)).emit("message:delivered", {
+            messageId: String(dto.id),
+            clientKey: messageData.messageId,
+            status: "delivered",
+          });
+
+          // Create notification
+          try {
+            const note = await NotificationService.createNotification({
+              recipientId,
+              senderId: req.user._id,
+              type: "message",
+              content: "sent you a forwarded message",
+              relatedId: dto.id,
+              onModel: "Message",
+            });
+            if (note) {
+              req.io.to(String(recipientId)).emit("notification:new", note);
+            }
+          } catch {}
+
+          // Update unread counts
+          const [threadDoc, totalUnread] = await Promise.all([
+            Thread.findById(thread._id).select("unreadCount"),
+            Message.countDocuments({ to: recipientId, isRead: false }),
+          ]);
+          const convCount = threadDoc?.unreadCount?.get(String(recipientId)) || 0;
+          req.io.to(String(recipientId)).emit("unread:update", {
+            conversationId: String(thread._id),
+            newCount: convCount,
+          });
+          req.io.to(String(recipientId)).emit("unread:total", { total: totalUnread });
         }
       } catch (error) {
         forwardResults.push({
@@ -253,23 +348,84 @@ router.post("/bulk", protect, async (req, res) => {
         }
 
         for (const messageId of messageIds) {
+          const originalMessage = await Message.findById(messageId);
+          if (!originalMessage) continue;
+
           for (const recipientId of data.recipients) {
             try {
-              const originalMessage = await Message.findById(messageId);
-              if (originalMessage) {
-                const forwardedMessage = await Message.create({
-                  from: req.user._id,
-                  to: recipientId,
-                  content: originalMessage.content,
-                  attachments: originalMessage.attachments,
-                  messageType: originalMessage.messageType,
-                  forwardedFrom: {
-                    originalSender: originalMessage.from,
-                    forwardCount:
-                      (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
-                  },
+              // Check if connected and not blocked
+              const [connected, blocked] = await Promise.all([
+                areConnected(req.user._id, recipientId),
+                isBlocked(req.user._id, recipientId),
+              ]);
+
+              if (!connected || blocked) {
+                results.push({
+                  messageId,
+                  recipientId,
+                  success: false,
+                  error: blocked ? "Messaging is blocked" : "Not connected",
                 });
-                results.push({ messageId, recipientId, success: true });
+                continue;
+              }
+
+              // Ensure thread exists
+              const participants = [String(req.user._id), String(recipientId)].sort();
+              let thread = await Thread.findOne({
+                participants: { $all: participants, $size: 2 },
+              });
+              if (!thread) {
+                thread = await Thread.create({ participants });
+              }
+
+              // Create forwarded message
+              const messageData = {
+                from: req.user._id,
+                to: recipientId,
+                content: originalMessage.content,
+                attachments: originalMessage.attachments,
+                messageType: originalMessage.messageType,
+                isForwarded: true,
+                originalMessageId: originalMessage._id,
+                forwardedFrom: {
+                  originalSender: originalMessage.from,
+                  forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
+                },
+                threadId: String(thread._id),
+                messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                deliveredAt: new Date(),
+              };
+
+              const newMessage = await Message.create(messageData);
+
+              // Update thread
+              thread.lastMessageAt = new Date();
+              thread.lastMessage = newMessage._id;
+              thread.lastReadAt.set(String(req.user._id), new Date());
+              const currentUnread = thread.unreadCount.get(String(recipientId)) || 0;
+              thread.unreadCount.set(String(recipientId), currentUnread + 1);
+              await thread.save();
+
+              results.push({ messageId, recipientId, success: true });
+
+              // Emit real-time
+              if (req.io) {
+                const populatedMessage = await Message.findById(newMessage._id).populate(
+                  "from to",
+                  "name username avatarUrl"
+                );
+                const dto = parseMessage(populatedMessage.toObject(), req.user._id);
+
+                req.io.to(String(recipientId)).emit("message:new", {
+                  conversationId: String(thread._id),
+                  messageId: String(dto.id),
+                  senderId: String(req.user._id),
+                  body: dto.content,
+                  attachments: dto.attachments || [],
+                  createdAt: dto.timestamp,
+                  isForwarded: true,
+                  forwardedFrom: populatedMessage.forwardedFrom,
+                });
               }
             } catch (error) {
               results.push({
@@ -304,20 +460,13 @@ router.post("/bulk", protect, async (req, res) => {
   }
 });
 
-// Bulk delete messages
-router.delete("/bulk-delete", protect, bulkDelete);
-
-// Delete entire chat
-router.delete("/chat/:userId", protect, deleteChat);
-
-// WhatsApp-like delete entire conversation for current user
-router.delete("/:userId", protect, deleteChat);
-
 // Report user/message
 router.post("/report", protect, report);
 
 // Block/unblock user
 router.post("/block", protect, block);
+
+// Bulk operations (fixed paths before dynamic routes)
 router.post(
   "/bulk-block",
   protect,
@@ -333,6 +482,7 @@ router.post(
   protect,
   require("../controllers/messagesController").bulkReportUsers
 );
+router.delete("/bulk-delete", protect, bulkDelete);
 
 // Mark messages as read
 router.post("/mark-read", protect, async (req, res) => {
@@ -437,6 +587,16 @@ router.post("/mark-delivered", protect, async (req, res) => {
     });
   }
 });
+
+// Dynamic routes MUST be at the bottom to avoid route collision
+// Delete a single message by ID (must come before dynamic :userId routes)
+router.delete("/id/:messageId", protect, deleteMessage);
+
+// Delete entire chat
+router.delete("/chat/:userId", protect, deleteChat);
+
+// WhatsApp-like delete entire conversation for current user
+router.delete("/:userId", protect, deleteChat);
 
 // Get conversation settings
 router.get("/settings/:userId", protect, async (req, res) => {
