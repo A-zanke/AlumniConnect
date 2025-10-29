@@ -1,45 +1,50 @@
-const Post = require("../models/Post");
-const User = require("../models/User");
-const NotificationService = require("../services/NotificationService");
-const PostReport = require("../models/PostReport");
-const Message = require("../models/Message");
+const Post = require('../models/Post');
+const User = require('../models/User');
+const PostReport = require('../models/PostReport');
+const Message = require('../models/Message');
+const Thread = require('../models/Thread');
+const NotificationService = require('../services/NotificationService');
 
-// Helper: shape a post for the client
+// Helper function to shape post data for client
 const shapePost = (post, currentUserId) => {
   const reactions = post.reactions || [];
   const reactionCounts = reactions.reduce((acc, r) => {
     acc[r.type] = (acc[r.type] || 0) + 1;
     return acc;
   }, {});
-  const userReaction =
-    reactions.find((r) => String(r.userId) === String(currentUserId))?.type ||
-    null;
+  
+  const userReaction = reactions.find(
+    (r) => String(r.userId) === String(currentUserId)
+  )?.type || null;
+  
   const totalReactions = reactions.length;
   const totalComments = (post.comments || []).length;
   const totalShares = (post.shares || []).length;
-  const engagementRate =
-    totalReactions + totalComments + totalShares > 0
-      ? ((totalReactions + totalComments + totalShares) / (post.views || 1)) *
-        100
-      : 0;
-
+  const views = post.views || 0;
+  
+  const engagementRate = views > 0
+    ? ((totalReactions + totalComments + totalShares) / views) * 100
+    : 0;
+  
+  const isBookmarked = Array.isArray(post.bookmarkedBy)
+    ? post.bookmarkedBy.some((id) => String(id) === String(currentUserId))
+    : false;
+  
   return {
     ...post,
     user: post.userId,
-    isBookmarked: Array.isArray(post.bookmarkedBy)
-      ? post.bookmarkedBy.some((id) => String(id) === String(currentUserId))
-      : false,
+    isBookmarked,
     userReaction,
     reactionCounts,
     totalReactions,
     totalComments,
     totalShares,
-    engagementRate,
+    engagementRate: parseFloat(engagementRate.toFixed(2)),
     tags: post.tags || [],
-    views: post.views || 0,
+    views,
     shareCount: totalShares,
     reportsCount: post.reportsCount || 0,
-    isOwner: String(post.userId) === String(currentUserId),
+    isOwner: String(post.userId?._id || post.userId) === String(currentUserId)
   };
 };
 
@@ -119,6 +124,46 @@ exports.getAllPosts = async (req, res) => {
   } catch (err) {
     console.error("getAllPosts error:", err);
     res.status(500).json({ message: "Failed to fetch posts." });
+  }
+};
+
+// GET /api/posts/:id - Get single post with full details
+exports.getSinglePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .populate('userId', 'name username avatarUrl role department')
+      .populate('comments.userId', 'name username avatarUrl role department')
+      .populate('reactions.userId', 'name username avatarUrl')
+      .lean();
+    
+    if (!post || post.deletedAt) {
+      return res.status(404).json({ message: 'Post not found.' });
+    }
+    
+    // Check department access for students
+    const currentUser = await User.findById(req.user.id).select('department role');
+    if (
+      currentUser.role === 'student' &&
+      !post.departments.includes(currentUser.department) &&
+      !post.departments.includes('All')
+    ) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+    
+    // Track view
+    const viewedBy = post.viewedBy || [];
+    if (!viewedBy.some((view) => String(view.userId) === String(req.user.id))) {
+      await Post.findByIdAndUpdate(post._id, {
+        $inc: { views: 1 },
+        $push: { viewedBy: { userId: req.user.id, viewedAt: new Date() } }
+      });
+      post.views = (post.views || 0) + 1;
+    }
+    
+    res.json(shapePost(post, req.user.id));
+  } catch (err) {
+    console.error('getSinglePost error:', err);
+    res.status(500).json({ message: 'Failed to fetch post.' });
   }
 };
 
@@ -229,16 +274,34 @@ exports.createPost = async (req, res) => {
   try {
     const content = (req.body.content || "").toString();
     const visibility = (req.body.visibility || "public").toString();
-    const selectedDepartments = req.body.departments
-      ? Array.isArray(req.body.departments)
-        ? req.body.departments
-        : [req.body.departments]
-      : [];
-    const tags = req.body.tags
-      ? Array.isArray(req.body.tags)
-        ? req.body.tags
-        : [req.body.tags]
-      : [];
+    
+    // Parse departments from JSON string (FormData sends as string)
+    let selectedDepartments = [];
+    if (req.body.departments) {
+      try {
+        selectedDepartments = JSON.parse(req.body.departments);
+      } catch (e) {
+        selectedDepartments = Array.isArray(req.body.departments)
+          ? req.body.departments
+          : [req.body.departments];
+      }
+    }
+    // Filter out empty strings
+    selectedDepartments = selectedDepartments.filter(d => d && d.trim());
+    
+    // Parse tags from JSON string (FormData sends as string)
+    let tags = [];
+    if (req.body.tags) {
+      try {
+        tags = JSON.parse(req.body.tags);
+      } catch (e) {
+        tags = Array.isArray(req.body.tags)
+          ? req.body.tags
+          : [req.body.tags];
+      }
+    }
+    // Filter out empty strings
+    tags = tags.filter(t => t && t.trim());
 
     // Get current user info
     const currentUser = await User.findById(req.user.id).select(
@@ -350,7 +413,7 @@ exports.reactToPost = async (req, res) => {
 
     // Check if user can see this post (department filtering)
     const currentUser = await User.findById(req.user.id).select(
-      "department role"
+      "department role name"
     );
     if (
       currentUser.role === "student" &&
@@ -364,14 +427,19 @@ exports.reactToPost = async (req, res) => {
       (r) => String(r.userId) === String(req.user.id)
     );
 
+    let updatedReactions = [...(post.reactions || [])];
+    
     if (idx > -1) {
-      if (post.reactions[idx].type === type) {
-        post.reactions.splice(idx, 1);
+      if (updatedReactions[idx].type === type) {
+        // Remove reaction
+        updatedReactions.splice(idx, 1);
       } else {
-        post.reactions[idx].type = type;
+        // Change reaction type
+        updatedReactions[idx] = { userId: req.user.id, type };
       }
     } else {
-      post.reactions.push({ userId: req.user.id, type });
+      // Add new reaction
+      updatedReactions.push({ userId: req.user.id, type });
       if (String(post.userId) !== String(req.user.id)) {
         NotificationService.createNotification({
           recipientId: post.userId,
@@ -383,22 +451,21 @@ exports.reactToPost = async (req, res) => {
         }).catch((e) => console.error("notify react error:", e));
       }
     }
-    const allowedReactions = new Set(["like", "love", "laugh", "wow", "sad", "angry"]);
-    post.reactions = (post.reactions || []).map((r) => ({
-      userId: r.userId,
-      type: allowedReactions.has(r.type) ? r.type : "like",
-    }));
-    await post.save();
+    
+    // Update post with new reactions
+    await Post.findByIdAndUpdate(req.params.id, {
+      reactions: updatedReactions
+    });
 
-    const reactionCounts = (post.reactions || []).reduce((acc, r) => {
+    const reactionCounts = updatedReactions.reduce((acc, r) => {
       acc[r.type] = (acc[r.type] || 0) + 1;
       return acc;
     }, {});
     const userReaction =
-      post.reactions.find((r) => String(r.userId) === String(req.user.id))
+      updatedReactions.find((r) => String(r.userId) === String(req.user.id))
         ?.type || null;
     const counts = { ...reactionCounts };
-    const hasReacted = (post.reactions || []).some(
+    const hasReacted = updatedReactions.some(
       (r) => String(r.userId) === String(req.user.id)
     );
 
@@ -615,36 +682,77 @@ exports.sharePost = async (req, res) => {
     });
     await post.save();
 
-    // Create chat messages
+    // For each recipient connection, ensure a thread exists and send a chat message
     await Promise.all(
       validConnections.map(async (connId) => {
-        await Message.create({
+        // 1) Find or create a 1:1 thread between current user and recipient
+        let thread = await Thread.findOne({
+          participants: { $all: [req.user.id, connId] },
+        });
+        if (!thread) {
+          thread = await Thread.create({
+            participants: [req.user.id, connId],
+            lastMessageAt: new Date(),
+          });
+        }
+
+        // 2) Create a chat message with non-null threadId and clientKey
+        const link = `/posts/${post._id}`; // frontend can resolve this route
+        const preview = (post.content || '').substring(0, 100);
+        const composedContent = message
+          ? `${message}\n\nShared post: ${preview}...\n${link}`
+          : `Shared post: ${preview}...\n${link}`;
+
+        const newMsg = await Message.create({
+          threadId: String(thread._id),
+          clientKey: `${thread._id}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
           from: req.user.id,
           to: connId,
-          content: message
-            ? `${message}\n\nShared post: ${post.content.substring(0, 100)}...`
-            : `Shared post: ${post.content.substring(0, 100)}...`,
-          attachments: [`/posts/${post._id}`],
+          content: composedContent,
+          attachments: [link],
+          metadata: {
+            sharedPost: {
+              postId: String(post._id),
+              preview,
+              imageUrl: Array.isArray(post.media) && post.media.length > 0 ? post.media[0]?.url || null : null,
+              link,
+            },
+          },
         });
 
+        // 3) Update thread metadata
+        thread.lastMessage = newMsg._id;
+        thread.lastMessageAt = new Date();
+        // increment unread count for recipient
+        const key = String(connId);
+        const currentUnread = thread.unreadCount?.get(key) || 0;
+        thread.unreadCount?.set(key, currentUnread + 1);
+        await thread.save();
+
+        // 4) Real-time chat event for recipient
+        if (global.io) {
+          global.io.to(connId.toString()).emit('chat:new_message', {
+            threadId: String(thread._id),
+            message: {
+              id: String(newMsg._id),
+              from: String(newMsg.from),
+              to: String(newMsg.to),
+              content: newMsg.content,
+              attachments: newMsg.attachments,
+              createdAt: newMsg.createdAt,
+            },
+          });
+        }
+
+        // 5) Also send a notification for share
         NotificationService.createNotification({
           recipientId: connId,
           senderId: req.user.id,
-          type: "share",
+          type: 'share',
           content: `${currentUser.name} shared a post with you.`,
           relatedId: post._id,
-          onModel: "Post",
-        }).catch((e) => console.error("notify share error:", e));
-
-        // Emit socket.io event
-        if (global.io) {
-          global.io.to(connId).emit("chat:receive", {
-            from: req.user.id,
-            to: connId,
-            content: message || `Shared post`,
-            attachments: [`/posts/${post._id}`],
-          });
-        }
+          onModel: 'Post',
+        }).catch((e) => console.error('notify share error:', e));
       })
     );
 
@@ -654,6 +762,20 @@ exports.sharePost = async (req, res) => {
   } catch (err) {
     console.error("sharePost error:", err);
     res.status(500).json({ message: "Failed to share post." });
+  }
+};
+
+// GET /api/posts/my - list posts created by the current user
+exports.getMyPosts = async (req, res) => {
+  try {
+    const posts = await Post.find({ userId: req.user.id, deletedAt: null })
+      .select('_id content media createdAt reactions comments shares views tags departments')
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(posts);
+  } catch (err) {
+    console.error('getMyPosts error:', err);
+    res.status(500).json({ message: 'Failed to fetch your posts.' });
   }
 };
 
@@ -804,7 +926,7 @@ exports.getPostAnalytics = async (req, res) => {
 // DELETE /api/posts/:id
 exports.deletePost = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
+    const post = await Post.findById(req.params.id).select('userId deletedAt');
     if (!post || post.deletedAt) {
       return res.status(404).json({ message: "Post not found." });
     }
@@ -815,8 +937,11 @@ exports.deletePost = async (req, res) => {
       return res.status(403).json({ message: "Forbidden." });
     }
 
-    post.deletedAt = new Date();
-    await post.save();
+    // Use findByIdAndUpdate to avoid validation issues
+    await Post.findByIdAndUpdate(req.params.id, {
+      deletedAt: new Date()
+    });
+    
     res.json({ message: "Post deleted." });
   } catch (err) {
     console.error("deletePost error:", err);
@@ -844,21 +969,25 @@ exports.toggleBookmark = async (req, res) => {
       return res.status(403).json({ message: "Access denied." });
     }
 
-    post.bookmarkedBy = post.bookmarkedBy || [];
-    const idx = post.bookmarkedBy.findIndex(
+    const bookmarkedBy = post.bookmarkedBy || [];
+    const idx = bookmarkedBy.findIndex(
       (u) => String(u) === String(req.user.id)
     );
 
     let bookmarked;
+    let updatedBookmarks = [...bookmarkedBy];
+    
     if (idx > -1) {
-      post.bookmarkedBy.splice(idx, 1);
+      updatedBookmarks.splice(idx, 1);
       bookmarked = false;
     } else {
-      post.bookmarkedBy.push(req.user.id);
+      updatedBookmarks.push(req.user.id);
       bookmarked = true;
     }
 
-    await post.save();
+    await Post.findByIdAndUpdate(req.params.id, {
+      bookmarkedBy: updatedBookmarks
+    });
     res.json({ bookmarked, message: bookmarked ? "Saved" : "Unsaved" });
   } catch (err) {
     console.error("toggleBookmark error:", err);
@@ -925,5 +1054,40 @@ exports.searchUsers = async (req, res) => {
   } catch (err) {
     console.error("searchUsers error:", err);
     res.status(500).json({ message: "Failed to search users." });
+  }
+};
+
+// DELETE /api/posts/:postId/comments/:commentId
+exports.deleteComment = async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const userId = req.user._id;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Check if user is comment owner or admin
+    const isOwner = String(comment.userId) === String(userId);
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: 'Not authorized to delete this comment' });
+    }
+
+    // Remove the comment
+    comment.remove();
+    await post.save();
+
+    res.json({ message: 'Comment deleted successfully' });
+  } catch (err) {
+    console.error('deleteComment error:', err);
+    res.status(500).json({ message: 'Failed to delete comment' });
   }
 };

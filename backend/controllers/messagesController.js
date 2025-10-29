@@ -1175,11 +1175,31 @@ exports.getMedia = async (req, res) => {
 
     if (!other) return res.status(400).json({ message: "Missing userId" });
 
-    // Build query based on type
+    // Get thread between the two users
+    const thread = await Thread.findOne({
+      participants: { $all: [me, other], $size: 2 }
+    });
+
+    if (!thread) {
+      return res.json({
+        media: [],
+        links: [],
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: 0,
+          pages: 0,
+        },
+        success: true,
+      });
+    }
+
+    // Build query based on type and thread
     const baseQuery = {
+      threadId: thread._id,
       $or: [
-        { from: me, to: other },
-        { from: other, to: me },
+        { from: me },
+        { from: other }
       ],
     };
 
@@ -1255,13 +1275,41 @@ exports.getMedia = async (req, res) => {
       });
     });
 
-    // Extract links from message content
+    // Extract links from message content and handle shared posts
     const linkRegex = /(https?:\/\/[^\s]+)/g;
     messages.forEach((msg) => {
+      // Handle shared posts in metadata
+      if (msg.metadata?.sharedPost) {
+        const { postId, preview, imageUrl } = msg.metadata.sharedPost;
+        if (imageUrl) {
+          media.push({
+            id: msg._id,
+            messageId: msg.messageId,
+            url: imageUrl,
+            type: 'image', // or 'post' if you want a special type
+            filename: 'shared-post.jpg',
+            size: 0,
+            mimeType: 'image/*',
+            thumbnail: imageUrl,
+            timestamp: msg.createdAt,
+            sender: msg.from,
+            isMine: String(msg.from._id || msg.from) === String(me),
+            isStarred: Array.isArray(msg.isStarred) ? msg.isStarred.includes(me) : false,
+            isSharedPost: true,
+            postId: postId,
+            preview: preview || 'Shared post'
+          });
+        }
+      }
+
+      // Handle regular links in message content
       if (msg.content) {
         const foundLinks = msg.content.match(linkRegex);
         if (foundLinks) {
           foundLinks.forEach((link) => {
+            // Skip if this is a shared post image URL that we already processed
+            if (msg.metadata?.sharedPost?.imageUrl === link) return;
+            
             links.push({
               id: msg._id,
               messageId: msg.messageId,
@@ -1270,11 +1318,8 @@ exports.getMedia = async (req, res) => {
               title: extractLinkTitle(link),
               timestamp: msg.createdAt,
               sender: msg.from,
-              // Include flag to indicate if this is sent by the current user
               isMine: String(msg.from._id || msg.from) === String(me),
-              isStarred: Array.isArray(msg.isStarred)
-                ? msg.isStarred.includes(me)
-                : false,
+              isStarred: Array.isArray(msg.isStarred) ? msg.isStarred.includes(me) : false,
             });
           });
         }

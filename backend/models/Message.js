@@ -98,6 +98,14 @@ const MessageSchema = new mongoose.Schema(
         thumbnail: String, // thumbnail URL for videos
       },
 
+      // Structured info for shared posts so clients can render a card
+      sharedPost: {
+        postId: { type: String, default: null },
+        preview: { type: String, default: "" },
+        imageUrl: { type: String, default: null },
+        link: { type: String, default: null },
+      },
+
       // For location messages
       location: {
         latitude: Number,

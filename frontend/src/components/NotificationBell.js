@@ -74,6 +74,18 @@ const NotificationBell = () => {
       }
     });
 
+    socket.on("notificationUpdated", ({ _id, read, type, content, status }) => {
+      setItems((prev) =>
+        prev.map((item) =>
+          item._id === _id ? { ...item, read, type, content, status } : item
+        )
+      );
+    });
+
+    socket.on("notificationDeleted", ({ _id }) => {
+      setItems((prev) => prev.filter((item) => item._id !== _id));
+    });
+
     socket.on("notification:read", ({ notificationId }) => {
       setItems((prev) =>
         prev.map((item) =>
@@ -149,27 +161,20 @@ const NotificationBell = () => {
   const accept = async (userId) => {
     try {
       await connectionAPI.acceptRequest(userId);
-      // Mark the notification as read but keep it in history
-      const notification = items.find((n) => n.sender._id === userId);
-      if (notification && !notification.read) {
-        try {
-          await axios.put(
-            `/api/notifications/${notification._id}/read`,
-            {},
-            {
-              withCredentials: true,
-            }
-          );
-          // Update local state to mark as read but keep in list
-          setItems((prev) =>
-            prev.map((n) =>
-              n.sender._id === userId ? { ...n, read: true } : n
-            )
-          );
-        } catch (error) {
-          console.error("Error marking notification as read:", error);
-        }
-      }
+      // Optimistically update the notification
+      setItems((prev) =>
+        prev.map((n) =>
+          n.sender._id === userId && n.type === 'connection_request'
+            ? {
+                ...n,
+                type: 'connection_accepted',
+                status: 'accepted',
+                content: `You are now connected with ${n.sender?.name || 'User'}`,
+                read: true
+              }
+            : n
+        )
+      );
     } catch (error) {
       console.error("Error accepting connection request:", error);
     }
@@ -178,27 +183,8 @@ const NotificationBell = () => {
   const reject = async (userId) => {
     try {
       await connectionAPI.rejectRequest(userId);
-      // Mark the notification as read but keep it in history
-      const notification = items.find((n) => n.sender._id === userId);
-      if (notification && !notification.read) {
-        try {
-          await axios.put(
-            `/api/notifications/${notification._id}/read`,
-            {},
-            {
-              withCredentials: true,
-            }
-          );
-          // Update local state to mark as read but keep in list
-          setItems((prev) =>
-            prev.map((n) =>
-              n.sender._id === userId ? { ...n, read: true } : n
-            )
-          );
-        } catch (error) {
-          console.error("Error marking notification as read:", error);
-        }
-      }
+      // Optimistically remove the notification
+      setItems((prev) => prev.filter((n) => n.sender._id !== userId));
     } catch (error) {
       console.error("Error rejecting connection request:", error);
     }
@@ -260,7 +246,7 @@ const NotificationBell = () => {
                 items
                   .filter((n) => {
                     // Filter out forward notifications - only show message, reaction, and connection_request types
-                    const allowedTypes = ['message', 'reaction', 'connection_request', 'comment', 'like', 'post'];
+                    const allowedTypes = ['message', 'reaction', 'connection_request', 'comment', 'like', 'post', 'connection_accepted'];
                     return allowedTypes.includes(n.type);
                   })
                   .map((n) => (
@@ -313,7 +299,7 @@ const NotificationBell = () => {
                       <div className="text-xs text-gray-400 mt-1">
                         {new Date(n.createdAt).toLocaleString()}
                       </div>
-                      {n.type === "connection_request" && (
+                      {n.type === "connection_request" && n.status !== 'accepted' && (
                         <div className="mt-3 flex gap-2">
                           <button
                             className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg text-sm font-medium hover:from-green-600 hover:to-green-700 transform hover:scale-105 transition-all duration-200 shadow-md"

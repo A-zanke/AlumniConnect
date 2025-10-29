@@ -51,12 +51,12 @@ router.get("/export/users", exportUsers);
 
 // ===================== Events =====================
 router.get("/events", listAllEvents);
-router.get("/events/pending", async (req, res, next) => next());
+router.get("/events/pending", listEventRequests);
+router.get("/export/events", exportEvents);
+router.get("/events/:id", getEventByIdAdmin);
 router.put("/events/:id/approve", approveEvent);
 router.put("/events/:id/reject", rejectEvent);
 router.delete("/events/:id", deleteEvent);
-router.get("/export/events", exportEvents);
-router.get("/events/:id", getEventByIdAdmin);
 
 // ===== Event Requests (Alumni-submitted pending events) =====
 router.get("/event-requests", listEventRequests);

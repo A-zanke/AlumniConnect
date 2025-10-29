@@ -1206,8 +1206,43 @@ const MessagesPage = () => {
     }
   };
 
-  // Render message content with emoji support
-  const renderMessageContent = (text) => {
+  // Render message content with emoji support and shared posts
+  const renderMessageContent = (message) => {
+    if (!message) return null;
+    
+    // Handle shared post
+    if (message.metadata?.sharedPost) {
+      const { postId, preview, imageUrl } = message.metadata.sharedPost;
+      return (
+        <div 
+          className="shared-post-container border rounded-lg overflow-hidden cursor-pointer max-w-xs bg-white dark:bg-gray-800"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/posts/${postId}`);
+          }}
+        >
+          {imageUrl && (
+            <div className="w-full h-40 overflow-hidden">
+              <img 
+                src={imageUrl} 
+                alt="Shared post" 
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          <div className="p-3">
+            <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">
+              {preview || 'Shared post'}
+            </p>
+            <div className="mt-2 text-xs text-blue-500 dark:text-blue-400">
+              View post →
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const text = message.content || '';
     if (!text) return null;
 
     // Simple emoji detection
@@ -1231,13 +1266,16 @@ const MessagesPage = () => {
       <div className="whitespace-pre-wrap break-words">
         {parts.map((part, idx) => {
           if (/^https?:\/\//i.test(part)) {
+            // Skip if this is a shared post image URL that we already processed
+            if (message.metadata?.sharedPost?.imageUrl === part) return null;
+            
             return (
               <a
                 key={idx}
                 href={part}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline break-all"
+                className="text-blue-500 hover:underline break-all"
                 onClick={(e) => e.stopPropagation()}
               >
                 {part}

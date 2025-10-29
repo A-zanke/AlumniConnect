@@ -27,7 +27,7 @@ import ForumPostPage from "./pages/ForumPostPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import SearchPage from "./pages/SearchPage";
-import PostsPage from "./components/posts/PostsPage.jsx";
+import PostsPage from "./pages/PostPage.jsx";
 import AdminForumManager from "./admin/AdminForumManager.jsx";
 import AdminUserList from "./admin/AdminUserList.jsx";
 import AdminEventList from "./admin/AdminEventList.jsx";
@@ -94,6 +94,22 @@ function App() {
               />
               <Route
                 path="/posts"
+                element={
+                  <PrivateRoute>
+                    <PostsPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/posts/saved"
+                element={
+                  <PrivateRoute>
+                    <PostsPage />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/posts/:id"
                 element={
                   <PrivateRoute>
                     <PostsPage />

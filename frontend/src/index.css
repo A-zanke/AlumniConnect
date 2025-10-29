@@ -1,5 +1,27 @@
 @import "leaflet/dist/leaflet.css";
+
+/* Force LTR direction for all inputs and textareas */
+input, textarea {
+  direction: ltr !important;
+  unicode-bidi: normal !important;
+  text-align: left !important;
+}
+
+.force-ltr {
+  direction: ltr !important;
+  unicode-bidi: normal !important;
+  text-align: left !important;
+}
+
 /* Global creative theme and animations */
+
+/* Specific fix for comment reply textareas */
+.comment-reply-textarea {
+  direction: ltr !important;
+  unicode-bidi: normal !important;
+  text-align: left !important;
+  writing-mode: horizontal-tb !important;
+}
 .theme-card {
   background: rgba(255,255,255,.9);
   border-radius: 16px;

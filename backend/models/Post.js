@@ -7,8 +7,8 @@ const reactionSchema = new mongoose.Schema({
     enum: [
       // Forum/UI set
       "like", "love", "laugh", "wow", "sad", "angry",
-      // Legacy values retained for backward compatibility
-      "celebrate", "support", "insightful", "curious",
+      // LinkedIn-style professional reactions
+      "celebrate", "support", "insightful", "curious", "clap", "funny",
     ],
     required: true,
     default: "like",
