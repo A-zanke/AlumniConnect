@@ -48,7 +48,7 @@ const NetworkPage = () => {
   // AI Alumni Recommendations (student-only)
   const [recLoading, setRecLoading] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
-  const [matchFilter, setMatchFilter] = useState(40); // Minimum match percentage filter
+  const [matchFilter, setMatchFilter] = useState(70); // Minimum match percentage filter
   const [connectionHistory, setConnectionHistory] = useState([]); // Track connected alumni
   const [aiSubTab, setAiSubTab] = useState('recommendations'); // 'recommendations' or 'history'
   const [stats, setStats] = useState({
@@ -756,21 +756,21 @@ const NetworkPage = () => {
             </div>
             <input
               type="range"
-              min="40"
+              min="70"
               max="100"
-              step="20"
+              step="5"
               value={matchFilter}
               onChange={(e) => setMatchFilter(parseInt(e.target.value))}
               className="w-full h-3 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full appearance-none cursor-pointer slider-thumb"
               style={{
-                background: `linear-gradient(to right, #06b6d4 ${(matchFilter-40)/60*100}%, #e0f2fe ${(matchFilter-40)/60*100}%)`
+                background: `linear-gradient(to right, #06b6d4 ${(matchFilter-70)/30*100}%, #e0f2fe ${(matchFilter-70)/30*100}%)`
               }}
             />
             <div className="flex justify-between text-xs text-gray-500 mt-2 px-1">
-              <span>40%</span>
-              <span>60%</span>
+              <span>70%</span>
               <span>80%</span>
               <span>90%</span>
+              <span>95%</span>
               <span>100%</span>
             </div>
           </div>
@@ -850,10 +850,10 @@ const NetworkPage = () => {
                       <div className="flex gap-3 justify-center">
                         {hasAnyRecs && (
                           <button
-                            onClick={() => setMatchFilter(40)}
+                            onClick={() => setMatchFilter(70)}
                             className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
                           >
-                            Reset to 40%
+                            Reset to 70%
                           </button>
                         )}
                         <Link

@@ -4,9 +4,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import Spinner from "../components/ui/Spinner";
 import FileInput from "../components/ui/FileInput";
-import { connectionAPI, userAPI } from "../components/utils/api";
+import { connectionAPI, userAPI, postsAPI } from "../components/utils/api";
 import { getAvatarUrl } from "../components/utils/helpers";
 import ConnectionButton from "../components/network/ConnectionButton";
+import PostCard from "../components/posts/PostCard";
 
 // Feather icons (Fi = Feather Icons)
 import {
@@ -170,6 +171,14 @@ const ProfilePage = () => {
     }
   }, [userId, username, currentUser]);
 
+  // Fetch posts when user profile is loaded
+  useEffect(() => {
+    if (user && !isOwnProfile) {
+      fetchUserPosts(user._id);
+      fetchUserConnections();
+    }
+  }, [userId, username, currentUser]);
+
   // This useEffect now primarily updates formData when a *fetched* user profile changes
   // For own profile, formData initialization is handled in the first useEffect to avoid race conditions
   useEffect(() => {
@@ -249,13 +258,36 @@ const ProfilePage = () => {
     }
   };
 
-  const fetchUserPosts = async () => {
-    if (!currentUser) return;
+  const fetchUserPosts = async (targetUserId = null) => {
+    const userId = targetUserId || user?._id || currentUser?._id;
+    console.log('fetchUserPosts called - userId:', userId, 'targetUserId:', targetUserId);
+    
+    if (!userId) {
+      console.log('No userId available for fetching posts');
+      return;
+    }
+    
+    // Only fetch posts for Alumni, Teachers, and Admin
+    const userRole = (user?.role || currentUser?.role || '').toLowerCase().trim();
+    console.log('Checking role for posts:', userRole);
+    
+    if (!['alumni', 'teacher', 'admin'].includes(userRole)) {
+      console.log('User role does not have posts access:', userRole);
+      setPosts([]);
+      return;
+    }
+    
     try {
-      const response = await axios.get(`/api/posts/user/${currentUser._id}`);
-      setPosts(response.data || []);
+      console.log('Fetching posts for user ID:', userId, 'Role:', userRole);
+      const response = await postsAPI.getUserPosts(userId);
+      console.log('Posts API response:', response);
+      const postsData = response.data?.data || response.data || [];
+      console.log('Fetched posts count:', postsData.length, 'Posts:', postsData);
+      setPosts(postsData);
     } catch (error) {
       console.error("Error fetching posts:", error);
+      console.error("Error details:", error.response?.data);
+      setPosts([]);
     }
   };
 
@@ -433,18 +465,19 @@ const ProfilePage = () => {
   };
 
   // Sidebar Menu Items
-  const canViewPosts =
-    isOwnProfile && (user?.role === "teacher" || user?.role === "alumni");
-
+  // Only show Posts for Alumni, Teachers, and Admin (not Students)
+  const userRole = (user?.role || '').toLowerCase().trim();
+  const canViewPosts = ['alumni', 'teacher', 'admin'].includes(userRole);
+  
+  console.log('ProfilePage - User role:', user?.role, 'Can view posts:', canViewPosts);
+  
   const menuItems = [
     { id: "overview", label: "Profile Overview", icon: FiUser },
     { id: "about", label: "About", icon: FiInfo },
     { id: "skills", label: "Skills", icon: FiAward },
+    ...(canViewPosts ? [{ id: "posts", label: "Posts", icon: FiFileText }] : []),
     { id: "connections", label: "Connections", icon: FiUsers },
-    ...(canViewPosts
-      ? [{ id: "posts", label: "Posts", icon: FiFileText }]
-      : []),
-    { id: "settings", label: "Settings", icon: FiSettings },
+    ...(isOwnProfile ? [{ id: "settings", label: "Settings", icon: FiSettings }] : []),
   ];
 
   if (loading) {
@@ -710,6 +743,44 @@ const ProfilePage = () => {
                   handleMessageUser={handleMessageUser}
                   handleConnectionAction={handleConnectionAction}
                 />
+              )}
+
+              {activeSection === "posts" && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      {isOwnProfile ? 'My Posts' : `${user?.name}'s Posts`}
+                    </h2>
+                    <span className="text-sm text-gray-600">
+                      {posts.length} {posts.length === 1 ? 'Post' : 'Posts'}
+                    </span>
+                  </div>
+                  
+                  {posts.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-lg shadow">
+                      <FiFileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-600 text-lg mb-2">
+                        {isOwnProfile ? 'You haven\'t created any posts yet' : 'No posts yet'}
+                      </p>
+                      {isOwnProfile && (
+                        <p className="text-gray-500 text-sm">
+                          Go to Posts page to create your first post
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {posts.map(post => (
+                        <PostCard
+                          key={post._id}
+                          post={post}
+                          currentUser={currentUser}
+                          onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {activeSection === "settings" && (

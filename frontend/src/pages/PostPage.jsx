@@ -134,9 +134,15 @@ const PostPage = () => {
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const endpoint = isSavedView ? '/api/posts/saved' : '/api/posts';
+      
+      // If "My Posts" is selected, fetch user's posts
+      let endpoint = isSavedView ? '/api/posts/saved' : '/api/posts';
+      if (sortOption === 'my-posts' && user?._id) {
+        endpoint = `/api/posts/user/${user._id}`;
+      }
+      
       const response = await axios.get(endpoint, {
-        params: isSavedView ? {} : {
+        params: (isSavedView || sortOption === 'my-posts') ? {} : {
           q: searchQuery,
           filter: departmentFilter !== 'All' ? 'by-department' : undefined,
           sort: sortOption,
@@ -145,7 +151,7 @@ const PostPage = () => {
         }
       });
       
-      const postsData = Array.isArray(response.data) ? response.data : (response.data.posts || []);
+      const postsData = Array.isArray(response.data) ? response.data : (response.data.posts || response.data.data || []);
       
       if (page === 1) {
         setPosts(postsData);
@@ -153,7 +159,7 @@ const PostPage = () => {
         setPosts(prev => [...prev, ...postsData]);
       }
       
-      setHasMore(!isSavedView && postsData.length === 10);
+      setHasMore(!isSavedView && sortOption !== 'my-posts' && postsData.length === 10);
     } catch (error) {
       console.error('Error fetching posts:', error);
       toast.error('Failed to load posts');
@@ -571,7 +577,7 @@ const PostPage = () => {
                   </button>
                 )}
                 <h1 className="text-3xl font-bold text-gray-900">
-                  {isSavedView ? 'Saved Posts' : 'Posts'}
+                  {isSavedView ? 'Saved Posts' : sortOption === 'my-posts' ? 'My Posts' : 'Posts'}
                 </h1>
               </div>
               <div className="flex items-center space-x-3">
@@ -627,6 +633,7 @@ const PostPage = () => {
                   <option value="recent">Latest</option>
                   <option value="popular">Popular</option>
                   <option value="most-commented">Most Commented</option>
+                  {canCreatePost && <option value="my-posts">My Posts</option>}
                 </select>
               </div>
             </div>

@@ -22,6 +22,7 @@ const {
   reportPost,
   getMyAnalytics,
   getMyPosts,
+  getUserPosts,
   getPostAnalytics,
   deletePost,
   deleteComment,
@@ -76,6 +77,7 @@ router.get('/my-analytics', protect, getMyAnalytics);
 router.get('/tags/popular', getPopularTags);
 router.get('/tags/search', protect, searchLimiter, searchTags);
 router.get('/users/search', protect, searchUsers);
+router.get('/user/:userId', protect, getUserPosts);
 router.get('/:id', protect, getSinglePost);
 router.get('/:id/reactions', protect, getReactions);
 router.get('/:id/analytics', protect, getPostAnalytics);

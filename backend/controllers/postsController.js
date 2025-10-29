@@ -823,6 +823,38 @@ exports.reportPost = async (req, res) => {
   }
 };
 
+// GET /api/posts/user/:userId - Get posts by specific user
+exports.getUserPosts = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Verify user exists
+    const targetUser = await User.findById(userId).select('role department');
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    
+    // Only Alumni, Teachers, and Admin can have posts
+    if (!['alumni', 'teacher', 'admin'].includes(targetUser.role.toLowerCase())) {
+      return res.json([]);
+    }
+    
+    const posts = await Post.find({
+      userId: userId,
+      deletedAt: null
+    })
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name username avatarUrl role department')
+      .populate('comments.userId', 'name username avatarUrl')
+      .lean();
+    
+    res.json(posts.map(p => shapePost(p, req.user.id)));
+  } catch (err) {
+    console.error('getUserPosts error:', err);
+    res.status(500).json({ message: 'Failed to fetch user posts.' });
+  }
+};
+
 // GET /api/posts/my-analytics
 exports.getMyAnalytics = async (req, res) => {
   try {
