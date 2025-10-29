@@ -1990,8 +1990,7 @@ const MessagesPage = () => {
                               )}
 
                               {/* Message content */}
-                              {message.content &&
-                                renderMessageContent(message.content)}
+                              {renderMessageContent(message)}
 
                               {/* Attachments */}
                               {/* Attachments + implicit media URL in text (only for true media URLs) */}
