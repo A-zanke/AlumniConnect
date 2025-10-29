@@ -25,6 +25,7 @@ import NetworkPage from "./pages/NetworkPage";
 import ForumPage from "./pages/ForumPage";
 import ForumPostPage from "./pages/ForumPostPage";
 import ProfilePage from "./pages/ProfilePage";
+import PublicProfilePage from "./pages/PublicProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import SearchPage from "./pages/SearchPage";
 import PostsPage from "./pages/PostPage.jsx";

@@ -175,9 +175,9 @@ const ProfilePage = () => {
   useEffect(() => {
     if (user && !isOwnProfile) {
       fetchUserPosts(user._id);
-      fetchUserConnections();
+      fetchUserConnections(user._id);
     }
-  }, [userId, username, currentUser]);
+  }, [user, isOwnProfile]);
 
   // This useEffect now primarily updates formData when a *fetched* user profile changes
   // For own profile, formData initialization is handled in the first useEffect to avoid race conditions
@@ -235,24 +235,32 @@ const ProfilePage = () => {
   };
 
   // Fetch both connections (I connected) and those who connected to me (mutual/one-way)
-  const fetchUserConnections = async () => {
-    if (!currentUser) return;
+  const fetchUserConnections = async (targetUserId = null) => {
     try {
-      const [sentRes, receivedRes] = await Promise.all([
-        connectionAPI.getConnections(), // connections I sent/accepted
-        connectionAPI.getPendingRequests(), // requests I received (pending)
-      ]);
-      // sentRes.data: my connections (array of users)
-      // receivedRes.data: pending requests (array of users who sent me requests)
-      const sent = sentRes.data || [];
-      const received = receivedRes.data?.map?.((r) => r.fromUser) || [];
-      // Merge, deduplicate by _id
-      const all = [...sent, ...received].reduce((acc, user) => {
-        if (!acc.find((u) => u._id === user._id)) acc.push(user);
-        return acc;
-      }, []);
-      setConnections(sent); // still show direct connections in main list
-      setAllConnections(all); // all unique connections (sent + received)
+      if (targetUserId && targetUserId !== currentUser?._id) {
+        // Fetching another user's connections
+        const response = await userAPI.getUserConnections(targetUserId);
+        const userConnections = response.data || [];
+        setAllConnections(userConnections);
+        setConnections(userConnections);
+      } else {
+        // Fetching own connections
+        const [sentRes, receivedRes] = await Promise.all([
+          connectionAPI.getConnections(), // connections I sent/accepted
+          connectionAPI.getPendingRequests(), // requests I received (pending)
+        ]);
+        // sentRes.data: my connections (array of users)
+        // receivedRes.data: pending requests (array of users who sent me requests)
+        const sent = sentRes.data || [];
+        const received = receivedRes.data?.map?.((r) => r.fromUser) || [];
+        // Merge, deduplicate by _id
+        const all = [...sent, ...received].reduce((acc, user) => {
+          if (!acc.find((u) => u._id === user._id)) acc.push(user);
+          return acc;
+        }, []);
+        setConnections(sent); // still show direct connections in main list
+        setAllConnections(all); // all unique connections (sent + received)
+      }
     } catch (error) {
       console.error("Error fetching connections:", error);
     }
@@ -622,7 +630,7 @@ const ProfilePage = () => {
       <div className={`flex-1 ${isOwnProfile ? "" : "w-full"}`}>
         {/* Profile Header */}
         <motion.div
-          className="bg-white/80 backdrop-blur-sm border-b border-indigo-100 sticky top-0 z-10"
+          className={`bg-white/80 backdrop-blur-sm border-b border-indigo-100 ${isOwnProfile ? 'sticky top-0 z-10' : ''}`}
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5 }}
@@ -700,57 +708,141 @@ const ProfilePage = () => {
 
         {/* Main Content */}
         <div className="max-w-6xl mx-auto p-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeSection}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              {activeSection === "overview" && <OverviewSection user={user} />}
-              {activeSection === "about" && (
-                <AboutSection
-                  user={user}
-                  isEditing={isEditing}
-                  setIsEditing={setIsEditing}
-                  formData={formData}
-                  setFormData={setFormData}
-                  handleChange={handleChange}
-                  handleSubmit={handleSubmit}
-                />
-              )}
-              {activeSection === "skills" && (
-                <SkillsSection
-                  user={user}
-                  isEditing={isEditing}
-                  setIsEditing={setIsEditing}
-                  formData={formData}
-                  skillInput={skillInput}
-                  setSkillInput={setSkillInput}
-                  onSkillKeyDown={onSkillKeyDown}
-                  suggestions={suggestions}
-                  addSuggested={addSuggested}
-                  removeSkill={removeSkill}
-                  commitSkillInput={commitSkillInput}
-                  handleSubmit={handleSubmit}
-                />
-              )}
-              {activeSection === "connections" && (
-                <ConnectionsSection
-                  connections={connections}
-                  allConnections={allConnections}
-                  handleMessageUser={handleMessageUser}
-                  handleConnectionAction={handleConnectionAction}
-                />
-              )}
-
-              {activeSection === "posts" && (
+          {isOwnProfile ? (
+            // Own Profile - Show sections based on activeSection
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeSection}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                {activeSection === "overview" && <OverviewSection user={user} />}
+                {activeSection === "about" && (
+                  <AboutSection
+                    user={user}
+                    isEditing={isEditing}
+                    setIsEditing={setIsEditing}
+                    formData={formData}
+                    setFormData={setFormData}
+                    handleChange={handleChange}
+                    handleSubmit={handleSubmit}
+                  />
+                )}
+                {activeSection === "skills" && (
+                  <SkillsSection
+                    user={user}
+                    isEditing={isEditing}
+                    setIsEditing={setIsEditing}
+                    formData={formData}
+                    skillInput={skillInput}
+                    setSkillInput={setSkillInput}
+                    onSkillKeyDown={onSkillKeyDown}
+                    suggestions={suggestions}
+                    addSuggested={addSuggested}
+                    removeSkill={removeSkill}
+                    commitSkillInput={commitSkillInput}
+                    handleSubmit={handleSubmit}
+                  />
+                )}
+                {activeSection === "connections" && (
+                  <ConnectionsSection
+                    connections={connections}
+                    allConnections={allConnections}
+                    handleMessageUser={handleMessageUser}
+                    handleConnectionAction={handleConnectionAction}
+                    currentUser={currentUser}
+                    isOwnProfile={isOwnProfile}
+                    navigate={navigate}
+                  />
+                )}
+                {activeSection === "posts" && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-bold text-gray-900">
+                        {isOwnProfile ? 'My Posts' : `${user?.name}'s Posts`}
+                      </h2>
+                      <span className="text-sm text-gray-600">
+                        {posts.length} {posts.length === 1 ? 'Post' : 'Posts'}
+                      </span>
+                    </div>
+                    
+                    {posts.length === 0 ? (
+                      <div className="text-center py-12 bg-white rounded-lg shadow">
+                        <FiFileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-600 text-lg mb-2">
+                          {isOwnProfile ? 'You haven\'t created any posts yet' : 'No posts yet'}
+                        </p>
+                        {isOwnProfile && (
+                          <p className="text-gray-500 text-sm">
+                            Go to Posts page to create your first post
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {posts.map(post => (
+                          <PostCard
+                            key={post._id}
+                            post={post}
+                            currentUser={currentUser}
+                            onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {activeSection === "settings" && (
+                  <SettingsSection
+                    user={user}
+                    isEditing={isEditing}
+                    setIsEditing={setIsEditing}
+                    formData={formData}
+                    setFormData={setFormData}
+                    handleChange={handleChange}
+                    avatarFile={avatarFile}
+                    setAvatarFile={setAvatarFile}
+                    handleDeleteAvatar={handleDeleteAvatar}
+                    handleSubmit={handleSubmit}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          ) : (
+            // Visitor View - Show ALL sections in a scrollable layout
+            <div className="space-y-8">
+              <OverviewSection user={user} />
+              <AboutSection
+                user={user}
+                isEditing={false}
+                setIsEditing={() => {}}
+                formData={formData}
+                setFormData={() => {}}
+                handleChange={() => {}}
+                handleSubmit={() => {}}
+                isOwnProfile={false}
+              />
+              <SkillsSection
+                user={user}
+                isEditing={false}
+                setIsEditing={() => {}}
+                formData={formData}
+                skillInput=""
+                setSkillInput={() => {}}
+                onSkillKeyDown={() => {}}
+                suggestions={[]}
+                addSuggested={() => {}}
+                removeSkill={() => {}}
+                commitSkillInput={() => {}}
+                handleSubmit={() => {}}
+                isOwnProfile={false}
+              />
+              {canViewPosts && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900">
-                      {isOwnProfile ? 'My Posts' : `${user?.name}'s Posts`}
-                    </h2>
+                    <h2 className="text-2xl font-bold text-gray-900">Posts</h2>
                     <span className="text-sm text-gray-600">
                       {posts.length} {posts.length === 1 ? 'Post' : 'Posts'}
                     </span>
@@ -759,14 +851,7 @@ const ProfilePage = () => {
                   {posts.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-lg shadow">
                       <FiFileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-600 text-lg mb-2">
-                        {isOwnProfile ? 'You haven\'t created any posts yet' : 'No posts yet'}
-                      </p>
-                      {isOwnProfile && (
-                        <p className="text-gray-500 text-sm">
-                          Go to Posts page to create your first post
-                        </p>
-                      )}
+                      <p className="text-gray-600 text-lg mb-2">No posts yet</p>
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -782,23 +867,17 @@ const ProfilePage = () => {
                   )}
                 </div>
               )}
-
-              {activeSection === "settings" && (
-                <SettingsSection
-                  user={user}
-                  isEditing={isEditing}
-                  setIsEditing={setIsEditing}
-                  formData={formData}
-                  setFormData={setFormData}
-                  handleChange={handleChange}
-                  avatarFile={avatarFile}
-                  setAvatarFile={setAvatarFile}
-                  handleDeleteAvatar={handleDeleteAvatar}
-                  handleSubmit={handleSubmit}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
+              <ConnectionsSection
+                connections={connections}
+                allConnections={allConnections}
+                handleMessageUser={handleMessageUser}
+                handleConnectionAction={handleConnectionAction}
+                currentUser={currentUser}
+                isOwnProfile={false}
+                navigate={navigate}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1099,12 +1178,13 @@ const AboutSection = ({
   setFormData,
   handleChange,
   handleSubmit,
+  isOwnProfile = true,
 }) => (
   <div className="space-y-6">
     {/* Header */}
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">About Information</h2>
-      {!isEditing ? (
+      {isOwnProfile && !isEditing ? (
         <motion.button
           onClick={() => setIsEditing(true)}
           className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
@@ -1114,7 +1194,7 @@ const AboutSection = ({
           <FiEdit size={18} />
           Edit About
         </motion.button>
-      ) : (
+      ) : isOwnProfile && isEditing ? (
         <div className="flex gap-3">
           <motion.button
             onClick={handleSubmit}
@@ -1135,7 +1215,7 @@ const AboutSection = ({
             Cancel
           </motion.button>
         </div>
-      )}
+      ) : null}
     </div>
 
     {isEditing ? (
@@ -1640,12 +1720,13 @@ const SkillsSection = ({
   removeSkill,
   commitSkillInput,
   handleSubmit,
+  isOwnProfile = true,
 }) => (
   <div className="space-y-6">
     {/* Header */}
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">Skills & Expertise</h2>
-      {!isEditing ? (
+      {isOwnProfile && !isEditing ? (
         <motion.button
           onClick={() => setIsEditing(true)}
           className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
@@ -1655,7 +1736,7 @@ const SkillsSection = ({
           <FiEdit size={18} />
           Edit Skills
         </motion.button>
-      ) : (
+      ) : isOwnProfile && isEditing ? (
         <div className="flex gap-3">
           <motion.button
             onClick={handleSubmit}
@@ -1676,7 +1757,7 @@ const SkillsSection = ({
             Cancel
           </motion.button>
         </div>
-      )}
+      ) : null}
     </div>
 
     <motion.div
@@ -1762,7 +1843,14 @@ const ConnectionsSection = ({
   allConnections,
   handleMessageUser,
   handleConnectionAction,
-}) => (
+  currentUser,
+  isOwnProfile,
+  navigate,
+}) => {
+  // Get current user's connection IDs for checking
+  const myConnectionIds = currentUser?.connections?.map(c => c._id || c) || [];
+  
+  return (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">My Connections</h2>
@@ -1826,25 +1914,62 @@ const ConnectionsSection = ({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <motion.button
-                    onClick={() => handleMessageUser(connection._id)}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <FiMessageCircle size={14} />
-                    Message
-                  </motion.button>
-                  <motion.button
-                    onClick={() =>
-                      handleConnectionAction("remove", connection._id)
-                    }
-                    className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <FiUserX size={14} /> Unfollow
-                  </motion.button>
+                  {isOwnProfile ? (
+                    // Own profile - show Message and Unfollow
+                    <>
+                      <motion.button
+                        onClick={() => handleMessageUser(connection._id)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiMessageCircle size={14} />
+                        Message
+                      </motion.button>
+                      <motion.button
+                        onClick={() =>
+                          handleConnectionAction("remove", connection._id)
+                        }
+                        className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiUserX size={14} /> Unfollow
+                      </motion.button>
+                    </>
+                  ) : myConnectionIds.includes(connection._id) ? (
+                    // Visitor view - connection is also in YOUR connections
+                    <>
+                      <motion.button
+                        onClick={() => handleMessageUser(connection._id)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiMessageCircle size={14} />
+                        Message
+                      </motion.button>
+                      <motion.button
+                        className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium"
+                      >
+                        <FiUserCheck size={14} /> Connected
+                      </motion.button>
+                    </>
+                  ) : (
+                    // Visitor view - connection is NOT in YOUR connections
+                    <>
+                      <motion.button
+                        onClick={() => navigate(`/profile/id/${connection._id}`)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiUser size={14} />
+                        View Profile
+                      </motion.button>
+                      <ConnectionButton userId={connection._id} />
+                    </>
+                  )}
                 </div>
               </motion.div>
             );
@@ -1865,7 +1990,8 @@ const ConnectionsSection = ({
       )}
     </motion.div>
   </div>
-);
+  );
+};
 
 // Settings Section Component
 const SettingsSection = ({

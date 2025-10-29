@@ -209,6 +209,7 @@ export const userAPI = {
   getUserByUsername: (username) =>
     apiClient.get(`/api/users/username/${username}`),
   getUserById: (userId) => apiClient.get(`/api/users/${userId}`),
+  getUserConnections: (userId) => apiClient.get(`/api/users/${userId}/connections`),
   updateProfile: (userData, avatar = null) => {
     if (
       avatar ||

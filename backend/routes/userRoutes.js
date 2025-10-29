@@ -70,6 +70,25 @@ router.get('/:userId', protect, async (req, res) => {
   }
 });
 
+// Get user connections
+router.get('/:userId/connections', protect, async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const user = await User.findById(req.params.userId)
+      .select('connections')
+      .populate('connections', 'name username avatarUrl role department');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.json(user.connections || []);
+  } catch (error) {
+    console.error('Error fetching user connections:', error);
+    res.status(500).json({ message: 'Error fetching connections' });
+  }
+});
+
 // Follow/Unfollow endpoints
 router.get('/:userId/following', protect, getFollowing);
 router.get('/:userId/mutual', protect, getMutualConnections);
