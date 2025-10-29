@@ -115,6 +115,7 @@ const forumRoutes = require("./routes/forumRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const testimonialRoutes = require("./routes/testimonialRoutes");
+const recommendationsRoutes = require("./routes/recommendationsRoutes");
 app.use("/api/testimonials", testimonialRoutes);
 
 app.use("/api/forum", forumRoutes);
@@ -133,6 +134,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/messages", messagesRoutes);
 app.use("/api", avatarRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/recommendations", recommendationsRoutes);
 
 // NOTE: Local '/uploads' static serving has been removed.
 

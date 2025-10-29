@@ -413,6 +413,7 @@ exports.sharePost = async (req, res) => {
 
     // Notify shared connections and create chat message per recipient
     const Message = require('../models/Message');
+    const { v4: uuidv4 } = require('uuid');
     await Promise.all(validConnections.map(async (connId) => {
       await Notification.create({
         recipient: connId,
@@ -421,26 +422,51 @@ exports.sharePost = async (req, res) => {
         content: `${req.user.name} shared a forum post with you: ${post.title}`,
         metadata: { postId: post._id, message }
       });
-      // Create chat message with link
+      
+      // Generate threadId for this conversation
+      const participants = [String(uid), String(connId)].sort();
+      const threadId = `${participants[0]}_${participants[1]}`;
+      
+      // Create chat message with metadata for forum post
+      // Include the forum link in content as fallback for rendering
+      const forumLink = `/forum/${post._id}`;
+      const messageContent = message 
+        ? `${message}\n\n${post.title}\n${forumLink}` 
+        : `${post.title}\n${forumLink}`;
+      
       const chat = await Message.create({
         from: uid,
         to: connId,
-        content: message ? `${message}\n\n${post.title}` : `${post.title}`,
-        attachments: [`/forum/${post._id}`]
+        content: messageContent,
+        threadId: threadId,
+        clientKey: uuidv4(),
+        metadata: {
+          sharedPost: {
+            postId: post._id,
+            preview: post.content ? post.content.substring(0, 100) : post.title,
+            imageUrl: post.media && post.media.length > 0 ? post.media[0].url : null,
+            postType: 'forum'
+          }
+        }
       });
+      
       // Emit chat event to recipient
       try {
         if (global.io) {
-          global.io.to(connId).emit('chat:receive', {
-            _id: chat._id,
-            from: String(uid),
-            to: String(connId),
+          global.io.to(String(connId)).emit('new_message', {
+            id: chat._id,
+            senderId: String(uid),
+            receiverId: String(connId),
             content: chat.content,
-            attachments: [`/api/forum/posts/${post._id}`],
-            createdAt: chat.createdAt
+            threadId: threadId,
+            metadata: chat.metadata,
+            timestamp: chat.createdAt,
+            status: 'sent'
           });
         }
-      } catch {}
+      } catch (e) {
+        console.error('Socket emit error:', e);
+      }
     }));
 
     res.json({ 
@@ -702,7 +728,10 @@ exports.getUserConnections = async (req, res) => {
       .populate('connections', 'name username avatarUrl role department')
       .select('connections');
     
-    res.json({ data: user.connections || [] });
+    // Filter to show only student connections (alumni and teachers can't access forum)
+    const studentConnections = (user.connections || []).filter(conn => conn.role === 'student');
+    
+    res.json({ data: studentConnections });
   } catch (err) {
     console.error('getUserConnections error:', err);
     res.status(500).json({ message: 'Failed to get connections' });

@@ -1209,16 +1209,29 @@ const MessagesPage = () => {
   // Render message content with emoji support and shared posts
   const renderMessageContent = (message) => {
     if (!message) return null;
+    const isMine = message.senderId === user._id;
     
-    // Handle shared post
+    // Handle shared post with metadata
     if (message.metadata?.sharedPost) {
-      const { postId, preview, imageUrl } = message.metadata.sharedPost;
+      const { postId, preview, imageUrl, postType, sourceUrl } = message.metadata.sharedPost;
+      // Determine the correct route - default to /posts (regular posts)
+      // ONLY use /forum if explicitly marked as forum post
+      let postRoute = `/posts/${postId}`;
+      
+      // Only change to forum if we have explicit confirmation
+      if (postType === 'forum') {
+        postRoute = `/forum/${postId}`;
+      } 
+      else if (sourceUrl && sourceUrl.includes('/forum/')) {
+        postRoute = `/forum/${postId}`;
+      }
+      
       return (
         <div 
           className="shared-post-container border rounded-lg overflow-hidden cursor-pointer max-w-xs bg-white dark:bg-gray-800"
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/posts/${postId}`);
+            navigate(postRoute);
           }}
         >
           {imageUrl && (
@@ -1244,6 +1257,70 @@ const MessagesPage = () => {
 
     const text = message.content || '';
     if (!text) return null;
+    
+    // Fallback: Check if message contains a forum link and render as clickable card
+    const forumLinkMatch = text.match(/\/forum\/([a-f0-9]{24})/i);
+    if (forumLinkMatch) {
+      const postId = forumLinkMatch[1];
+      const postRoute = `/forum/${postId}`;
+      const contentWithoutLink = text.replace(/\/forum\/[a-f0-9]{24}/gi, '').trim();
+      
+      return (
+        <div 
+          className="shared-post-container border rounded-lg overflow-hidden cursor-pointer max-w-xs bg-white dark:bg-gray-800"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(postRoute);
+          }}
+        >
+          <div className="p-3">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              📋 Shared Forum Post
+            </p>
+            {contentWithoutLink && (
+              <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3 mb-2">
+                {contentWithoutLink}
+              </p>
+            )}
+            <div className="mt-2 text-xs text-blue-500 dark:text-blue-400 flex items-center gap-1">
+              View forum post →
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // Check for regular post links (PostsPage)
+    const postLinkMatch = text.match(/\/posts\/([a-f0-9]{24})/i);
+    if (postLinkMatch) {
+      const postId = postLinkMatch[1];
+      const postRoute = `/posts/${postId}`;
+      const contentWithoutLink = text.replace(/\/posts\/[a-f0-9]{24}/gi, '').trim();
+      
+      return (
+        <div 
+          className="shared-post-container border rounded-lg overflow-hidden cursor-pointer max-w-xs bg-white dark:bg-gray-800"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(postRoute);
+          }}
+        >
+          <div className="p-3">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              📝 Shared Post
+            </p>
+            {contentWithoutLink && (
+              <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3 mb-2">
+                {contentWithoutLink}
+              </p>
+            )}
+            <div className="mt-2 text-xs text-blue-500 dark:text-blue-400 flex items-center gap-1">
+              View post →
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     // Simple emoji detection
     const emojiRegex =
@@ -1260,8 +1337,8 @@ const MessagesPage = () => {
       return null;
     }
 
-    // Render clickable hyperlinks in blue, like WhatsApp
-    const parts = text.split(/(https?:\/\/\S+)/g);
+    // Render clickable hyperlinks with white color for sender, blue for receiver
+    const parts = text.split(/(https?:\/\/\S+|\/(?:posts|forum)\/\S+)/g);
     return (
       <div className="whitespace-pre-wrap break-words">
         {parts.map((part, idx) => {
@@ -1275,11 +1352,31 @@ const MessagesPage = () => {
                 href={part}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-500 hover:underline break-all"
+                className={`${isMine ? 'text-white' : 'text-blue-500'} hover:underline break-all`}
                 onClick={(e) => e.stopPropagation()}
               >
                 {part}
               </a>
+            );
+          }
+          // Relative forum/post links
+          if (/^\/(?:posts|forum)\//i.test(part)) {
+            const m = part.match(/^\/(posts|forum)\/([a-f0-9]{24})/i);
+            const routeType = m?.[1]; // 'posts' or 'forum'
+            const postId = m?.[2];
+            return (
+              <button
+                key={idx}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (postId && routeType) navigate(`/${routeType}/${postId}`);
+                }}
+                className={`${isMine ? 'text-white' : 'text-blue-500'} hover:underline break-all`}
+                title="Open post"
+              >
+                {part}
+              </button>
             );
           }
           return <span key={idx}>{part}</span>;

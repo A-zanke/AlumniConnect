@@ -39,6 +39,7 @@ const NetworkPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [following, setFollowing] = useState([]);
+  const [connections, setConnections] = useState([]); // All connections from profile
   const [mutualConnections, setMutualConnections] = useState([]);
   // Suggested tab removed per request
   const [pendingRequests, setPendingRequests] = useState([]);
@@ -47,6 +48,9 @@ const NetworkPage = () => {
   // AI Alumni Recommendations (student-only)
   const [recLoading, setRecLoading] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
+  const [matchFilter, setMatchFilter] = useState(40); // Minimum match percentage filter
+  const [connectionHistory, setConnectionHistory] = useState([]); // Track connected alumni
+  const [aiSubTab, setAiSubTab] = useState('recommendations'); // 'recommendations' or 'history'
   const [stats, setStats] = useState({
     totalConnections: 0,
     mutualConnections: 0,
@@ -62,10 +66,14 @@ const NetworkPage = () => {
 
       console.log("Fetching network data for user:", user._id);
 
-      const [followingRes, mutualRes, requestsRes, historyRes] =
+      const [followingRes, connectionsRes, mutualRes, requestsRes, historyRes] =
         await Promise.all([
           followAPI.getFollowing(user._id).catch((err) => {
             console.error("Error fetching following:", err);
+            return { data: [] };
+          }),
+          connectionAPI.getConnections().catch((err) => {
+            console.error("Error fetching connections:", err);
             return { data: [] };
           }),
           followAPI.getMyMutualConnections().catch((err) => {
@@ -84,12 +92,14 @@ const NetworkPage = () => {
 
       console.log("API Responses:", {
         following: followingRes.data,
+        connections: connectionsRes.data,
         mutual: mutualRes.data,
         requests: requestsRes.data,
         history: historyRes.data,
       });
 
       const followingData = followingRes.data?.data || followingRes.data || [];
+      const connectionsData = connectionsRes.data?.data || connectionsRes.data || [];
       const mutualData = mutualRes.data?.data || mutualRes.data || [];
       const requestsData = requestsRes.data?.data || requestsRes.data || [];
       // Filter history to only last 24 hours since resolution
@@ -100,16 +110,25 @@ const NetworkPage = () => {
         return Number.isFinite(t) && now - t <= 24 * 60 * 60 * 1000; // 24h
       });
 
-      setFollowing(followingData);
+      // Combine following and connections, remove duplicates
+      const allConnectedUsers = [...followingData];
+      connectionsData.forEach(conn => {
+        if (!allConnectedUsers.some(u => u._id === conn._id)) {
+          allConnectedUsers.push(conn);
+        }
+      });
+      
+      setFollowing(Array.isArray(allConnectedUsers) ? allConnectedUsers : []);
+      setConnections(Array.isArray(connectionsData) ? connectionsData : []);
       setMutualConnections(mutualData);
       setPendingRequests(requestsData);
       setRequestHistory(historyData);
 
       // Calculate stats
       setStats({
-        totalConnections: followingData.length || 0, // for Following tab display only
+        totalConnections: allConnectedUsers.length || 0,
         mutualConnections: mutualData.length || 0,
-        followingCount: followingData.length || 0,
+        followingCount: allConnectedUsers.length || 0,
       });
 
       setError(null);
@@ -135,15 +154,25 @@ const NetworkPage = () => {
   // Fetch AI alumni recommendations for students only
   useEffect(() => {
     const isStudent = String(user?.role || "").toLowerCase() === "student";
-    if (!user?._id || !isStudent) return;
+    if (!user?._id || !isStudent) {
+      console.log("Not fetching recommendations - user role:", user?.role);
+      return;
+    }
     let mounted = true;
     (async () => {
       try {
+        console.log("Fetching alumni recommendations for user:", user._id);
         setRecLoading(true);
         const res = await recommendationsAPI.getAlumni(user._id);
-        if (mounted) setRecommendations(res.data || []);
+        console.log("Recommendations response:", res.data);
+        if (mounted) {
+          const recs = Array.isArray(res.data) ? res.data : [];
+          console.log("Setting recommendations:", recs.length, "alumni");
+          setRecommendations(recs);
+        }
       } catch (e) {
-        console.error("Recommendations fetch error", e);
+        console.error("Recommendations fetch error:", e);
+        toast.error("Failed to load alumni recommendations");
       } finally {
         if (mounted) setRecLoading(false);
       }
@@ -152,6 +181,12 @@ const NetworkPage = () => {
       mounted = false;
     };
   }, [user?._id, user?.role]);
+
+  // Load connection history from localStorage
+  useEffect(() => {
+    const history = JSON.parse(localStorage.getItem('alumniConnectionHistory') || '[]');
+    setConnectionHistory(history);
+  }, []);
 
   const handleAcceptRequest = async (connectionId) => {
     try {
@@ -215,25 +250,43 @@ const NetworkPage = () => {
     try {
       await followAPI.unfollowUser(userId);
       toast.success("Successfully unfollowed");
-      // Optimistically update UI counts and list
-      setFollowing((prev) => prev.filter((u) => u._id !== userId));
-      setStats((prev) => ({
-        ...prev,
-        followingCount: Math.max((prev.followingCount || 0) - 1, 0),
-        totalConnections: Math.max((prev.totalConnections || 0) - 1, 0),
-      }));
+      // Refresh all network data to ensure consistency
+      await fetchNetworkData();
     } catch (error) {
       console.error("Error unfollowing user:", error);
       toast.error("Failed to unfollow user");
     }
   };
 
-  const handleConnect = async (userId) => {
+  const handleConnect = async (userId, alumniData = null) => {
     try {
       await connectionAPI.sendRequest(userId);
       toast.success("Connection request sent!");
+      
+      // If connecting from alumni recommendations, add to history
+      if (alumniData) {
+        const historyEntry = {
+          ...alumniData,
+          connectedAt: new Date().toISOString(),
+          status: 'requested'
+        };
+        
+        // Save to localStorage
+        const existingHistory = JSON.parse(localStorage.getItem('alumniConnectionHistory') || '[]');
+        const updatedHistory = [historyEntry, ...existingHistory].slice(0, 50); // Keep last 50
+        localStorage.setItem('alumniConnectionHistory', JSON.stringify(updatedHistory));
+        setConnectionHistory(updatedHistory);
+      }
+      
       // Update local state to show "Requested" status
       setMutualConnections((prev) =>
+        prev.map((user) =>
+          user._id === userId
+            ? { ...user, connectionStatus: "requested" }
+            : user
+        )
+      );
+      setRecommendations((prev) =>
         prev.map((user) =>
           user._id === userId
             ? { ...user, connectionStatus: "requested" }
@@ -434,17 +487,11 @@ const NetworkPage = () => {
                   }
                 >
                   <div className="flex items-center mb-4">
-                    {followedUser.avatarUrl ? (
-                      <img
-                        src={getAvatarUrl(followedUser.avatarUrl)}
-                        alt={followedUser.name || "User"}
-                        className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                        {(followedUser.name || "U").charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                    <img
+                      src={followedUser.avatarUrl ? getAvatarUrl(followedUser.avatarUrl) : "/default-avatar.png"}
+                      alt={followedUser.name || "User"}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
+                    />
                     <div className="ml-4 flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
                         {followedUser.name || "Unknown User"}
@@ -452,8 +499,8 @@ const NetworkPage = () => {
                       <p className="text-sm text-gray-500 truncate">
                         @{followedUser.username || "unknown"}
                       </p>
-                      <p className="text-xs text-gray-400 capitalize">
-                        {followedUser.role || "user"}
+                      <p className="text-xs text-blue-600 font-medium">
+                        @{(followedUser.role || "user").toLowerCase()}
                       </p>
                       <span
                         className={`inline-block px-2 py-0.5 rounded text-[11px] mt-1 ${
@@ -527,17 +574,11 @@ const NetworkPage = () => {
                   }
                 >
                   <div className="flex items-center mb-4">
-                    {connection.avatarUrl ? (
-                      <img
-                        src={getAvatarUrl(connection.avatarUrl)}
-                        alt={connection.name || "User"}
-                        className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                        {(connection.name || "U").charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                    <img
+                      src={connection.avatarUrl ? getAvatarUrl(connection.avatarUrl) : "/default-avatar.png"}
+                      alt={connection.name || "User"}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
+                    />
                     <div className="ml-4 flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
                         {connection.name || "Unknown User"}
@@ -554,19 +595,9 @@ const NetworkPage = () => {
                     </div>
                   </div>
                   <div className="flex space-x-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleUnfollow(connection._id);
-                      }}
-                      className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                    >
-                      <FaUserTimes className="mr-2" />
-                      Unfollow
-                    </button>
                     <Link
                       to={`/profile/${connection.username || connection._id}`}
-                      className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
+                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
                       onClick={(e) => e.stopPropagation()}
                     >
                       View Profile
@@ -595,19 +626,11 @@ const NetworkPage = () => {
                   className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200"
                 >
                   <div className="flex items-center mb-4">
-                    {request.requester?.avatarUrl ? (
-                      <img
-                        src={getAvatarUrl(request.requester.avatarUrl)}
-                        alt={request.requester?.name || "User"}
-                        className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                        {(request.requester?.name || "U")
-                          .charAt(0)
-                          .toUpperCase()}
-                      </div>
-                    )}
+                    <img
+                      src={request.requester?.avatarUrl ? getAvatarUrl(request.requester.avatarUrl) : "/default-avatar.png"}
+                      alt={request.requester?.name || "User"}
+                      className="h-12 w-12 rounded-full object-cover border-2 border-gray-100"
+                    />
                     <div className="ml-4 flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
                         {request.requester?.name || "Unknown User"}
@@ -659,20 +682,19 @@ const NetworkPage = () => {
                       key={item._id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-white rounded-xl shadow-md p-4 border"
+                      className="bg-white rounded-xl shadow-md p-4 border cursor-pointer hover:shadow-lg transition-shadow"
+                      onClick={() => {
+                        if (actor._id || actor.username) {
+                          window.location.href = `/profile/${actor.username || actor._id}`;
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3">
-                        {avatar ? (
-                          <img
-                            src={getAvatarUrl(avatar)}
-                            alt={name}
-                            className="h-10 w-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
-                            {name.charAt(0).toUpperCase()}
-                          </div>
-                        )}
+                        <img
+                          src="/default-avatar.png"
+                          alt={name}
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900 truncate">
                             {name}
@@ -705,96 +727,350 @@ const NetworkPage = () => {
 
       {/* AI Alumni Recommendations - student only under tab */}
       {String(user?.role || "").toLowerCase() === "student" && activeTab === 'ai' && (
-        <div className="mt-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">
-            🧠 AI Alumni Recommendations
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Discover alumni profiles most relevant to your skills, department,
-            and career interests.
-          </p>
-          {recLoading ? (
-            <div className="flex justify-center py-8">
-              <Spinner size="lg" />
+        <div className="mt-8">
+          <div className="text-center mb-10">
+            <h2 className="text-4xl font-extrabold bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 bg-clip-text text-transparent mb-3">
+              🎯 AI-Powered Alumni Matches
+            </h2>
+            <p className="text-gray-600 text-lg max-w-2xl mx-auto">
+              Discover alumni who share your interests, skills, and career aspirations
+            </p>
+          </div>
+
+          {/* Match Filter Slider */}
+          <div className="max-w-4xl mx-auto mb-10 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-2xl p-8 shadow-lg border-2 border-cyan-200">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <span className="text-2xl">🎚️</span>
+                  Match Filter
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">Show alumni with at least <span className="font-bold text-cyan-600">{matchFilter}%</span> match</p>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-extrabold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
+                  {matchFilter}%
+                </div>
+                <p className="text-xs text-gray-500">Minimum Match</p>
+              </div>
+            </div>
+            <input
+              type="range"
+              min="40"
+              max="100"
+              step="20"
+              value={matchFilter}
+              onChange={(e) => setMatchFilter(parseInt(e.target.value))}
+              className="w-full h-3 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full appearance-none cursor-pointer slider-thumb"
+              style={{
+                background: `linear-gradient(to right, #06b6d4 ${(matchFilter-40)/60*100}%, #e0f2fe ${(matchFilter-40)/60*100}%)`
+              }}
+            />
+            <div className="flex justify-between text-xs text-gray-500 mt-2 px-1">
+              <span>40%</span>
+              <span>60%</span>
+              <span>80%</span>
+              <span>90%</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          {/* Sub-tabs for Recommendations and History */}
+          <div className="flex gap-4 mb-8 border-b-2 border-gray-200">
+            <button
+              onClick={() => setAiSubTab('recommendations')}
+              className={`pb-3 px-4 font-semibold ${aiSubTab === 'recommendations' ? 'text-cyan-600 border-b-4 border-cyan-600' : 'text-gray-500 hover:text-cyan-600 border-b-4 border-transparent hover:border-cyan-300'} transition-colors`}
+            >
+              🎯 Recommendations ({recommendations.filter(r => Math.round(r.matchScore || 60) >= matchFilter).length})
+            </button>
+            <button
+              onClick={() => setAiSubTab('history')}
+              className={`pb-3 px-4 font-semibold ${aiSubTab === 'history' ? 'text-cyan-600 border-b-4 border-cyan-600' : 'text-gray-500 hover:text-cyan-600 border-b-4 border-transparent hover:border-cyan-300'} transition-colors`}
+            >
+              📜 Connection History ({connectionHistory.length})
+            </button>
+          </div>
+          
+          {/* Recommendations Tab Content */}
+          {aiSubTab === 'recommendations' && (recLoading ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="relative">
+                <div className="w-20 h-20 border-4 border-cyan-200 border-t-cyan-600 rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-2xl">🧠</span>
+                </div>
+              </div>
+              <p className="mt-4 text-gray-600 font-medium">Finding your perfect matches...</p>
             </div>
           ) : recommendations.length === 0 ? (
-            <div className="text-center py-12 text-gray-600 bg-white rounded-2xl shadow-md">
-              No suitable alumni recommendations yet.
+            <div className="text-center py-16 bg-gradient-to-br from-cyan-50 to-blue-50 rounded-3xl shadow-lg border-2 border-dashed border-cyan-200">
+              <div className="text-6xl mb-4">📝</div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">Complete Your Profile</h3>
+              <p className="text-gray-600 max-w-md mx-auto mb-6">
+                To get personalized alumni recommendations, please add your skills, career interests, or department to your profile.
+              </p>
+              <Link
+                to="/profile/edit"
+                className="inline-block px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
+              >
+                Complete Profile →
+              </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recommendations.map((alum, idx) => (
-                <motion.div
-                  key={alum._id || idx}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className="bg-white rounded-2xl shadow-lg hover:shadow-2xl border border-transparent hover:border-indigo-200 transition-all p-6 cursor-pointer hover:-translate-y-1"
-                  onClick={() =>
-                    (window.location.href = `/profile/${
-                      alum.username || alum._id
-                    }`)
-                  }
-                >
-                  <div className="flex items-center gap-4 mb-4">
-                    {alum.avatarUrl ? (
-                      <img
-                        src={getAvatarUrl(alum.avatarUrl)}
-                        alt={alum.name}
-                        className="h-16 w-16 rounded-full object-cover ring-2 ring-indigo-100"
-                      />
-                    ) : (
-                      <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
-                        {(alum.name || "A").charAt(0).toUpperCase()}
+            <>
+              {(() => {
+                const filteredRecs = recommendations.filter(alum => {
+                  const matchPercent = Math.round(alum.matchScore || 60);
+                  return matchPercent >= matchFilter;
+                });
+                
+                if (filteredRecs.length === 0) {
+                  // Check if there are ANY recommendations at all
+                  const hasAnyRecs = recommendations.length > 0;
+                  
+                  return (
+                    <div className="text-center py-16 bg-gradient-to-br from-orange-50 to-yellow-50 rounded-3xl shadow-lg border-2 border-dashed border-orange-200">
+                      <div className="text-6xl mb-4">{hasAnyRecs ? '🎚️' : '🔍'}</div>
+                      <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                        {hasAnyRecs ? `No Matches at ${matchFilter}%` : 'No Matching Alumni Found'}
+                      </h3>
+                      <p className="text-gray-600 max-w-md mx-auto mb-4">
+                        {hasAnyRecs 
+                          ? 'Try lowering the match filter to see more alumni recommendations!' 
+                          : 'We couldn\'t find any alumni that match your profile based on skills, department, interests, or industry. This could mean:'
+                        }
+                      </p>
+                      {!hasAnyRecs && (
+                        <ul className="text-left text-gray-600 max-w-md mx-auto mb-6 space-y-2">
+                          <li>• No alumni have similar profiles yet</li>
+                          <li>• Alumni haven't completed their profiles</li>
+                          <li>• Your profile needs more details for better matching</li>
+                        </ul>
+                      )}
+                      <div className="flex gap-3 justify-center">
+                        {hasAnyRecs && (
+                          <button
+                            onClick={() => setMatchFilter(40)}
+                            className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
+                          >
+                            Reset to 40%
+                          </button>
+                        )}
+                        <Link
+                          to="/profile/edit"
+                          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all"
+                        >
+                          Update Profile
+                        </Link>
                       </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-semibold text-lg text-gray-900 truncate">
-                        {alum.name}
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {filteredRecs.map((alum, idx) => {
+                // Use actual match score from backend
+                const matchScore = alum.matchScore || 0;
+                const matchPercent = Math.round(matchScore);
+                const matchColor = matchPercent >= 80 ? 'from-green-500 to-emerald-600' : 
+                                  matchPercent >= 70 ? 'from-blue-500 to-cyan-600' : 
+                                  'from-cyan-500 to-teal-600';
+                
+                // Check if this alumni is already connected (check both following and connections)
+                const isConnected = following.some(f => f._id === alum._id) || 
+                                   connections.some(c => c._id === alum._id);
+                
+                return (
+                  <motion.div
+                    key={alum._id || idx}
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1, type: "spring", stiffness: 100 }}
+                    whileHover={{ scale: 1.03, y: -5 }}
+                    className="relative bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-xl hover:shadow-2xl border-2 border-transparent hover:border-cyan-300 transition-all p-6 cursor-pointer overflow-hidden group"
+                    onClick={() => (window.location.href = `/profile/${alum.username || alum._id}`)}
+                  >
+                    {/* Match Badge */}
+                    <div className="absolute top-4 right-4 z-10">
+                      <div className={`bg-gradient-to-r ${matchColor} text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 font-bold text-sm`}>
+                        <span className="text-lg">✨</span>
+                        {matchPercent}% Match
                       </div>
-                      <div className="text-sm text-gray-500 truncate">
-                        {alum.department || "Department"} •{" "}
-                        {alum.graduationYear || "—"}
+                    </div>
+
+                    {/* Animated Background */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-100/20 to-blue-100/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
+                    {/* Content */}
+                    <div className="relative z-10">
+                      {/* Avatar Section */}
+                      <div className="flex flex-col items-center mb-6 mt-8">
+                        <div className="relative">
+                          <img
+                            src={alum.avatarUrl ? getAvatarUrl(alum.avatarUrl) : "/default-avatar.png"}
+                            alt={alum.name}
+                            className="h-24 w-24 rounded-full object-cover ring-4 ring-cyan-200 shadow-xl"
+                          />
+                          <div className="absolute -bottom-2 -right-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-full p-2 shadow-lg">
+                            <FaUserCheck className="text-sm" />
+                          </div>
+                        </div>
+                        <h3 className="font-bold text-xl text-gray-900 mt-4 text-center">
+                          {alum.name}
+                        </h3>
+                        <p className="text-sm text-gray-600 text-center">
+                          {alum.department || "Department"} • {alum.graduationYear || "—"}
+                        </p>
+                        {alum.company && (
+                          <div className="mt-2 px-3 py-1 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-full">
+                            <p className="text-xs font-semibold text-gray-700">
+                              🏢 {alum.company}
+                            </p>
+                          </div>
+                        )}
                       </div>
-                      {alum.company && (
-                        <div className="text-sm text-gray-500 truncate">
-                          {alum.company}
+
+                      {/* Skills */}
+                      {Array.isArray(alum.skills) && alum.skills.length > 0 && (
+                        <div className="mb-6">
+                          <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                            Top Skills
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {alum.skills.slice(0, 4).map((s, i) => (
+                              <span
+                                key={`${s}-${i}`}
+                                className="px-3 py-1.5 bg-gradient-to-r from-cyan-100 to-blue-100 text-cyan-700 rounded-full text-xs font-semibold shadow-sm hover:shadow-md transition-shadow"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
-                    </div>
-                  </div>
-                  {Array.isArray(alum.skills) && alum.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {alum.skills.slice(0, 5).map((s, i) => (
-                        <span
-                          key={`${s}-${i}`}
-                          className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium shadow-sm"
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-3">
+                        <button
+                          className={`flex-1 px-4 py-3 ${
+                            isConnected ? 'bg-green-500 cursor-default' : 
+                            alum.connectionStatus === 'requested' ? 'bg-gray-400 cursor-not-allowed' : 
+                            'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700'
+                          } text-white rounded-xl text-sm font-bold transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isConnected && alum.connectionStatus !== 'requested') {
+                              handleConnect(alum._id, { ...alum, matchPercent });
+                            }
+                          }}
+                          disabled={isConnected || alum.connectionStatus === 'requested'}
                         >
-                          {s}
-                        </span>
-                      ))}
+                          {isConnected ? <><FaUserCheck /> Connected</> : 
+                           alum.connectionStatus === 'requested' ? <><FaUserPlus /> Requested</> : 
+                           <><FaUserPlus /> Connect</>}
+                        </button>
+                        <Link
+                          to={`/profile/${alum.username || alum._id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-4 py-3 bg-white hover:bg-gray-50 text-gray-700 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg border-2 border-gray-200 hover:border-cyan-300 flex items-center justify-center"
+                        >
+                          View
+                        </Link>
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 justify-end">
-                    <button
-                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md hover:shadow-lg"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleConnect(alum._id);
-                      }}
-                    >
-                      Connect
-                    </button>
-                    <Link
-                      to={`/profile/${alum.username || alum._id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium transition-all shadow-sm"
-                    >
-                      View Profile
-                    </Link>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+                      })}
+                    </div>
+                  );
+              })()}
+            </>
+          ))}
+
+          {/* History Tab Content */}
+          {aiSubTab === 'history' && (
+            <div>
+              {connectionHistory.length === 0 ? (
+                <div className="text-center py-16 bg-gradient-to-br from-cyan-50 to-blue-50 rounded-3xl shadow-lg border-2 border-dashed border-cyan-200">
+                  <div className="text-6xl mb-4">📜</div>
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">No Connection History Yet</h3>
+                  <p className="text-gray-600 max-w-md mx-auto">
+                    Start connecting with alumni from recommendations to build your history!
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {connectionHistory.map((entry, idx) => {
+                    const matchPercent = Math.round(entry.matchPercent || entry.matchScore || 60);
+                    const matchColor = matchPercent >= 80 ? 'from-green-500 to-emerald-600' : 
+                                      matchPercent >= 70 ? 'from-blue-500 to-cyan-600' : 
+                                      'from-purple-500 to-pink-600';
+                    
+                    return (
+                      <motion.div
+                        key={entry._id || idx}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        className="bg-white rounded-2xl shadow-lg hover:shadow-xl border-2 border-gray-100 p-6 cursor-pointer transition-all"
+                        onClick={() => (window.location.href = `/profile/${entry.username || entry._id}`)}
+                      >
+                        {/* Match Badge */}
+                        <div className="flex justify-between items-start mb-4">
+                          <div className={`bg-gradient-to-r ${matchColor} text-white px-3 py-1 rounded-full shadow-md text-xs font-bold`}>
+                            ✨ {matchPercent}% Match
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(entry.connectedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+
+                        {/* Avatar and Info */}
+                        <div className="flex items-center gap-4 mb-4">
+                          <img
+                            src={entry.avatarUrl ? getAvatarUrl(entry.avatarUrl) : "/default-avatar.png"}
+                            alt={entry.name}
+                            className="h-16 w-16 rounded-full object-cover ring-2 ring-cyan-200"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-lg text-gray-900 truncate">
+                              {entry.name}
+                            </h3>
+                            <p className="text-sm text-gray-600 truncate">
+                              {entry.department || "Department"}
+                            </p>
+                            {entry.company && (
+                              <p className="text-xs text-gray-500 truncate">
+                                🏢 {entry.company}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div className="flex items-center justify-between">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            connections.some(c => c._id === entry._id) || following.some(f => f._id === entry._id) ? 'bg-green-100 text-green-700' :
+                            entry.status === 'requested' ? 'bg-yellow-100 text-yellow-700' : 
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {connections.some(c => c._id === entry._id) || following.some(f => f._id === entry._id) ? '✅ Connected' :
+                             entry.status === 'requested' ? '⏳ Pending' : '📤 Sent'}
+                          </span>
+                          <Link
+                            to={`/profile/${entry.username || entry._id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-cyan-600 hover:text-cyan-700 text-sm font-semibold"
+                          >
+                            View Profile →
+                          </Link>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

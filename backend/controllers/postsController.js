@@ -1061,10 +1061,10 @@ exports.searchUsers = async (req, res) => {
 exports.deleteComment = async (req, res) => {
   try {
     const { postId, commentId } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     const post = await Post.findById(postId);
-    if (!post) {
+    if (!post || post.deletedAt) {
       return res.status(404).json({ message: 'Post not found' });
     }
 
@@ -1081,8 +1081,8 @@ exports.deleteComment = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to delete this comment' });
     }
 
-    // Remove the comment
-    comment.remove();
+    // Remove the comment using pull
+    post.comments.pull(commentId);
     await post.save();
 
     res.json({ message: 'Comment deleted successfully' });
