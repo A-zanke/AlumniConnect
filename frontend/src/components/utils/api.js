@@ -157,6 +157,7 @@ export const eventsAPI = {
   getEvents: (upcomingOnly = false) =>
     apiClient.get("/api/events", { params: { upcoming: upcomingOnly } }),
   getMyEvents: () => apiClient.get("/api/events/mine"),
+  getMyRegisteredEvents: () => apiClient.get("/api/events/registered/mine"),
   getEvent: (id) => apiClient.get(`/api/events/${id}`),
   createEvent: (eventData) => {
     const formData = new FormData();
@@ -181,6 +182,17 @@ export const eventsAPI = {
   getPendingEvents: () => apiClient.get("/api/admin/events/pending"),
   approveEvent: (id) => apiClient.put(`/api/events/${id}/approve`),
   rejectEvent: (id) => apiClient.put(`/api/events/${id}/reject`),
+  // Registration endpoints
+  registerForEvent: (id, registrationData) => 
+    apiClient.post(`/api/events/${id}/register`, registrationData),
+  checkRegistration: (id) => 
+    apiClient.get(`/api/events/${id}/check-registration`),
+  getEventRegistrations: (id) => 
+    apiClient.get(`/api/events/${id}/registrations`),
+  downloadRegistrationsCSV: (id) => 
+    apiClient.get(`/api/events/${id}/registrations/download`, { responseType: 'blob' }),
+  markAttendance: (registrationId, attended) => 
+    apiClient.put(`/api/events/registrations/${registrationId}/attendance`, { attended }),
 };
 
 export const connectionAPI = {

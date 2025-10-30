@@ -20,9 +20,11 @@ const NotificationBell = () => {
     const load = async () => {
       try {
         const res = await axios.get("/api/notifications");
-        // MINIMAL FIX: Backend returns { data: notifications }, so access res.data.data
-        setItems(res.data.data || []);
-      } catch {
+        // Backend returns array directly now
+        const notifications = Array.isArray(res.data) ? res.data : (res.data.data || []);
+        setItems(notifications);
+      } catch (err) {
+        console.error('Error loading notifications:', err);
         setItems([]);
       }
     };
@@ -245,8 +247,7 @@ const NotificationBell = () => {
               ) : (
                 items
                   .filter((n) => {
-                    // Filter out forward notifications - only show message, reaction, and connection_request types
-                    const allowedTypes = ['message', 'reaction', 'connection_request', 'comment', 'like', 'post', 'connection_accepted'];
+                    const allowedTypes = ['message', 'reaction', 'connection_request', 'comment', 'like', 'post', 'connection_accepted', 'event'];
                     return allowedTypes.includes(n.type);
                   })
                   .map((n) => (
@@ -256,9 +257,12 @@ const NotificationBell = () => {
                       !n.read ? "bg-blue-50 border-l-4 border-l-blue-500" : ""
                     }`}
                     onClick={() => {
-                      // Redirect based on notification type
+                      if (n.type === 'event' && n.link) {
+                        navigate(n.link);
+                        setOpen(false);
+                        return;
+                      }
                       if (n.type === 'message' || n.type === 'reaction') {
-                        // Redirect to messages page with the sender
                         window.location.href = `/messages?user=${n.sender?._id}`;
                       } else {
                         goProfile(n.sender, n._id, n);

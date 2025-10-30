@@ -2,10 +2,10 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 const items = [
-  { icon: '✅', text: 'Be respectful, constructive, and professional.' },
+  { icon: '✅', text: 'Be respectful and professional.' },
   { icon: '🚫', text: 'No spam, harassment, or solicitation.' },
   { icon: '🏷️', text: 'Use tags and categories for clarity.' },
-  { icon: '📢', text: 'Use @mentions to notify relevant peers or alumni.' }
+  { icon: '📢', text: 'Use @mentions to notify relevant peers.' }
 ];
 
 const Guidelines = () => (

@@ -18,6 +18,10 @@ const chatbotController = require('../controllers/chatbotController');
 // Public route to get user profile by username
 router.get('/username/:username', getUserByUsername);
 
+// Specific routes MUST come before param routes
+router.get('/suggested/connections', protect, getSuggestedConnections);
+router.get('/mutual/connections', protect, getMyMutualConnections);
+
 // Get user profile by ID
 router.get('/:userId', protect, async (req, res) => {
   try {
@@ -94,8 +98,6 @@ router.get('/:userId/following', protect, getFollowing);
 router.get('/:userId/mutual', protect, getMutualConnections);
 router.post('/:userId/follow', protect, followUser);
 router.post('/:userId/unfollow', protect, unfollowUser);
-router.get('/suggested/connections', protect, getSuggestedConnections);
-router.get('/mutual/connections', protect, getMyMutualConnections);
 
 // Presence routes
 router.put('/presence', protect, updatePresence);

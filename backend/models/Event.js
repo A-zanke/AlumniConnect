@@ -52,7 +52,16 @@ const EventSchema = new mongoose.Schema({
   // Legacy approval flag kept for UI compatibility
   approved: { type: Boolean, default: true },
 
-  rsvps: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  rsvps: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  
+  // Registration settings
+  requiresRegistration: { type: Boolean, default: true },
+  registrationDeadline: { type: Date },
+  maxAttendees: { type: Number },
+  
+  // Tracking
+  registrationCount: { type: Number, default: 0 },
+  attendanceCount: { type: Number, default: 0 }
 }, { timestamps: true });
 
 EventSchema.index({ startAt: 1 });

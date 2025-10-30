@@ -595,13 +595,30 @@ const NetworkPage = () => {
                     </div>
                   </div>
                   <div className="flex space-x-2">
-                    <Link
-                      to={`/profile/${connection.username || connection._id}`}
-                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center"
-                      onClick={(e) => e.stopPropagation()}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const isAlreadyConnected = connections.some(c => c._id === connection._id);
+                        const isRequestPending = hasPendingRequest(connection._id) || connection.connectionStatus === 'requested';
+                        if (!isAlreadyConnected && !isRequestPending) {
+                          handleConnect(connection._id);
+                        }
+                      }}
+                      className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center gap-2 ${
+                        connections.some(c => c._id === connection._id)
+                          ? 'bg-green-500 text-white cursor-default'
+                          : (hasPendingRequest(connection._id) || connection.connectionStatus === 'requested')
+                            ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                            : 'bg-blue-500 hover:bg-blue-600 text-white'
+                      }`}
+                      disabled={connections.some(c => c._id === connection._id) || hasPendingRequest(connection._id) || connection.connectionStatus === 'requested'}
                     >
-                      View Profile
-                    </Link>
+                      {connections.some(c => c._id === connection._id)
+                        ? (<><FaUserCheck /> Connected</>)
+                        : (hasPendingRequest(connection._id) || connection.connectionStatus === 'requested')
+                          ? (<><FaUserPlus /> Requested</>)
+                          : (<><FaUserPlus /> Connect</>)}
+                    </button>
                   </div>
                 </motion.div>
               ))

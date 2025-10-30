@@ -33,7 +33,7 @@ const ForumPostSchema = new mongoose.Schema({
   content: { type: String, required: true, trim: true },
   category: {
     type: String,
-    enum: ['Career', 'Higher Studies', 'Internships', 'Hackathons', 'Projects', 'Alumni Queries'],
+    enum: ['Career', 'Higher Studies', 'Internships', 'Hackathons', 'Projects'],
     required: true
   },
   tags: [{ type: String, trim: true }],

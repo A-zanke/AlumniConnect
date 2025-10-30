@@ -1,5 +1,6 @@
 const Event = require('../models/Event');
 const User = require('../models/User');
+const EventRegistration = require('../models/EventRegistration');
 
 const isLikelyJson = (s) => {
 	if (typeof s !== 'string') return false;
@@ -122,6 +123,101 @@ const buildEventPayload = (req) => {
 };
 
 const Notification = require('../models/Notification');
+
+const buildTargetedUsers = async ({
+  target_roles = [],
+  target_student_combinations = [],
+  target_teacher_departments = [],
+  target_alumni_combinations = []
+}) => {
+  let targetedUserIds = new Set();
+
+  if (target_roles.includes('student')) {
+    if (target_student_combinations.length > 0) {
+      const studentFilter = {
+        role: 'student',
+        $or: target_student_combinations.map(comb => ({
+          department: comb.department,
+          year: comb.year
+        }))
+      };
+      const students = await User.find(studentFilter).select('_id');
+      students.forEach(s => targetedUserIds.add(s._id.toString()));
+    } else {
+      const allStudents = await User.find({ role: 'student' }).select('_id');
+      allStudents.forEach(s => targetedUserIds.add(s._id.toString()));
+    }
+  }
+
+  if (target_roles.includes('teacher')) {
+    if (target_teacher_departments.length > 0) {
+      const teacherFilter = {
+        role: 'teacher',
+        department: { $in: target_teacher_departments }
+      };
+      const teachers = await User.find(teacherFilter).select('_id');
+      teachers.forEach(t => targetedUserIds.add(t._id.toString()));
+    } else {
+      const allTeachers = await User.find({ role: 'teacher' }).select('_id');
+      allTeachers.forEach(t => targetedUserIds.add(t._id.toString()));
+    }
+  }
+
+  if (target_roles.includes('alumni')) {
+    if (target_alumni_combinations.length > 0) {
+      const alumniFilter = {
+        role: 'alumni',
+        $or: target_alumni_combinations.map(comb => ({
+          department: comb.department,
+          graduationYear: comb.graduation_year
+        }))
+      };
+      const alumni = await User.find(alumniFilter).select('_id');
+      alumni.forEach(a => targetedUserIds.add(a._id.toString()));
+    } else {
+      const allAlumni = await User.find({ role: 'alumni' }).select('_id');
+      allAlumni.forEach(a => targetedUserIds.add(a._id.toString()));
+    }
+  }
+
+  return Array.from(targetedUserIds).map(id => ({ _id: id }));
+};
+
+const notifyTargetAudiences = async ({
+  event,
+  organizer,
+  io,
+  targetedUsers
+}) => {
+  if (!event || !targetedUsers || targetedUsers.length === 0) return;
+
+  const creatorName = organizer?.name || organizer?.username || 'Someone';
+
+  const notifications = targetedUsers.map(u => ({
+    recipient: u._id,
+    sender: organizer?._id,
+    type: 'event',
+    content: `${creatorName} created an event for you: ${event.title}`,
+    relatedId: event._id,
+    onModel: 'Event',
+    link: `/events/${event._id}`
+  }));
+
+  await Notification.insertMany(notifications);
+
+  if (io) {
+    targetedUsers.forEach(u => {
+      io.to(u._id.toString()).emit('notification:new', {
+        type: 'event',
+        content: `${creatorName} created an event for you: ${event.title}`,
+        relatedId: event._id,
+        link: `/events/${event._id}`,
+        sender: { _id: organizer?._id, name: creatorName }
+      });
+    });
+  }
+};
+
 const createEvent = async (req, res) => {
 	try {
 		const creatorRole = (req.user.role || '').toLowerCase();
@@ -139,83 +235,18 @@ const createEvent = async (req, res) => {
 			status,
 			approved
 		});
-
-    // Find targeted users based on criteria
-    let targetedUserIds = new Set();
-
-    // For students
-    if (payload.target_roles.includes('student') && payload.target_student_combinations.length > 0) {
-      const studentFilter = {
-        role: 'student',
-        $or: payload.target_student_combinations.map(comb => ({
-          department: comb.department,
-          year: comb.year
-        }))
-      };
-      const students = await User.find(studentFilter).select('_id');
-      students.forEach(s => targetedUserIds.add(s._id.toString()));
-    } else if (payload.target_roles.includes('student')) {
-      // All students if no specific combinations
-      const allStudents = await User.find({ role: 'student' }).select('_id');
-      allStudents.forEach(s => targetedUserIds.add(s._id.toString()));
-    }
-
-    // For teachers
-    if (payload.target_roles.includes('teacher') && payload.target_teacher_departments.length > 0) {
-      const teacherFilter = {
-        role: 'teacher',
-        department: { $in: payload.target_teacher_departments }
-      };
-      const teachers = await User.find(teacherFilter).select('_id');
-      teachers.forEach(t => targetedUserIds.add(t._id.toString()));
-    } else if (payload.target_roles.includes('teacher')) {
-      // All teachers
-      const allTeachers = await User.find({ role: 'teacher' }).select('_id');
-      allTeachers.forEach(t => targetedUserIds.add(t._id.toString()));
-    }
-
-    // For alumni
-    if (payload.target_roles.includes('alumni') && payload.target_alumni_combinations.length > 0) {
-      const alumniFilter = {
-        role: 'alumni',
-        $or: payload.target_alumni_combinations.map(comb => ({
-          department: comb.department,
-          graduationYear: comb.graduation_year
-        }))
-      };
-      const alumni = await User.find(alumniFilter).select('_id');
-      alumni.forEach(a => targetedUserIds.add(a._id.toString()));
-    } else if (payload.target_roles.includes('alumni')) {
-      // All alumni
-      const allAlumni = await User.find({ role: 'alumni' }).select('_id');
-      allAlumni.forEach(a => targetedUserIds.add(a._id.toString()));
-    }
-
-    const targetedUsers = Array.from(targetedUserIds).map(id => ({ _id: id }));
-
-    // Create notifications for targeted users
-    const notifications = targetedUsers.map(u => ({
-      recipient: u._id,
-      sender: req.user._id,
-      type: 'event',
-      content: `New event: ${event.title}`,
-      relatedId: event._id,
-      onModel: 'Event'
-    }));
-    if (notifications.length > 0) {
-      await Notification.insertMany(notifications);
-    }
-
-    // 🔥 Emit real-time notification via Socket.io to targeted users' personal rooms
-    if (req.io && targetedUsers.length > 0) {
-      targetedUsers.forEach(u => {
-        req.io.to(u._id.toString()).emit("newEvent", {
-          eventId: event._id,
-          title: event.title,
-          message: `New event: ${event.title}`,
-          relatedId: event._id
+    // If created by alumni, do NOT notify now. Notifications will be sent upon approval.
+    const creatorRoleLower = (req.user.role || '').toLowerCase();
+    if (creatorRoleLower !== 'alumni') {
+      const targetedUsers = await buildTargetedUsers(payload);
+      if (targetedUsers.length > 0) {
+        await notifyTargetAudiences({
+          event,
+          organizer: req.user,
+          io: req.io,
+          targetedUsers
         });
-      });
+      }
     }
 
 		res.status(201).json(event);
@@ -269,9 +300,52 @@ const listEvents = async (req, res) => {
 		if (role === 'admin') {
 			// Admin sees everything
 			filter = { status: { $in: ['active', 'pending'] } };
-		} else {
-			// Filter by audience for non-admin users
-			filter.audience = { $in: [role] };
+		} else if (role === 'student') {
+			// Students see events targeting their department + year
+			filter = {
+				status: 'active',
+				target_roles: { $in: ['student'] },
+				$or: [
+					// Specific department + year combination
+					{
+						target_student_combinations: {
+							$elemMatch: {
+								department: user.department,
+								year: user.year
+							}
+						}
+					},
+					// Or no specific combinations (all students)
+					{ target_student_combinations: { $exists: true, $eq: [] } }
+				]
+			};
+		} else if (role === 'teacher') {
+			// Teachers see events targeting their department
+			filter = {
+				status: 'active',
+				target_roles: { $in: ['teacher'] },
+				$or: [
+					{ target_teacher_departments: { $in: [user.department] } },
+					{ target_teacher_departments: { $exists: true, $eq: [] } }
+				]
+			};
+		} else if (role === 'alumni') {
+			// Alumni see events targeting their department + graduation year
+			filter = {
+				status: 'active',
+				target_roles: { $in: ['alumni'] },
+				$or: [
+					{
+						target_alumni_combinations: {
+							$elemMatch: {
+								department: user.department,
+								graduation_year: user.graduationYear
+							}
+						}
+					},
+					{ target_alumni_combinations: { $exists: true, $eq: [] } }
+				]
+			};
 		}
 
 		// Filter for upcoming events if requested
@@ -311,19 +385,42 @@ const listMyEvents = async (req, res) => {
 };
 
 const approveEvent = async (req, res) => {
-	try {
-		const { eventId } = req.params;
-		const updated = await Event.findByIdAndUpdate(
-			eventId,
-			{ status: 'active', approved: true },
-			{ new: true }
-		);
-		if (!updated) return res.status(404).json({ message: 'Event not found' });
-		res.status(200).json({ message: 'Event approved successfully', event: updated });
-	} catch (err) {
-		console.error('Error approving event:', err);
-		res.status(500).json({ message: 'Failed to approve event' });
-	}
+  try {
+    const { eventId } = req.params;
+    const updated = await Event.findByIdAndUpdate(
+      eventId,
+      { status: 'active', approved: true },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ message: 'Event not found' });
+
+    // After approval, send notifications to targeted audience (for alumni-created events in particular)
+    try {
+      const organizer = await User.findById(updated.organizer).select('name username _id');
+      const targetedUsers = await buildTargetedUsers({
+        target_roles: ensureArray(updated.target_roles),
+        target_student_combinations: ensureArray(updated.target_student_combinations),
+        target_teacher_departments: ensureArray(updated.target_teacher_departments),
+        target_alumni_combinations: ensureArray(updated.target_alumni_combinations)
+      });
+
+      if (targetedUsers.length > 0) {
+        await notifyTargetAudiences({
+          event: updated,
+          organizer: organizer || req.user,
+          io: req.io,
+          targetedUsers
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Error notifying users on event approval:', notifyErr);
+    }
+
+    res.status(200).json({ message: 'Event approved successfully', event: updated });
+  } catch (err) {
+    console.error('Error approving event:', err);
+    res.status(500).json({ message: 'Failed to approve event' });
+  }
 };
 
 const rejectEvent = async (req, res) => {
@@ -423,6 +520,269 @@ const listPending = async (req, res) => {
 	}
 };
 
+// Register for an event (students)
+const registerForEvent = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user._id;
+
+    const event = await Event.findById(eventId).populate('organizer', 'role');
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    if (event.registrationDeadline && new Date() > new Date(event.registrationDeadline)) {
+      return res.status(400).json({ message: 'Registration deadline has passed' });
+    }
+
+    if (event.maxAttendees && event.registrationCount >= event.maxAttendees) {
+      return res.status(400).json({ message: 'Event is full' });
+    }
+
+    const existingRegistration = await EventRegistration.findOne({ event: eventId, user: userId });
+    if (existingRegistration) {
+      return res.status(400).json({ message: 'You are already registered for this event' });
+    }
+
+    // Build registration payload
+    let registrationPayload = { event: eventId, user: userId };
+    const organizerRole = typeof event.organizer === 'object' ? (event.organizer.role || '') : '';
+
+    if ((organizerRole || '').toLowerCase() === 'alumni') {
+      // One-click registration. Attempt to hydrate from user profile if possible.
+      const registrant = await User.findById(userId).select('name username department year division rollNo');
+      registrationPayload = {
+        ...registrationPayload,
+        name: registrant?.name || registrant?.username || 'Participant',
+        rollNo: registrant?.rollNo || 'N/A',
+        year: registrant?.year || null,
+        department: registrant?.department || 'General',
+        division: registrant?.division || 'A'
+      };
+    } else {
+      // Strict fields for teacher/admin-created events
+      const { name, rollNo, year, department, division } = req.body || {};
+      if (!name || !rollNo || !year || !department || !division) {
+        return res.status(400).json({ message: 'All registration fields are required' });
+      }
+      registrationPayload = {
+        ...registrationPayload,
+        name,
+        rollNo,
+        year: parseInt(year, 10),
+        department,
+        division
+      };
+    }
+
+    const registration = await EventRegistration.create(registrationPayload);
+
+    await Event.findByIdAndUpdate(eventId, {
+      $inc: { registrationCount: 1 },
+      $addToSet: { rsvps: userId }
+    });
+
+    res.status(201).json({ 
+      message: 'Successfully registered for the event',
+      registration 
+    });
+  } catch (err) {
+    console.error('Error registering for event:', err);
+    res.status(500).json({ message: err.message || 'Failed to register for event' });
+  }
+};
+
+// Get registrations for an event (Admin/Teacher creators only; alumni creators can only view, not manage attendance)
+const getEventRegistrations = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const userRole = (req.user.role || '').toLowerCase();
+
+    const event = await Event.findById(eventId).populate('organizer', 'role');
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    const organizerId = typeof event.organizer === 'object' ? event.organizer._id : event.organizer;
+    const organizerRole = typeof event.organizer === 'object' ? (event.organizer.role || '').toLowerCase() : '';
+
+    // Admin always allowed
+    if (userRole !== 'admin') {
+      // Teacher allowed only if creator of this event
+      if (userRole === 'teacher') {
+        if (String(organizerId) !== String(req.user._id)) {
+          return res.status(403).json({ message: 'Access denied' });
+        }
+      } else {
+        // Alumni and others cannot access detailed registration management
+        if (String(organizerId) !== String(req.user._id)) {
+          return res.status(403).json({ message: 'Access denied' });
+        }
+        // If alumni creator, they can only view list and counts; still return list here (frontend can limit actions)
+      }
+    }
+
+    const registrations = await EventRegistration.find({ event: eventId })
+      .populate('user', 'name email username avatarUrl role department year graduationYear')
+      .sort({ registeredAt: -1 });
+
+    res.status(200).json(registrations);
+  } catch (err) {
+    console.error('Error fetching event registrations:', err);
+    res.status(500).json({ message: 'Failed to fetch registrations' });
+  }
+};
+
+// Mark attendance (Admin always; Teacher only if creator). Alumni: never.
+const markAttendance = async (req, res) => {
+  try {
+    const { registrationId } = req.params;
+    const { attended } = req.body;
+    const userRole = (req.user.role || '').toLowerCase();
+    
+    if (userRole !== 'admin' && userRole !== 'teacher') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const registration = await EventRegistration.findById(registrationId);
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found' });
+    }
+
+    const wasAttended = registration.attended;
+    registration.attended = attended;
+    if (attended && !wasAttended) {
+      registration.attendedAt = new Date();
+    }
+    await registration.save();
+
+    const event = await Event.findById(registration.event).populate('organizer', 'role');
+    if (event) {
+      // Teacher can only mark attendance for their own events
+      if (userRole === 'teacher') {
+        const organizerId = typeof event.organizer === 'object' ? event.organizer._id : event.organizer;
+        if (String(organizerId) !== String(req.user._id)) {
+          return res.status(403).json({ message: 'Access denied' });
+        }
+      }
+      // Alumni never allowed (caught above), admin allowed for any
+      if (attended && !wasAttended) {
+        event.attendanceCount = (event.attendanceCount || 0) + 1;
+      } else if (!attended && wasAttended) {
+        event.attendanceCount = Math.max(0, (event.attendanceCount || 0) - 1);
+      }
+      await event.save();
+    }
+
+    res.status(200).json({ 
+      message: 'Attendance updated successfully',
+      registration 
+    });
+  } catch (err) {
+    console.error('Error marking attendance:', err);
+    res.status(500).json({ message: 'Failed to update attendance' });
+  }
+};
+
+// Download registrations as CSV (Admin always; Teacher only if creator). Alumni: never.
+const downloadRegistrationsCSV = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const userRole = (req.user.role || '').toLowerCase();
+    
+    if (userRole !== 'admin' && userRole !== 'teacher') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+    if (userRole === 'teacher') {
+      const organizerId = typeof event.organizer === 'object' ? event.organizer._id : event.organizer;
+      if (String(organizerId) !== String(req.user._id)) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+    }
+
+    const registrations = await EventRegistration.find({ event: eventId })
+      .populate('user', 'name email')
+      .sort({ registeredAt: -1 });
+
+    const csvHeader = 'Name,Roll No,Department,Year,Division,Attended,Registered At,Email\n';
+    const csvRows = registrations.map(reg => {
+      const email = reg.user?.email || '';
+      const attendedStatus = reg.attended ? 'Yes' : 'No';
+      const registeredAt = reg.registeredAt ? new Date(reg.registeredAt).toLocaleString() : '';
+      
+      return `"${reg.name}","${reg.rollNo}","${reg.department}","${reg.year}","${reg.division}","${attendedStatus}","${registeredAt}","${email}"`;
+    }).join('\n');
+
+		const csv = csvHeader + csvRows;
+
+		res.setHeader('Content-Type', 'text/csv');
+		res.setHeader('Content-Disposition', `attachment; filename="event-registrations-${eventId}.csv"`);
+		res.status(200).send(csv);
+	} catch (err) {
+		console.error('Error downloading CSV:', err);
+		res.status(500).json({ message: 'Failed to download CSV' });
+	}
+};
+
+// Get user's registered events
+const getMyRegisteredEvents = async (req, res) => {
+	try {
+		const userId = req.user._id;
+		
+		const registrations = await EventRegistration.find({ user: userId })
+			.populate({
+				path: 'event',
+				populate: {
+					path: 'organizer',
+					select: 'name email role'
+				}
+			})
+			.sort({ registeredAt: -1 });
+
+		const events = registrations
+			.filter(reg => reg.event)
+			.map(reg => ({
+				...reg.event.toObject(),
+				registration: {
+					_id: reg._id,
+					attended: reg.attended,
+					registeredAt: reg.registeredAt
+				}
+			}));
+
+		res.status(200).json(events);
+	} catch (err) {
+		console.error('Error fetching registered events:', err);
+		res.status(500).json({ message: 'Failed to fetch registered events' });
+	}
+};
+
+// Check if user is registered for an event
+const checkRegistration = async (req, res) => {
+	try {
+		const { eventId } = req.params;
+		const userId = req.user._id;
+
+		const registration = await EventRegistration.findOne({ 
+			event: eventId, 
+			user: userId 
+		});
+
+		res.status(200).json({ 
+			isRegistered: !!registration,
+			registration: registration || null
+		});
+	} catch (err) {
+		console.error('Error checking registration:', err);
+		res.status(500).json({ message: 'Failed to check registration' });
+	}
+};
+
 module.exports = {
 	createEvent,
 	listEvents,
@@ -434,5 +794,11 @@ module.exports = {
 	updateEvent,
 	deleteEvent,
 	listPending,
-	getEventsForUser
+	getEventsForUser,
+	registerForEvent,
+	getEventRegistrations,
+	markAttendance,
+	downloadRegistrationsCSV,
+	getMyRegisteredEvents,
+	checkRegistration
 };

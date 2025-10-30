@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 
-const CATEGORIES = ['Career','Higher Studies','Internships','Hackathons','Projects','Alumni Queries'];
+const CATEGORIES = ['Career','Higher Studies','Internships','Hackathons','Projects'];
 const TAG_SUGGESTIONS = ['AI','Internship','GRE','DSA','GATE','Resume','Interview','ML','Hackathon','Research','OpenSource'];
 
 const CreatePostModal = ({ onClose, onCreated }) => {

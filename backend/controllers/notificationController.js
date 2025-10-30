@@ -52,6 +52,7 @@ exports.getNotifications = async (req, res) => {
       return res.status(401).json({ message: "Not authorized" });
     }
 
+    // Always show all notifications (read and unread) for history
     const notifications = await Notification.find({
       recipient: req.user._id,
     })
@@ -66,7 +67,8 @@ exports.getNotifications = async (req, res) => {
         typeof n.content === "string" ? n.content : JSON.stringify(n.content),
     }));
 
-    res.json({ data: safe });
+    // Return in both formats for backwards compatibility
+    res.json(safe);
   } catch (error) {
     console.error("Error fetching notifications:", error);
     res
