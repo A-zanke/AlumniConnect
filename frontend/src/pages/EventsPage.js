@@ -6,7 +6,7 @@ import Spinner from '../components/ui/Spinner';
 import FileInput from '../components/ui/FileInput';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
-import { FiEdit, FiTrash2, FiCalendar, FiMapPin, FiLink, FiUsers, FiCheck, FiX, FiPlus, FiMinus } from 'react-icons/fi';
+import { FiEdit, FiTrash2, FiCalendar, FiMapPin, FiLink, FiUsers, FiCheck, FiX, FiPlus, FiMinus, FiClock } from 'react-icons/fi';
 import axios from 'axios';
 
 const years = [1, 2, 3, 4];
@@ -34,12 +34,13 @@ const EventsPage = () => {
   const [attendedEvents, setAttendedEvents] = useState([]);
 	const [pendingEvents, setPendingEvents] = useState([]);
 	const [loading, setLoading] = useState(true);
-	const [showUpcoming, setShowUpcoming] = useState(true);
+	const [showUpcoming, setShowUpcoming] = useState(false);
 	const [showCreateForm, setShowCreateForm] = useState(false);
 	const [activeTab, setActiveTab] = useState('all'); // all | mine | pending
 	const { user, canCreateContent } = useAuth();
 	const [editingEvent, setEditingEvent] = useState(null);
 	const [lockAudience, setLockAudience] = useState(false); // lock audience in "My Created Events" edits
+	const [registrationStatus, setRegistrationStatus] = useState({}); // Track registration status for each event
 
 	const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS);
 	const [formData, setFormData] = useState({
@@ -59,6 +60,12 @@ const EventsPage = () => {
 	const [eventImage, setEventImage] = useState(null);
 	const [error, setError] = useState(null);
 
+	// Available target roles based on creator role: alumni/teachers cannot target alumni
+	const creatorRole = String(user?.role || '').toLowerCase();
+	const availableRoles = ['alumni', 'teacher', 'admin'].includes(creatorRole)
+		? ['student', 'teacher']
+		: roles;
+
 	useEffect(() => {
 		const fetchDepartments = async () => {
 			try {
@@ -75,17 +82,26 @@ const EventsPage = () => {
 	const fetchAll = useCallback(async () => {
 		setLoading(true);
 		try {
-      const [allRes, mineRes] = await Promise.all([
-        eventsAPI.getEvents(showUpcoming),
-        eventsAPI.getMyEvents()
-      ]);
-			setEvents(Array.isArray(allRes.data) ? allRes.data : []);
-			setMyEvents(Array.isArray(mineRes.data) ? mineRes.data : []);
-      // Derive attended events for students: those with RSVP or targeted audience match
-      if (String(user?.role||'').toLowerCase() === 'student') {
-        const uid = user?._id;
-        const attended = (Array.isArray(allRes.data) ? allRes.data : []).filter(e => Array.isArray(e.rsvps) && e.rsvps.some(id => String(id) === String(uid)));
-        setAttendedEvents(attended);
+      const userRole = String(user?.role||'').toLowerCase();
+      
+      if (userRole === 'student') {
+        // For students, fetch all events and registered events
+        const [allRes, registeredRes] = await Promise.all([
+          eventsAPI.getEvents(showUpcoming),
+          eventsAPI.getMyRegisteredEvents()
+        ]);
+        setEvents(Array.isArray(allRes.data) ? allRes.data : []);
+        setAttendedEvents(Array.isArray(registeredRes.data) ? registeredRes.data : []);
+        setMyEvents([]); // Students don't create events
+      } else {
+        // For non-students, fetch all events and created events
+        const [allRes, mineRes] = await Promise.all([
+          eventsAPI.getEvents(showUpcoming),
+          eventsAPI.getMyEvents()
+        ]);
+        setEvents(Array.isArray(allRes.data) ? allRes.data : []);
+        setMyEvents(Array.isArray(mineRes.data) ? mineRes.data : []);
+        setAttendedEvents([]);
       }
 			setError(null);
 		} catch (err) {
@@ -94,7 +110,7 @@ const EventsPage = () => {
 		} finally {
 			setLoading(false);
 		}
-	}, [showUpcoming]);
+	}, [showUpcoming, user]);
 
 	const fetchPendingEvents = useCallback(async () => {
 		try {
@@ -112,6 +128,25 @@ const EventsPage = () => {
 		}
 	}, [fetchAll, fetchPendingEvents, user]);
 
+	// Check registration status for all events
+	useEffect(() => {
+		const checkRegistrations = async () => {
+			if (String(user?.role||'').toLowerCase() === 'student' && events.length > 0) {
+				const statusMap = {};
+				for (const event of events) {
+					try {
+						const res = await eventsAPI.checkRegistration(event._id);
+						statusMap[event._id] = res.data?.isRegistered || false;
+					} catch (err) {
+						statusMap[event._id] = false;
+					}
+				}
+				setRegistrationStatus(statusMap);
+			}
+		};
+		checkRegistrations();
+	}, [events, user]);
+
 	const handleChange = (e) => {
 		const { name, value, type, checked } = e.target;
 		setFormData({
@@ -123,6 +158,9 @@ const EventsPage = () => {
 	const handleRoleChange = (role) => {
 		setFormData(prev => {
 			const rolesArr = toArray(prev.target_roles);
+			if (['teacher', 'alumni', 'admin'].includes(creatorRole) && role === 'alumni') {
+				return prev;
+			}
 			return {
 				...prev,
 				target_roles: rolesArr.includes(role)
@@ -225,14 +263,20 @@ const EventsPage = () => {
 			const teacherDepts = formData.target_roles.includes('teacher')
 				? toArray(formData.target_teacher_departments)
 				: [];
-			const alumniPairs = formData.target_roles.includes('alumni')
+			// Sanitize for creators who cannot target alumni
+		const creatorRoleSubmit = String(user?.role||'').toLowerCase();
+		let targetRoles = toArray(formData.target_roles);
+		if (['alumni', 'teacher', 'admin'].includes(creatorRoleSubmit)) {
+			targetRoles = targetRoles.filter(r => r !== 'alumni');
+		}
+			const alumniPairs = targetRoles.includes('alumni')
 				? toArray(formData.target_alumni_combinations).filter(c => c.department && c.graduation_year !== '')
 				: [];
 
 			const eventData = {
 				title: formData.title,
 				description: formData.description,
-				target_roles: toArray(formData.target_roles),
+				target_roles: targetRoles,
 				target_student_combinations: studentPairs,
 				target_teacher_departments: teacherDepts,
 				target_alumni_combinations: alumniPairs,
@@ -343,6 +387,7 @@ const EventsPage = () => {
 		const startStr = safeFormat(event?.startAt || event?.date, 'PPP');
 		const timeStr = safeFormat(event?.startAt || event?.date, 'p');
 		const organizerName = typeof event?.organizer === 'object' ? (event?.organizer?.name || 'Unknown') : 'Unknown';
+		const isMyEvent = user && (String(user._id) === String(typeof event?.organizer === 'object' ? event?.organizer?._id : event?.organizer));
 
 		return (
 			<div key={event?._id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
@@ -377,6 +422,12 @@ const EventsPage = () => {
 				</div>
 
 				<div className="p-6">
+					{isMyEvent && creatorRole === 'alumni' && (event?.status === 'pending' || !event?.approved) && (
+						<div className="mb-4 px-4 py-3 rounded-xl bg-amber-50 text-amber-700 text-sm flex items-center gap-2">
+							<FiClock size={16} />
+							<span>Your event has been sent to the admin for approval. It will notify your audience once approved.</span>
+						</div>
+					)}
 					<div className="flex justify-between items-start mb-3">
 						<h3 className="text-xl font-bold text-gray-900 line-clamp-2">{title}</h3>
 						<span className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-1 rounded-full capitalize">
@@ -410,15 +461,36 @@ const EventsPage = () => {
 
 					<p className="text-gray-700 line-clamp-3 mb-6">{event?.description || ''}</p>
 
-					<div className="flex justify-between items-center">
+					<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
 						<Link to={`/events/${event?._id}`} className="text-indigo-600 hover:text-indigo-700 font-semibold transition-colors">
 							View Details →
 						</Link>
-						{user && (event?.status === 'active' || event?.approved) && (
-							<button className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105">
-								Attend
-							</button>
-						)}
+						<div className="flex items-center gap-2 flex-wrap">
+							{event?.registrationCount > 0 && (
+								<Link to={`/events/${event?._id}/registrations`} className="text-sm text-gray-600 flex items-center">
+									<FiUsers className="mr-1" size={14} />
+									{event.registrationCount} registered
+								</Link>
+							)}
+							{user && String(user?.role||'').toLowerCase() === 'student' && (event?.status === 'active' || event?.approved) && (
+								registrationStatus[event?._id] ? (
+									<button 
+										disabled
+										className="px-4 py-2 bg-green-100 text-green-700 rounded-lg cursor-not-allowed flex items-center gap-1"
+									>
+										<FiCheck size={16} />
+										Registered
+									</button>
+								) : (
+									<Link
+										to={`/events/${event?._id}`}
+										className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 whitespace-nowrap"
+									>
+										Register Now
+									</Link>
+								)
+							)}
+						</div>
 					</div>
 				</div>
 			</div>
@@ -438,14 +510,14 @@ const EventsPage = () => {
 	}
 
 	return (
-		<div className="container mx-auto px-4 py-8">
-			<div className="relative overflow-hidden rounded-2xl mb-8 shadow-xl">
+		<div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
+			<div className="relative overflow-hidden rounded-xl sm:rounded-2xl mb-6 sm:mb-8 shadow-xl">
 				<div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600 opacity-90" />
-				<img src="https://images.unsplash.com/photo-1551836022-deb4988cc6c7?q=80&w=1200&auto=format&fit=crop" alt="events" className="w-full h-64 object-cover" />
-				<div className="absolute inset-0 flex items-center px-6">
+				<img src="https://images.unsplash.com/photo-1551836022-deb4988cc6c7?q=80&w=1200&auto=format&fit=crop" alt="events" className="w-full h-48 sm:h-64 object-cover" />
+				<div className="absolute inset-0 flex items-center px-4 sm:px-6">
 					<div>
-						<h1 className="text-4xl md:text-5xl font-extrabold text-white drop-shadow-lg mb-2">Events</h1>
-						<p className="text-lg text-white/90 font-medium">Discover networking events, workshops, and more</p>
+						<h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white drop-shadow-lg mb-1 sm:mb-2">Events</h1>
+						<p className="text-sm sm:text-lg text-white/90 font-medium">Discover networking events, workshops, and more</p>
 					</div>
 				</div>
 			</div>
@@ -484,24 +556,24 @@ const EventsPage = () => {
 			</div>
 
 			{/* Tabs */}
-			<div className="mb-6 border-b border-gray-200">
-				<nav className="-mb-px flex space-x-8">
+			<div className="mb-6 border-b border-gray-200 overflow-x-auto">
+				<nav className="-mb-px flex space-x-4 sm:space-x-8 px-2">
 					<button
 						onClick={() => setActiveTab('all')}
-						className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'all' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+						className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${activeTab === 'all' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
 					>
 						All Events
 					</button>
           <button
             onClick={() => setActiveTab('mine')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'mine' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+            className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${activeTab === 'mine' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
           >
-            {String(user?.role||'').toLowerCase() === 'student' ? 'My Attended Events' : 'My Created Events'} ({myEvents.length})
+            {String(user?.role||'').toLowerCase() === 'student' ? `My Attended Events (${attendedEvents.length})` : `My Created Events (${myEvents.length})`}
           </button>
 					{user?.role?.toLowerCase() === 'admin' && (
 						<button
 							onClick={() => setActiveTab('pending')}
-							className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'pending' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+							className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${activeTab === 'pending' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
 						>
 							Pending Approval ({pendingEvents.length})
 						</button>
@@ -634,11 +706,10 @@ const EventsPage = () => {
 									Target Audience
 								</label>
 
-								{/* Roles */}
 								<div className="mb-6">
 									<label className="block text-sm font-medium text-gray-600 mb-3">Select Target Roles (Multiple allowed)</label>
-									<div className="flex gap-4">
-										{roles.map(role => (
+									<div className="flex flex-wrap gap-4">
+										{availableRoles.map(role => (
 											<label key={role} className="flex items-center cursor-pointer">
 												<input
 													type="checkbox"
@@ -653,7 +724,6 @@ const EventsPage = () => {
 									</div>
 								</div>
 
-								{/* Student pairs */}
 								{toArray(formData.target_roles).includes('student') && (
 									<div className="mb-6">
 										<div className="flex items-center justify-between mb-3">

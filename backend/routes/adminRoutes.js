@@ -31,6 +31,11 @@ const {
   updateTestimonial,
   deleteTestimonial,
   getEventByIdAdmin,
+  listPostReports,
+  resolvePostReport,
+  deletePostReport,
+  getPostAnalytics,
+  bulkDeletePosts,
 } = require("../controllers/adminController");
 
 // Admin-only routes
@@ -46,12 +51,12 @@ router.get("/export/users", exportUsers);
 
 // ===================== Events =====================
 router.get("/events", listAllEvents);
-router.get("/events/pending", async (req, res, next) => next());
+router.get("/events/pending", listEventRequests);
+router.get("/export/events", exportEvents);
+router.get("/events/:id", getEventByIdAdmin);
 router.put("/events/:id/approve", approveEvent);
 router.put("/events/:id/reject", rejectEvent);
 router.delete("/events/:id", deleteEvent);
-router.get("/export/events", exportEvents);
-router.get("/events/:id", getEventByIdAdmin);
 
 // ===== Event Requests (Alumni-submitted pending events) =====
 router.get("/event-requests", listEventRequests);
@@ -64,6 +69,17 @@ router.get("/posts", listAllPosts);
 router.get("/posts/pending", listPendingPosts);
 router.post("/posts/:id/approve", approvePost);
 router.delete("/posts/:id", deletePost);
+
+// Post Reports
+router.get("/post-reports", listPostReports);
+router.put("/post-reports/:id/resolve", resolvePostReport);
+router.delete("/post-reports/:id", deletePostReport);
+
+// Post Analytics
+router.get("/posts/:id/analytics", getPostAnalytics);
+
+// Bulk Delete Posts
+router.post("/posts/bulk-delete", bulkDeletePosts);
 
 // ===================== Forum moderation =====================
 router.get("/forum/posts", listForumPosts);

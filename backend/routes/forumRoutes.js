@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('../config/cloudinary');
 const { protect } = require('../middleware/authMiddleware');
 const {
   createPost,
@@ -23,17 +25,16 @@ const {
   getReactionSummary
 } = require('../controllers/forumController');
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) { cb(null, path.join(__dirname, '..', 'uploads')); },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    cb(null, `forum_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
-  }
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => ({
+    folder: 'alumni-connect/forum',
+    resource_type: 'auto',
+    public_id: `forum_${Date.now()}`,
+    overwrite: false,
+  }),
 });
-const upload = multer({ 
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
-});
+const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
 // Posts
 router.get('/posts', protect, listPosts);

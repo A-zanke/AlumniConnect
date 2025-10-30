@@ -1,8 +1,10 @@
+// c:/Users/ASUS/Downloads/Telegram Desktop/AlumniConnect/AlumniConnect/backend/routes/messagesRoutes.js
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
+const cloudinary = require("../config/cloudinary");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const { protect } = require("../middleware/authMiddleware");
 const {
   getMessages,
@@ -21,39 +23,29 @@ const {
   getBlocks,
   searchMessages,
   getStarredMessages,
+  bulkDeleteChats,
+  bulkBlockUsers,
+  bulkReportUsers,
 } = require("../controllers/messagesController");
 
-// Ensure upload directories exist
-const ensureDirectoryExists = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-};
+// NOTE: No local directories are created; all uploads go to Cloudinary.
 
-// Configure enhanced multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadsDir = path.join(__dirname, "../uploads/messages");
-    ensureDirectoryExists(uploadsDir);
-
-    // Create subdirectories based on file type
-    let subDir = "documents";
-    if (file.mimetype.startsWith("image/")) subDir = "images";
-    else if (file.mimetype.startsWith("video/")) subDir = "videos";
-    else if (file.mimetype.startsWith("audio/")) subDir = "audio";
-
-    const finalDir = path.join(uploadsDir, subDir);
-    ensureDirectoryExists(finalDir);
-    cb(null, finalDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    const name = path
-      .basename(file.originalname, ext)
-      .replace(/[^a-zA-Z0-9]/g, "_")
-      .substring(0, 50); // Limit filename length
-    cb(null, `${name}-${uniqueSuffix}${ext}`);
+// Configure multer storage to Cloudinary (no local disk writes)
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    const base = path
+      .basename(file.originalname, path.extname(file.originalname))
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .substring(0, 100);
+    return {
+      folder: "alumni-connect/messages",
+      resource_type: "auto", // allow images, video, raw docs
+      public_id: `${Date.now()}_${base}`,
+      overwrite: false,
+      type: "upload", // Ensure files are publicly accessible
+      access_mode: "public", // Make files public
+    };
   },
 });
 
@@ -61,40 +53,7 @@ const upload = multer({
   storage,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB limit
-    files: 10, // Max 10 files per request
-  },
-  fileFilter: (req, file, cb) => {
-    const mime = file.mimetype || "";
-
-    // Enhanced file type support
-    const allowedTypes = {
-      // Images
-      images: /^image\/(jpeg|jpg|png|gif|webp|svg\+xml|bmp|tiff)$/i,
-      // Videos
-      videos:
-        /^video\/(mp4|webm|ogg|quicktime|x-msvideo|x-ms-wmv|3gpp|x-flv)$/i,
-      // Audio
-      audio: /^audio\/(mpeg|wav|ogg|m4a|aac|flac|wma|opus)$/i,
-      // Documents
-      documents:
-        /^application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|vnd\.ms-powerpoint|vnd\.openxmlformats-officedocument\.presentationml\.presentation|zip|x-rar-compressed|x-7z-compressed|json|xml)$/i,
-      // Text files
-      text: /^text\/(plain|csv|html|css|javascript|xml)$/i,
-    };
-
-    const isAllowed = Object.values(allowedTypes).some((regex) =>
-      regex.test(mime)
-    );
-
-    if (isAllowed) {
-      return cb(null, true);
-    }
-
-    cb(
-      new Error(
-        `File type ${mime} not supported! Allowed types: images, videos, audio, documents, text files`
-      )
-    );
+    files: 13, // up to 5 images + 5 videos + 3 docs
   },
 });
 
@@ -125,6 +84,23 @@ const handleMulterError = (error, req, res, next) => {
   next(error);
 };
 
+// Validation middleware for bulk actions
+const validateBulkAction = (req, res, next) => {
+  const { action, userIds } = req.body;
+  if (!action || !["delete", "block", "report"].includes(action)) {
+    return res.status(400).json({
+      message: "Invalid action. Must be 'delete', 'block', or 'report'",
+      success: false,
+    });
+  }
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res
+      .status(400)
+      .json({ message: "userIds must be a non-empty array", success: false });
+  }
+  next();
+};
+
 // Routes
 
 // Get conversations list with unread counts
@@ -145,23 +121,7 @@ router.get("/media/:userId", protect, getMedia);
 // Get detailed message info
 router.get("/info/:messageId", protect, getMessageInfo);
 
-// Get messages between current user and another user
-router.get("/:userId", protect, getMessages);
-
-// Send a message with optional files (enhanced file support)
-router.post(
-  "/:userId",
-  protect,
-  upload.fields([
-    { name: "image", maxCount: 5 },
-    { name: "video", maxCount: 3 },
-    { name: "audio", maxCount: 3 },
-    { name: "document", maxCount: 5 },
-    { name: "media", maxCount: 10 }, // Generic media field
-  ]),
-  handleMulterError,
-  sendMessage
-);
+// NOTE: Fixed subpaths are defined above. Define dynamic routes at the bottom.
 
 // React to message
 router.post("/react", protect, react);
@@ -200,23 +160,80 @@ router.post("/forward", protect, async (req, res) => {
 
     for (const recipientId of recipients) {
       try {
+        // Check if connected and not blocked
+        const [connected, blocked] = await Promise.all([
+          areConnected(req.user._id, recipientId),
+          isBlocked(req.user._id, recipientId),
+        ]);
+
+        if (!connected) {
+          forwardResults.push({
+            recipientId,
+            success: false,
+            error: "You can only message connected users",
+          });
+          continue;
+        }
+        if (blocked) {
+          forwardResults.push({
+            recipientId,
+            success: false,
+            error: "Messaging is blocked between these users",
+          });
+          continue;
+        }
+
+        // Ensure thread exists
+        const participants = [String(req.user._id), String(recipientId)].sort();
+        let thread = await Thread.findOne({
+          participants: { $all: participants, $size: 2 },
+        });
+        if (!thread) {
+          thread = await Thread.create({ participants });
+        }
+
         // Create forwarded message
-        const forwardedMessage = {
+        const messageData = {
           from: req.user._id,
           to: recipientId,
           content: originalMessage.content,
           attachments: originalMessage.attachments,
           messageType: originalMessage.messageType,
+          isForwarded: true,
+          originalMessageId: originalMessage._id,
           forwardedFrom: {
             originalSender: originalMessage.from._id,
-            forwardCount:
-              (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
+            forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
           },
-          location: originalMessage.location,
-          contact: originalMessage.contact,
+          threadId: String(thread._id),
+          messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          deliveredAt: new Date(),
         };
 
-        const newMessage = await Message.create(forwardedMessage);
+        // Handle location/contact if present
+        if (originalMessage.metadata?.location) {
+          messageData.metadata = { location: originalMessage.metadata.location };
+        }
+        if (originalMessage.metadata?.contact) {
+          messageData.metadata = { ...messageData.metadata, contact: originalMessage.metadata.contact };
+        }
+
+        const newMessage = await Message.create(messageData);
+        const populatedMessage = await Message.findById(newMessage._id).populate(
+          "from to",
+          "name username avatarUrl"
+        );
+
+        const dto = parseMessage(populatedMessage.toObject(), req.user._id);
+
+        // Update thread
+        thread.lastMessageAt = new Date();
+        thread.lastMessage = newMessage._id;
+        thread.lastReadAt.set(String(req.user._id), new Date());
+        const currentUnread = thread.unreadCount.get(String(recipientId)) || 0;
+        thread.unreadCount.set(String(recipientId), currentUnread + 1);
+        await thread.save();
+
         forwardResults.push({
           recipientId,
           success: true,
@@ -226,11 +243,49 @@ router.post("/forward", protect, async (req, res) => {
         // Emit real-time notification
         if (req.io) {
           req.io.to(String(recipientId)).emit("message:new", {
-            message: newMessage,
-            conversationId: `${req.user._id}_${recipientId}`,
+            conversationId: String(thread._id),
+            messageId: String(dto.id),
             senderId: String(req.user._id),
+            body: dto.content,
+            attachments: dto.attachments || [],
+            createdAt: dto.timestamp,
             isForwarded: true,
+            forwardedFrom: populatedMessage.forwardedFrom,
           });
+
+          // Send delivery confirmation to sender
+          req.io.to(String(req.user._id)).emit("message:delivered", {
+            messageId: String(dto.id),
+            clientKey: messageData.messageId,
+            status: "delivered",
+          });
+
+          // Create notification
+          try {
+            const note = await NotificationService.createNotification({
+              recipientId,
+              senderId: req.user._id,
+              type: "message",
+              content: "sent you a forwarded message",
+              relatedId: dto.id,
+              onModel: "Message",
+            });
+            if (note) {
+              req.io.to(String(recipientId)).emit("notification:new", note);
+            }
+          } catch {}
+
+          // Update unread counts
+          const [threadDoc, totalUnread] = await Promise.all([
+            Thread.findById(thread._id).select("unreadCount"),
+            Message.countDocuments({ to: recipientId, isRead: false }),
+          ]);
+          const convCount = threadDoc?.unreadCount?.get(String(recipientId)) || 0;
+          req.io.to(String(recipientId)).emit("unread:update", {
+            conversationId: String(thread._id),
+            newCount: convCount,
+          });
+          req.io.to(String(recipientId)).emit("unread:total", { total: totalUnread });
         }
       } catch (error) {
         forwardResults.push({
@@ -295,23 +350,84 @@ router.post("/bulk", protect, async (req, res) => {
         }
 
         for (const messageId of messageIds) {
+          const originalMessage = await Message.findById(messageId);
+          if (!originalMessage) continue;
+
           for (const recipientId of data.recipients) {
             try {
-              const originalMessage = await Message.findById(messageId);
-              if (originalMessage) {
-                const forwardedMessage = await Message.create({
-                  from: req.user._id,
-                  to: recipientId,
-                  content: originalMessage.content,
-                  attachments: originalMessage.attachments,
-                  messageType: originalMessage.messageType,
-                  forwardedFrom: {
-                    originalSender: originalMessage.from,
-                    forwardCount:
-                      (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
-                  },
+              // Check if connected and not blocked
+              const [connected, blocked] = await Promise.all([
+                areConnected(req.user._id, recipientId),
+                isBlocked(req.user._id, recipientId),
+              ]);
+
+              if (!connected || blocked) {
+                results.push({
+                  messageId,
+                  recipientId,
+                  success: false,
+                  error: blocked ? "Messaging is blocked" : "Not connected",
                 });
-                results.push({ messageId, recipientId, success: true });
+                continue;
+              }
+
+              // Ensure thread exists
+              const participants = [String(req.user._id), String(recipientId)].sort();
+              let thread = await Thread.findOne({
+                participants: { $all: participants, $size: 2 },
+              });
+              if (!thread) {
+                thread = await Thread.create({ participants });
+              }
+
+              // Create forwarded message
+              const messageData = {
+                from: req.user._id,
+                to: recipientId,
+                content: originalMessage.content,
+                attachments: originalMessage.attachments,
+                messageType: originalMessage.messageType,
+                isForwarded: true,
+                originalMessageId: originalMessage._id,
+                forwardedFrom: {
+                  originalSender: originalMessage.from,
+                  forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
+                },
+                threadId: String(thread._id),
+                messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                deliveredAt: new Date(),
+              };
+
+              const newMessage = await Message.create(messageData);
+
+              // Update thread
+              thread.lastMessageAt = new Date();
+              thread.lastMessage = newMessage._id;
+              thread.lastReadAt.set(String(req.user._id), new Date());
+              const currentUnread = thread.unreadCount.get(String(recipientId)) || 0;
+              thread.unreadCount.set(String(recipientId), currentUnread + 1);
+              await thread.save();
+
+              results.push({ messageId, recipientId, success: true });
+
+              // Emit real-time
+              if (req.io) {
+                const populatedMessage = await Message.findById(newMessage._id).populate(
+                  "from to",
+                  "name username avatarUrl"
+                );
+                const dto = parseMessage(populatedMessage.toObject(), req.user._id);
+
+                req.io.to(String(recipientId)).emit("message:new", {
+                  conversationId: String(thread._id),
+                  messageId: String(dto.id),
+                  senderId: String(req.user._id),
+                  body: dto.content,
+                  attachments: dto.attachments || [],
+                  createdAt: dto.timestamp,
+                  isForwarded: true,
+                  forwardedFrom: populatedMessage.forwardedFrom,
+                });
               }
             } catch (error) {
               results.push({
@@ -346,20 +462,29 @@ router.post("/bulk", protect, async (req, res) => {
   }
 });
 
-// Bulk delete messages
-router.delete("/bulk-delete", protect, bulkDelete);
-
-// Delete single message
-router.delete("/:messageId", protect, deleteMessage);
-
-// Delete entire chat
-router.delete("/chat/:userId", protect, deleteChat);
-
 // Report user/message
 router.post("/report", protect, report);
 
 // Block/unblock user
 router.post("/block", protect, block);
+
+// Bulk operations (fixed paths before dynamic routes)
+router.post(
+  "/bulk-block",
+  protect,
+  require("../controllers/messagesController").bulkBlockUsers
+);
+router.delete(
+  "/bulk-delete-chats",
+  protect,
+  require("../controllers/messagesController").bulkDeleteChats
+);
+router.post(
+  "/bulk-report",
+  protect,
+  require("../controllers/messagesController").bulkReportUsers
+);
+router.delete("/bulk-delete", protect, bulkDelete);
 
 // Mark messages as read
 router.post("/mark-read", protect, async (req, res) => {
@@ -465,6 +590,16 @@ router.post("/mark-delivered", protect, async (req, res) => {
   }
 });
 
+// Dynamic routes MUST be at the bottom to avoid route collision
+// Delete a single message by ID (must come before dynamic :userId routes)
+router.delete("/id/:messageId", protect, deleteMessage);
+
+// Delete entire chat
+router.delete("/chat/:userId", protect, deleteChat);
+
+// WhatsApp-like delete entire conversation for current user
+router.delete("/:userId", protect, deleteChat);
+
 // Get conversation settings
 router.get("/settings/:userId", protect, async (req, res) => {
   try {
@@ -542,6 +677,93 @@ router.put("/settings/:userId", protect, async (req, res) => {
       message: "Error updating conversation settings",
       success: false,
     });
+  }
+});
+
+// Bulk actions route
+router.post("/bulk-actions", protect, validateBulkAction, async (req, res) => {
+  try {
+    const { action, userIds } = req.body;
+
+    let result;
+    switch (action) {
+      case "delete":
+        result = await bulkDeleteChats(req, res);
+        break;
+      case "block":
+        result = await bulkBlockUsers(req, res);
+        break;
+      case "report":
+        result = await bulkReportUsers(req, res);
+        break;
+    }
+
+    // Since the controller functions handle the response, we don't need to return here
+    // But to match the requirement, we can return the result if needed
+    // Actually, the controller functions call res.json, so we can just let them handle it
+  } catch (error) {
+    console.error("Error in bulk actions:", error);
+    return res.status(500).json({
+      message: "Error in bulk actions",
+      success: false,
+    });
+  }
+});
+
+// Bulk delete chats
+router.delete("/bulk-delete-chats", protect, bulkDeleteChats);
+
+// Bulk block users
+router.post("/bulk-block", protect, bulkBlockUsers);
+
+// Bulk report users
+router.post("/bulk-report", protect, bulkReportUsers);
+
+// Get messages between current user and another user (dynamic)
+router.get("/:userId", protect, getMessages);
+
+// Send a message with optional files (dynamic) — MUST BE LAST POST route
+router.post(
+  "/:userId",
+  protect,
+  upload.fields([
+    { name: "image", maxCount: 5 },
+    { name: "video", maxCount: 5 },
+    { name: "audio", maxCount: 3 },
+    { name: "document", maxCount: 3 },
+    { name: "media", maxCount: 13 },
+  ]),
+  handleMulterError,
+  sendMessage
+);
+
+// Health check route (no local filesystem dependency)
+router.get("/health", async (req, res) => {
+  try {
+    const healthStatus = {
+      database: false,
+      socketIO: false,
+    };
+
+    // Check database connection
+    try {
+      const mongoose = require("mongoose");
+      if (mongoose.connection.readyState === 1) {
+        healthStatus.database = true;
+      }
+    } catch {}
+
+    // Check socket.io
+    if (req.io) {
+      healthStatus.socketIO = true;
+    }
+
+    const overallStatus =
+      healthStatus.database && healthStatus.socketIO ? "healthy" : "unhealthy";
+
+    return res.json({ status: overallStatus, checks: healthStatus, success: true });
+  } catch (error) {
+    return res.status(500).json({ status: "error", message: "Health check failed", success: false });
   }
 });
 

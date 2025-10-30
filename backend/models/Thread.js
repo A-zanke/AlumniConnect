@@ -11,6 +11,13 @@ const ThreadSchema = new mongoose.Schema(
     unreadCount: { type: Map, of: Number, default: {} },
     // Per-user lastReadAt keyed by userId string
     lastReadAt: { type: Map, of: Date, default: {} },
+  // Shared media quick refs per thread for side panel tabs
+  mediaSummary: {
+    images: { type: Number, default: 0 },
+    videos: { type: Number, default: 0 },
+    documents: { type: Number, default: 0 },
+    links: { type: Number, default: 0 },
+  },
     isStarred: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     typing: { type: Map, of: Date, default: {} },
   },

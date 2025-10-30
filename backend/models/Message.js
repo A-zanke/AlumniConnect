@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const MessageSchema = new mongoose.Schema(
   {
+    // Client-side identifiers for idempotency and mapping
+    messageId: { type: String, index: true, default: null },
+    clientKey: { type: String, index: true, default: null },
+    threadId: { type: String, index: true, default: null },
+
     from: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -19,10 +24,11 @@ const MessageSchema = new mongoose.Schema(
       default: "",
       maxlength: 4096, // WhatsApp-like message length limit
     },
+    // For Cloudinary URLs or remote media
     attachments: [
       {
         type: String,
-        maxlength: 500,
+        maxlength: 1000,
       },
     ],
 
@@ -56,6 +62,15 @@ const MessageSchema = new mongoose.Schema(
       default: "text",
     },
 
+    // Per-message emoji reactions
+    reactions: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        emoji: { type: String, required: true, maxlength: 16 },
+        reactedAt: { type: Date, default: Date.now },
+      },
+    ],
+
     // For forwarded messages
     isForwarded: {
       type: Boolean,
@@ -65,6 +80,10 @@ const MessageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
       default: null,
+    },
+    forwardedFrom: {
+      originalSender: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      forwardCount: { type: Number, default: 0 },
     },
 
     // Message metadata
@@ -79,6 +98,14 @@ const MessageSchema = new mongoose.Schema(
         thumbnail: String, // thumbnail URL for videos
       },
 
+      // Structured info for shared posts so clients can render a card
+      sharedPost: {
+        postId: { type: String, default: null },
+        preview: { type: String, default: "" },
+        imageUrl: { type: String, default: null },
+        link: { type: String, default: null },
+      },
+
       // For location messages
       location: {
         latitude: Number,
@@ -91,6 +118,11 @@ const MessageSchema = new mongoose.Schema(
         name: String,
         phone: String,
         email: String,
+      },
+      // Tombstone flag for delete-for-everyone
+      deleted: {
+        type: Boolean,
+        default: false,
       },
     },
 
@@ -136,6 +168,10 @@ const MessageSchema = new mongoose.Schema(
 MessageSchema.index({ from: 1, to: 1, createdAt: -1 });
 MessageSchema.index({ to: 1, isRead: 1, createdAt: -1 });
 MessageSchema.index({ createdAt: -1 });
+MessageSchema.index({ messageId: 1 }, { sparse: true });
+MessageSchema.index({ clientKey: 1 }, { sparse: true });
+MessageSchema.index({ threadId: 1 }, { sparse: true });
+MessageSchema.index({ "reactions.userId": 1 });
 
 // TTL index for auto-expiring messages
 MessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -156,25 +192,12 @@ MessageSchema.virtual("isRecent").get(function () {
 // Pre-save middleware to set message type based on attachments
 MessageSchema.pre("save", function (next) {
   if (this.attachments && this.attachments.length > 0) {
-    const firstAttachment = this.attachments[0];
-    if (
-      typeof firstAttachment === "string" &&
-      firstAttachment.startsWith("/uploads/")
-    ) {
-      const ext = firstAttachment.split(".").pop().toLowerCase();
-
-      if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
-        this.messageType = "image";
-      } else if (["mp4", "webm", "ogg", "mov"].includes(ext)) {
-        this.messageType = "video";
-      } else if (["mp3", "wav", "ogg", "m4a", "aac"].includes(ext)) {
-        this.messageType = "audio";
-      } else if (
-        ["pdf", "doc", "docx", "txt", "xlsx", "ppt", "pptx"].includes(ext)
-      ) {
-        this.messageType = "document";
-      }
-    }
+    const first = String(this.attachments[0]);
+    const lower = first.toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)) this.messageType = "image";
+    else if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)) this.messageType = "video";
+    else if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)) this.messageType = "audio";
+    else if (/\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/.test(lower)) this.messageType = "document";
   }
 
   // Set auto-delete timer if specified
@@ -187,10 +210,12 @@ MessageSchema.pre("save", function (next) {
 
 // Static method to find messages between two users
 MessageSchema.statics.findConversation = function (userA, userB, options = {}) {
+  const a = String(userA);
+  const b = String(userB);
   const query = {
     $or: [
-      { from: userA, to: userB },
-      { from: userB, to: userA },
+      { from: a, to: b },
+      { from: b, to: a },
     ],
   };
 
@@ -236,13 +261,23 @@ MessageSchema.statics.getUnreadCount = function (userId) {
 
 // Instance method to check if message is deleted for user
 MessageSchema.methods.isDeletedFor = function (userId) {
-  return this.attachments && this.attachments.includes(`deletedFor:${userId}`);
+  return (
+    this.attachments && this.attachments.includes(`deletedFor:${userId}`)
+  );
 };
 
 // Instance method to get reactions
 MessageSchema.methods.getReactions = function () {
-  if (!this.attachments) return [];
+  // Prefer structured reactions array if present
+  if (Array.isArray(this.reactions) && this.reactions.length > 0) {
+    return this.reactions.map((r) => ({
+      userId: r.userId,
+      emoji: r.emoji,
+    }));
+  }
 
+  // Fallback to legacy attachment markers react:{userId}:{emoji}
+  if (!this.attachments) return [];
   return this.attachments
     .filter((att) => typeof att === "string" && att.startsWith("react:"))
     .map((att) => {
@@ -254,58 +289,50 @@ MessageSchema.methods.getReactions = function () {
     });
 };
 
-// Instance method to check if starred by user
-MessageSchema.methods.isStarredBy = function (userId) {
-  return this.attachments && this.attachments.includes(`star:${userId}`);
-};
-
-// Instance method to check if pinned by user
-MessageSchema.methods.isPinnedBy = function (userId) {
-  return this.attachments && this.attachments.includes(`pin:${userId}`);
-};
-
-// Instance method to get reply reference
-MessageSchema.methods.getReplyTo = function () {
-  if (!this.attachments) return null;
-
-  const replyAtt = this.attachments.find(
-    (att) => typeof att === "string" && att.startsWith("reply:")
-  );
-
-  if (replyAtt) {
-    const refId = replyAtt.split(":")[1];
-    return { id: refId };
-  }
-
-  return null;
-};
-
 // Instance method to format for API response
 MessageSchema.methods.toAPIResponse = function (viewerId) {
-  // Check if deleted for viewer
+  // 1) Delete for me: hide entirely for the viewer
   if (this.isDeletedFor(viewerId)) return null;
 
+  // 2) Delete for everyone: show tombstone to both sides
+  const deletedForEveryone = this.attachments && this.attachments.includes('deletedForEveryone');
+  if (deletedForEveryone) {
+    return {
+      id: this._id,
+      senderId: this.from,
+      recipientId: this.to,
+      isDeleted: true,
+      deletedForEveryone: true,
+      content: "This message was deleted",
+      messageType: "text",
+      attachments: [],
+      reactions: [],
+      replyTo: null,
+      isStarred: false,
+      isPinned: false,
+      isForwarded: false,
+      timestamp: this.createdAt,
+      readAt: this.readAt,
+      deliveredAt: this.deliveredAt,
+      status: this.isRead ? "seen" : this.deliveredAt ? "delivered" : "sent",
+      metadata: {},
+    };
+  }
+
+  // 3) Normal message
   return {
     id: this._id,
     senderId: this.from,
     recipientId: this.to,
     content: this.content,
     messageType: this.messageType,
-    attachments: this.attachments.filter(
-      (att) =>
-        typeof att === "string" &&
-        att.startsWith("/uploads/") &&
-        !att.includes("deletedFor:") &&
-        !att.includes("react:") &&
-        !att.includes("star:") &&
-        !att.includes("pin:") &&
-        !att.includes("reply:")
-    ),
+    attachments: (this.attachments || []).filter((att) => typeof att === "string" && /^https?:\/\//.test(att)),
     reactions: this.getReactions(),
     replyTo: this.getReplyTo(),
     isStarred: this.isStarredBy(viewerId),
     isPinned: this.isPinnedBy(viewerId),
     isForwarded: this.isForwarded,
+    forwardedFrom: this.forwardedFrom,
     timestamp: this.createdAt,
     readAt: this.readAt,
     deliveredAt: this.deliveredAt,

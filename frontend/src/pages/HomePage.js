@@ -386,14 +386,16 @@ const HomePage = () => {
         <div className="relative z-10 flex items-center justify-center h-full">
           <div className="text-center max-w-5xl mx-auto px-4">
             <motion.h1
-              className="text-5xl md:text-7xl font-extrabold text-white mb-8 leading-tight"
+              // className="text-5xl md:text-7xl font-extrabold text-white mb-8 leading-tight"
+              className=" text-5xl md:text-7xl font-extrabold bg-gradient-to-r from-blue-100 via-teal-200  to-cyan-200 bg-clip-text text-transparent mb-8 leading-tight"
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1, delay: 0.5 }}
             >
               Welcome to Your{' '}
+              
               <motion.span 
-                className="bg-gradient-to-r from-blue-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent"
+                className="bg-gradient-to-r from-indigo-600 via-purple-300 via-cyan-600 via-blue-400 to-cyan-200 bg-clip-text text-transparent"
                 animate={{
                   backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
                 }}
@@ -406,7 +408,23 @@ const HomePage = () => {
                   backgroundSize: '200% 100%'
                 }}
               >
-                Alumni Network
+                MIT {''}
+              </motion.span>
+              <motion.span 
+                className="bg-gradient-to-r from-blue-100 via-teal-200  to-cyan-200 bg-clip-text text-transparent"
+                animate={{
+                  backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+                }}
+                transition={{
+                  duration: 4,
+                  repeat: Infinity,
+                  ease: "linear"
+                }}
+                style={{
+                  backgroundSize: '200% 100%'
+                }}
+              >
+               Alumni Network
               </motion.span>
             </motion.h1>
 

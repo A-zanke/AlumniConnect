@@ -2,7 +2,14 @@ import React from 'react';
 import { getAvatarUrl, generateAvatarColor } from '../utils/helpers';
 
 const Avatar = ({ name = '', avatarUrl, size = 40, style = {} }) => {
-  const src = avatarUrl ? getAvatarUrl(avatarUrl) : null;
+  let src = null;
+  if (avatarUrl) {
+    if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
+      src = avatarUrl;
+    } else {
+      src = getAvatarUrl(avatarUrl);
+    }
+  }
   const initial = (name || '?').trim().charAt(0).toUpperCase();
   const backgroundColor = generateAvatarColor(name || 'User');
   
@@ -11,31 +18,21 @@ const Avatar = ({ name = '', avatarUrl, size = 40, style = {} }) => {
     height: size,
     borderRadius: '50%',
     objectFit: 'cover',
+    backgroundColor: src ? 'transparent' : '#f3f4f6',
     ...style
   };
 
-  if (src) {
-    return <img src={src} alt={name} style={box} />;
-  }
-
   return (
-    <div
-      style={{
-        ...box,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor,
-        color: '#fff',
-        fontWeight: 800,
-        fontSize: size * 0.4,
-        textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+    <img
+      src={src || '/default-avatar.png'}
+      alt={name}
+      style={box}
+      onError={(e) => {
+        e.currentTarget.onerror = null;
+        e.currentTarget.src = '/default-avatar.png';
       }}
-      aria-label="default avatar"
       title={name}
-    >
-      {initial}
-    </div>
+    />
   );
 };
 

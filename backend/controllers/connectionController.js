@@ -5,7 +5,8 @@ const Connection = require('../models/Connection');
 // Send a connection request
 exports.sendRequest = async (req, res) => {
   try {
-    const { userId } = req.body;
+    // Accept both userId and recipientId for backward compatibility
+    const userId = req.body.userId || req.body.recipientId;
     console.log('Send request - userId:', userId, 'sender:', req.user._id);
 
     if (!userId) {
@@ -245,6 +246,10 @@ exports.removeConnection = async (req, res) => {
     if (!me.connections) me.connections = [];
     if (!other.connections) other.connections = [];
 
+    // Check if they were actually connected
+    const wereConnected = me.connections.some(id => id.toString() === userId) && 
+                         other.connections.some(id => id.toString() === me._id.toString());
+
     me.connections = me.connections.filter((id) => id.toString() !== userId);
     other.connections = other.connections.filter((id) => id.toString() !== me._id.toString());
 
@@ -261,6 +266,25 @@ exports.removeConnection = async (req, res) => {
 
     await me.save();
     await other.save();
+
+    // Emit socket events to both users to update their UIs in real-time
+    if (wereConnected) {
+      // Emit to the user who initiated the removal
+      if (global.io) {
+        global.io.to(me._id.toString()).emit('connection:updated', {
+          userId: me._id,
+          targetUserId: other._id,
+          status: 'removed'
+        });
+        
+        // Emit to the other user as well
+        global.io.to(other._id.toString()).emit('connection:updated', {
+          userId: me._id,
+          targetUserId: other._id,
+          status: 'removed'
+        });
+      }
+    }
 
     res.json({ message: 'Connection removed' });
   } catch (error) {

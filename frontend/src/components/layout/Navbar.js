@@ -18,6 +18,7 @@ import {
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "../NotificationBell";
+import "./Navbar.css";
 import { getAvatarUrl } from "../utils/helpers";
 import { unreadAPI } from "../utils/api";
 import { io } from "socket.io-client";
@@ -101,7 +102,9 @@ const Navbar = () => {
 
     return () => {
       mounted = false;
-      try { s.disconnect(); } catch {}
+      try {
+        s.disconnect();
+      } catch {}
       socketRef.current = null;
     };
   }, [user]);
@@ -210,6 +213,22 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex lg:items-center lg:space-x-2">
+            {/* Search Button - moved before nav items */}
+            <motion.button
+              onClick={() => navigate("/search")}
+              className="mr-4 p-3 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group navbar-icon-btn search-icon"
+              whileHover={{ scale: 1.1, rotate: 15 }}
+              whileTap={{ scale: 0.9 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+            >
+              <FiSearch
+                size={22}
+                className="text-indigo-600 group-hover:text-purple-600 transition-colors duration-300"
+              />
+            </motion.button>
+
             {isStudent ? (
               <>
                 {/* Home first for students */}
@@ -319,22 +338,6 @@ const Navbar = () => {
               ))
             )}
 
-            {/* Search Button */}
-            <motion.button
-              onClick={() => navigate("/search")}
-              className="ml-4 p-3 rounded-xl hover:bg-indigo-100 focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group"
-              whileHover={{ scale: 1.1, rotate: 15 }}
-              whileTap={{ scale: 0.9 }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              <FiSearch
-                size={22}
-                className="text-indigo-600 group-hover:text-purple-600 transition-colors duration-300"
-              />
-            </motion.button>
-
             {user ? (
               <motion.div
                 className="flex items-center gap-3 ml-6"
@@ -343,10 +346,13 @@ const Navbar = () => {
                 transition={{ delay: 0.3 }}
               >
                 {/* Messages */}
-                <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}>
+                <motion.div
+                  whileHover={{ scale: 1.06 }}
+                  whileTap={{ scale: 0.94 }}
+                >
                   <Link
                     to="/messages"
-                    className="navbar-icon-btn group relative rounded-xl px-3 py-2 hover:bg-white/70 backdrop-blur border border-white/40 transition-colors"
+                    className="navbar-icon-btn message-icon group relative inline-flex items-center justify-center rounded-xl px-3 py-2 backdrop-blur border border-white/40 transition-colors"
                   >
                     <FiMessageSquare
                       size={20}
@@ -354,23 +360,10 @@ const Navbar = () => {
                     />
                     {msgUnreadTotal > 0 && (
                       <span
-                        className="absolute rounded-full text-white font-bold shadow-lg"
-                        style={{
-                          top: '-6px',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: '18px',
-                          height: '18px',
-                          lineHeight: '18px',
-                          background: 'linear-gradient(135deg, #F44336, #D32F2F)',
-                          fontSize: '10px',
-                          textAlign: 'center',
-                          zIndex: 5,
-                          border: '2px solid white',
-                        }}
+                        className="message-badge"
                         aria-label={`${msgUnreadTotal} unread messages`}
                       >
-                        {msgUnreadTotal > 99 ? '99+' : msgUnreadTotal}
+                        {msgUnreadTotal > 99 ? "99+" : msgUnreadTotal}
                       </span>
                     )}
                   </Link>

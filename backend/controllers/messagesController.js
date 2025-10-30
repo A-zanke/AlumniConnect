@@ -1,5 +1,9 @@
+// c:/Users/ASUS/Downloads/Telegram Desktop/AlumniConnect/AlumniConnect/backend/controllers/messagesController.js
 const path = require("path");
-const fs = require("fs").promises;
+const mongoose = require("mongoose");
+// Use fs with both constants and promises APIs
+const fs = require("fs");
+const cloudinary = require("../config/cloudinary");
 const User = require("../models/User");
 const Message = require("../models/Message");
 const Thread = require("../models/Thread");
@@ -8,11 +12,18 @@ const NotificationService = require("../services/notificationService");
 
 // Helper functions
 async function isBlocked(userAId, userBId) {
-  const [ab, ba] = await Promise.all([
-    Block.findOne({ blocker: userAId, blocked: userBId }).lean(),
-    Block.findOne({ blocker: userBId, blocked: userAId }).lean(),
-  ]);
-  return !!(ab || ba);
+  // Ensure proper ObjectId casting where needed
+  try {
+    const a = String(userAId);
+    const b = String(userBId);
+    const [ab, ba] = await Promise.all([
+      Block.findOne({ blocker: a, blocked: b }).lean(),
+      Block.findOne({ blocker: b, blocked: a }).lean(),
+    ]);
+    return !!(ab || ba);
+  } catch (e) {
+    return false;
+  }
 }
 
 async function areConnected(userAId, userBId) {
@@ -21,33 +32,124 @@ async function areConnected(userAId, userBId) {
   return user.connections.some((id) => id.toString() === String(userBId));
 }
 
-// Enhanced message parser
-function parseMessage(doc, viewerId) {
-  if (doc.isDeletedFor(viewerId)) return null;
+// Helpers for current schema (attachments used for flags/markers)
+function parseReactionsFromAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .filter((att) => typeof att === "string" && att.startsWith("react:"))
+    .map((att) => {
+      const parts = att.split(":");
+      return {
+        userId: parts[1],
+        emoji: parts.slice(2).join(":"),
+      };
+    });
+}
 
-  return {
-    id: doc._id,
-    messageId: doc.messageId,
-    senderId: doc.from,
-    recipientId: doc.to,
-    content: doc.content || "",
-    attachments: doc.attachments || [],
-    messageType: doc.messageType,
-    timestamp: doc.createdAt,
-    status: doc.status,
-    isRead: doc.isRead,
-    readAt: doc.readAt,
-    deliveredAt: doc.deliveredAt,
-    reactions: doc.reactions || [],
-    replyTo: doc.replyTo,
-    forwardedFrom: doc.forwardedFrom,
-    isStarred: doc.isStarred.includes(viewerId),
-    isPinned: doc.isPinned,
-    isEdited: doc.isEdited,
-    editHistory: doc.editHistory,
-    location: doc.location,
-    contact: doc.contact,
-  };
+function normalizeReactions(doc) {
+  if (Array.isArray(doc.reactions) && doc.reactions.length > 0) {
+    return doc.reactions.map((r) => ({ userId: r.userId, emoji: r.emoji }));
+  }
+  return parseReactionsFromAttachments(doc.attachments);
+}
+
+function getAttachmentUrls(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .map((att) => {
+      if (typeof att === "string") {
+        // Only surface real media URLs; ignore any legacy local '/uploads' paths
+        if (/^https?:\/\//i.test(att)) return att;
+        return null;
+      }
+      if (att && typeof att === "object" && att.url) return att.url;
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function isDeletedForViewer(doc, viewerId) {
+  const atts = doc.attachments;
+  if (!Array.isArray(atts)) return false;
+  // Only hide if deleted for THIS viewer. Do NOT hide delete-for-everyone here.
+  return atts.includes(`deletedFor:${viewerId}`);
+}
+
+function getReplyFromAttachments(attachments) {
+  if (!Array.isArray(attachments)) return null;
+  const marker = attachments.find(
+    (att) => typeof att === "string" && att.startsWith("reply:")
+  );
+  if (!marker) return null;
+  const id = marker.split(":")[1];
+  return id ? { id } : null;
+}
+
+// Robust message parser that works with lean docs
+function parseMessage(doc, viewerId) {
+  try {
+    if (isDeletedForViewer(doc, viewerId)) return null;
+    // If deleted for everyone (metadata.deleted or attachment flag), return tombstone
+    const deletedForEveryone =
+      (doc.metadata && doc.metadata.deleted === true) ||
+      (Array.isArray(doc.attachments) && doc.attachments.includes('deletedForEveryone')) ||
+      (typeof doc.content === 'string' && doc.content === 'This message was deleted');
+
+    const reactions = normalizeReactions(doc);
+
+    const isStarred = Array.isArray(doc.attachments)
+      ? doc.attachments.includes(`star:${viewerId}`)
+      : false;
+
+    const status = doc.isRead ? "seen" : doc.deliveredAt ? "delivered" : "sent";
+
+    if (deletedForEveryone) {
+      return {
+        id: doc._id,
+        messageId: doc.messageId,
+        senderId: doc.from?._id || doc.from,
+        recipientId: doc.to?._id || doc.to,
+        content: "This message was deleted",
+        attachments: [],
+        messageType: "text",
+        timestamp: doc.createdAt,
+        status,
+        isRead: !!doc.isRead,
+        readAt: doc.readAt || null,
+        deliveredAt: doc.deliveredAt || null,
+        reactions: [],
+        replyTo: null,
+        isStarred: false,
+        isForwarded: false,
+        isSystem: false,
+        systemCode: undefined,
+      };
+    }
+
+    return {
+      id: doc._id,
+      messageId: doc.messageId,
+      senderId: doc.from?._id || doc.from,
+      recipientId: doc.to?._id || doc.to,
+      content: doc.content || "",
+      attachments: getAttachmentUrls(doc.attachments),
+      messageType: doc.messageType,
+      timestamp: doc.createdAt,
+      status,
+      isRead: !!doc.isRead,
+      readAt: doc.readAt || null,
+      deliveredAt: doc.deliveredAt || null,
+      reactions,
+      replyTo: getReplyFromAttachments(doc.attachments),
+      isStarred,
+      isForwarded: !!doc.forwardedFrom,
+      forwardedFrom: doc.forwardedFrom || null,
+      isSystem: !!(doc.metadata && doc.metadata.system === true),
+      systemCode: doc.metadata && doc.metadata.systemCode ? doc.metadata.systemCode : undefined,
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 // Get conversations with enhanced data
@@ -58,8 +160,6 @@ exports.getConversations = async (req, res) => {
     // Get all messages involving the user
     const messages = await Message.find({
       $or: [{ from: me }, { to: me }],
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
     })
       .populate("from to", "name username avatarUrl isOnline lastSeen")
       .sort({ createdAt: -1 })
@@ -80,15 +180,25 @@ exports.getConversations = async (req, res) => {
           from: otherId,
           to: me,
           isRead: false,
-          deletedForEveryone: false,
-          deletedFor: { $ne: me },
         });
 
         const snippet = msg.content?.trim()
           ? msg.content.trim().slice(0, 80)
-          : msg.attachments?.length > 0
+          : Array.isArray(msg.attachments) && msg.attachments.length > 0
           ? getAttachmentSnippet(msg.attachments[0])
           : "No messages yet";
+
+        // Try to get a thread id for this pair (optional)
+        let threadId = null;
+        try {
+          const participants = [String(me), String(otherId)].sort();
+          const thread = await Thread.findOne({
+            participants: { $all: participants, $size: 2 },
+          })
+            .select("_id")
+            .lean();
+          if (thread) threadId = String(thread._id);
+        } catch {}
 
         convMap.set(otherId, {
           _id: otherId,
@@ -96,6 +206,7 @@ exports.getConversations = async (req, res) => {
           lastMessage: snippet,
           lastMessageTime: msg.createdAt,
           unreadCount,
+          threadId,
           isPinned: false, // You can implement conversation pinning
           isMuted: false, // You can implement conversation muting
           isArchived: false, // You can implement conversation archiving
@@ -111,8 +222,6 @@ exports.getConversations = async (req, res) => {
     const totalUnread = await Message.countDocuments({
       to: me,
       isRead: false,
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
     });
 
     return res.json({
@@ -136,20 +245,18 @@ exports.getMessages = async (req, res) => {
     const other = req.params.userId;
 
     if (!other) return res.status(400).json({ message: "Missing userId" });
+    if (!mongoose.Types.ObjectId.isValid(other)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
 
-    const [connected, blocked] = await Promise.all([
+    const [connected] = await Promise.all([
       areConnected(me, other),
-      isBlocked(me, other),
     ]);
 
     if (!connected)
       return res
         .status(403)
         .json({ message: "You can only message connected users" });
-    if (blocked)
-      return res
-        .status(403)
-        .json({ message: "Messaging is blocked between these users" });
 
     // Get messages with populated reply references
     const messages = await Message.find({
@@ -157,9 +264,7 @@ exports.getMessages = async (req, res) => {
         { from: me, to: other },
         { from: other, to: me },
       ],
-      deletedForEveryone: false,
     })
-      .populate("replyTo.messageId", "content from")
       .populate("from to", "name username avatarUrl")
       .sort({ createdAt: 1 })
       .lean();
@@ -169,7 +274,7 @@ exports.getMessages = async (req, res) => {
       .filter(Boolean);
 
     // Mark messages as read and delivered
-    await Message.updateMany(
+    const readResult = await Message.updateMany(
       { from: other, to: me, isRead: false },
       {
         $set: {
@@ -180,6 +285,17 @@ exports.getMessages = async (req, res) => {
       }
     );
 
+    // Also clear unread count on Thread map for this user if the thread exists
+    try {
+      const participants = [String(me), String(other)].sort();
+      await Thread.findOneAndUpdate(
+        { participants: { $all: participants, $size: 2 } },
+        {
+          $set: { [`unreadCount.${me}`]: 0, [`lastReadAt.${me}`]: new Date() },
+        }
+      );
+    } catch {}
+
     // Emit read receipts via socket
     if (req.io) {
       req.io.to(String(other)).emit("messages:readReceipt", {
@@ -188,13 +304,22 @@ exports.getMessages = async (req, res) => {
         readAt: new Date(),
       });
 
-      // Update total unread count
-      const totalUnread = await Message.countDocuments({
-        to: me,
-        isRead: false,
-        deletedForEveryone: false,
-        deletedFor: { $ne: me },
-      });
+      // Emit conversation cleared count and updated total for the viewer
+      const [participantsA, totalUnread] = await Promise.all([
+        (async () => {
+          const participants = [String(me), String(other)].sort();
+          const thread = await Thread.findOne({
+            participants: { $all: participants, $size: 2 },
+          }).select("_id");
+          if (thread) {
+            req.io.to(String(me)).emit("unread:update", {
+              conversationId: String(thread._id),
+              newCount: 0,
+            });
+          }
+        })(),
+        Message.countDocuments({ to: me, isRead: false }),
+      ]);
 
       req.io.to(String(me)).emit("unread:total", { total: totalUnread });
     }
@@ -219,6 +344,9 @@ exports.sendMessage = async (req, res) => {
     const to = req.params.userId || req.body.to;
 
     if (!to) return res.status(400).json({ message: "Missing recipient" });
+    if (!mongoose.Types.ObjectId.isValid(to)) {
+      return res.status(400).json({ message: "Invalid recipient user ID" });
+    }
 
     const [connected, blocked] = await Promise.all([
       areConnected(me, to),
@@ -236,64 +364,89 @@ exports.sendMessage = async (req, res) => {
 
     const content = (req.body.content || "").toString();
     const messageType = req.body.messageType || "text";
-    const clientKey = req.body.clientKey || null;
+    // Always ensure a non-null clientKey for unique index (threadId + clientKey)
+    const clientKey = req.body.clientKey || `ck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    // Process attachments
+    console.log("sendMessage called:", {
+      recipientId: req.params.userId,
+      hasContent: !!req.body.content,
+      files: req.files ? Object.keys(req.files) : [],
+      body: req.body,
+    });
+
+    // Process attachments via Cloudinary
     const attachments = [];
     const files = req.files || {};
-
-    // Handle different file types
-    const fileFields = ["image", "media", "document", "audio"];
-    for (const field of fileFields) {
-      if (files[field]) {
-        const fileArray = Array.isArray(files[field])
-          ? files[field]
-          : [files[field]];
+    if (req.files && Object.keys(req.files).length > 0) {
+      const fileFields = ["image", "media", "document", "audio", "video"];
+      for (const field of fileFields) {
+        const arr = files[field];
+        if (!arr) continue;
+        const fileArray = Array.isArray(arr) ? arr : [arr];
         for (const file of fileArray) {
-          const attachment = {
-            url: `/uploads/messages/${file.filename}`,
-            type: getFileType(file.mimetype),
-            filename: file.originalname,
-            size: file.size,
-            mimeType: file.mimetype,
-          };
-
-          // Generate thumbnail for videos
-          if (attachment.type === "video") {
-            attachment.thumbnail = await generateVideoThumbnail(file.path);
-          }
-
-          attachments.push(attachment);
+          // Prefer Cloudinary secure_url or url
+          const url = file.secure_url || file.url || file.path || null;
+          if (url) attachments.push(url);
         }
       }
     }
 
-    // Handle reply
+    // If frontend sent base64/remote URLs, normalize them
+    if (Array.isArray(req.body.attachments)) {
+      for (const a of req.body.attachments) {
+        if (typeof a === "string" && /^https?:\/\//i.test(a))
+          attachments.push(a);
+      }
+    }
+
+    // Handle reply (store as marker in attachments)
     let replyTo = null;
     if (req.body.replyToId) {
-      const replyMessage = await Message.findById(req.body.replyToId).populate(
-        "from",
-        "name"
+      if (!mongoose.Types.ObjectId.isValid(req.body.replyToId)) {
+        return res.status(400).json({ message: "Invalid reply message ID" });
+      }
+      const replyMessage = await Message.findById(req.body.replyToId).select(
+        "_id"
       );
       if (replyMessage) {
-        replyTo = {
-          messageId: replyMessage._id,
-          content: replyMessage.content || "Media message",
-          senderName: replyMessage.from.name,
-        };
+        attachments.push(`reply:${replyMessage._id}`);
       }
     }
 
     // Handle forward
     let forwardedFrom = null;
+    let isForwarded = false;
+    let originalMessageId = null;
     if (req.body.forwardedFromId) {
+      if (!mongoose.Types.ObjectId.isValid(req.body.forwardedFromId)) {
+        return res.status(400).json({ message: "Invalid forward message ID" });
+      }
       const originalMessage = await Message.findById(req.body.forwardedFromId);
       if (originalMessage) {
+        isForwarded = true;
+        originalMessageId = originalMessage._id;
         forwardedFrom = {
           originalSender: originalMessage.from,
           forwardCount: (originalMessage.forwardedFrom?.forwardCount || 0) + 1,
         };
       }
+    }
+
+    // Validate at least one of content or attachments exists
+    if (!content.trim() && attachments.length === 0) {
+      return res.status(400).json({
+        message: "Message must have content or attachments",
+        success: false,
+      });
+    }
+
+    // Ensure thread exists BEFORE message so we can set threadId
+    const participants = [String(me), String(to)].sort();
+    let thread = await Thread.findOne({
+      participants: { $all: participants, $size: 2 },
+    });
+    if (!thread) {
+      thread = await Thread.create({ participants });
     }
 
     // Create message
@@ -303,16 +456,19 @@ exports.sendMessage = async (req, res) => {
       content,
       attachments,
       messageType,
-      replyTo,
-      forwardedFrom,
+      clientKey,
+      threadId: String(thread._id),
       messageId:
-        clientKey ||
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      clientTimestamp: req.body.clientTimestamp
-        ? new Date(req.body.clientTimestamp)
-        : new Date(),
       deliveredAt: new Date(),
     };
+    
+    // Only add forward-related fields if actually forwarded
+    if (isForwarded && forwardedFrom) {
+      messageData.isForwarded = true;
+      messageData.originalMessageId = originalMessageId;
+      messageData.forwardedFrom = forwardedFrom;
+    }
 
     // Handle location messages
     if (messageType === "location" && req.body.location) {
@@ -325,35 +481,34 @@ exports.sendMessage = async (req, res) => {
     }
 
     const message = await Message.create(messageData);
-    const populatedMessage = await Message.findById(message._id)
-      .populate("from to", "name username avatarUrl")
-      .populate("replyTo.messageId", "content from");
+    const populatedMessage = await Message.findById(message._id).populate(
+      "from to",
+      "name username avatarUrl"
+    );
 
-    const dto = parseMessage(populatedMessage, me);
+    const dto = parseMessage(populatedMessage.toObject(), me);
 
     // Update thread
-    const participants = [String(me), String(to)].sort();
-    await Thread.findOneAndUpdate(
-      { participants: { $all: participants, $size: 2 } },
-      {
-        $setOnInsert: { participants },
-        $set: {
-          lastMessageAt: new Date(),
-          lastMessage: message._id,
-          [`lastReadAt.${me}`]: new Date(),
-        },
-        $inc: { [`unreadCount.${to}`]: 1 },
-      },
-      { upsert: true, new: true }
-    );
+    // Now update fields separately
+    thread.lastMessageAt = new Date();
+    thread.lastMessage = message._id;
+    thread.lastReadAt.set(String(me), new Date());
+    const currentUnread = thread.unreadCount.get(String(to)) || 0;
+    thread.unreadCount.set(String(to), currentUnread + 1);
+    await thread.save();
 
     // Real-time notifications
     if (req.io) {
-      // Send to recipient
+      // Send to recipient with normalized payload including attachments for rich preview
       req.io.to(String(to)).emit("message:new", {
-        message: dto,
-        conversationId: `${me}_${to}`,
+        conversationId: String(thread?._id || `${me}_${to}`),
+        messageId: String(dto.id),
         senderId: String(me),
+        body: dto.content,
+        attachments: dto.attachments || [],
+        createdAt: dto.timestamp,
+        isForwarded: dto.isForwarded === true,
+        forwardedFrom: populatedMessage?.forwardedFrom || null,
       });
 
       // Send delivery confirmation to sender
@@ -363,20 +518,57 @@ exports.sendMessage = async (req, res) => {
         status: "delivered",
       });
 
-      // Update unread counts
-      const unreadCount = await Message.countDocuments({
-        to,
-        isRead: false,
-        deletedForEveryone: false,
-        deletedFor: { $ne: to },
-      });
+      // Create a realtime notification item for the recipient
+      try {
+        // Determine notification content based on message type
+        let notificationContent;
+        if (dto.attachments && dto.attachments.length > 0) {
+          // Check if it's an image, video, or document
+          const hasImage = dto.attachments.some(att => {
+            const url = typeof att === 'string' ? att : att?.url;
+            return /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(url);
+          });
+          const hasVideo = dto.attachments.some(att => {
+            const url = typeof att === 'string' ? att : att?.url;
+            return /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(url);
+          });
+          const hasDoc = dto.attachments.some(att => {
+            const url = typeof att === 'string' ? att : att?.url;
+            return /\.(pdf|doc|docx|txt|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(url);
+          });
+          
+          if (hasImage) notificationContent = "sent you a photo";
+          else if (hasVideo) notificationContent = "sent you a video";
+          else if (hasDoc) notificationContent = "sent you a document";
+          else notificationContent = "sent you media";
+        } else {
+          notificationContent = "sent you a message";
+        }
+        
+        const note = await NotificationService.createNotification({
+          recipientId: to,
+          senderId: me,
+          type: "message",
+          content: notificationContent,
+          relatedId: dto.id,
+          onModel: "Message",
+        });
+        if (note) {
+          req.io.to(String(to)).emit("notification:new", note);
+        }
+      } catch {}
 
+      // Update unread counts for the conversation and total for recipient
+      const [threadDoc, totalUnread] = await Promise.all([
+        Thread.findById(thread?._id).select("unreadCount"),
+        Message.countDocuments({ to, isRead: false }),
+      ]);
+      const convCount = threadDoc?.unreadCount?.get(String(to)) || 0;
       req.io.to(String(to)).emit("unread:update", {
-        conversationId: `${me}_${to}`,
-        count: unreadCount,
+        conversationId: String(thread?._id || `${me}_${to}`),
+        newCount: convCount,
       });
-
-      req.io.to(String(to)).emit("unread:total", { total: unreadCount });
+      req.io.to(String(to)).emit("unread:total", { total: totalUnread });
     }
 
     return res.status(201).json({
@@ -384,57 +576,160 @@ exports.sendMessage = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error("Error sending message:", error);
+    // Detailed error logging
+    console.error("Error sending message:", {
+      errorType: error.constructor.name,
+      errorMessage: error.message,
+      stack: error.stack,
+      requestBody: req.body,
+      filesReceived: req.files ? Object.keys(req.files) : null,
+      userIds: { from: req.user._id, to: req.params.userId || req.body.to },
+    });
+    // Specific error messages
+    let message = "Error sending message";
+    if (error.code === "LIMIT_FILE_SIZE") {
+      message = "File too large";
+    } else if (error.code === "LIMIT_UNEXPECTED_FILE") {
+      message = "Invalid file type";
+    } else if (error.message.includes("upload")) {
+      message = "File upload failed";
+    }
     return res.status(500).json({
-      message: "Error sending message",
+      message,
       success: false,
     });
   }
 };
 
-// Enhanced message reactions
+// Enhanced message reactions (toggle)
 exports.react = async (req, res) => {
   try {
     const me = req.user._id;
-    const { messageId, emoji } = req.body || {};
+    const { messageId, emoji, to } = req.body || {};
 
     if (!messageId)
       return res.status(400).json({ message: "messageId required" });
 
-    const message = await Message.findById(messageId);
+    // Allow removing reaction when emoji is empty/null.
+    // If provided, do a light validation only (string and reasonable length).
+    const isRemoval = emoji === undefined || emoji === null || String(emoji).trim() === "";
+    if (!isRemoval) {
+      const emojiStr = String(emoji);
+      if (typeof emojiStr !== "string" || emojiStr.trim() === "" || emojiStr.length > 16) {
+        return res.status(400).json({ message: "Invalid emoji" });
+      }
+    }
+
+    // Validate recipient user id (if provided)
+    if (to && !mongoose.Types.ObjectId.isValid(to)) {
+      return res.status(400).json({ message: "Invalid recipient ID" });
+    }
+
+    // Accept either Mongo _id or client messageId
+    let message = null;
+    if (mongoose.Types.ObjectId.isValid(messageId)) {
+      message = await Message.findById(messageId);
+    }
+    if (!message) {
+      message = await Message.findOne({ messageId });
+    }
     if (!message) return res.status(404).json({ message: "Message not found" });
 
-    const isParticipant = [String(message.from), String(message.to)].includes(
-      String(me)
-    );
+    const isParticipant =
+      String(message.from) === String(me) || String(message.to) === String(me);
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-    await message.addReaction(me, emoji);
-
-    const updatedMessage = await Message.findById(messageId).populate(
-      "reactions.userId",
-      "name username avatarUrl"
+    // Toggle reaction in structured array (preferred)
+    if (!Array.isArray(message.reactions)) message.reactions = [];
+    const currentIndex = message.reactions.findIndex(
+      (r) => String(r.userId) === String(me)
     );
 
+    if (isRemoval) {
+      // remove any existing reaction for user
+      if (currentIndex !== -1) {
+        message.reactions.splice(currentIndex, 1);
+      }
+    } else if (currentIndex !== -1) {
+      // same emoji => toggle off, different => update
+      if (message.reactions[currentIndex].emoji === emoji) {
+        message.reactions.splice(currentIndex, 1);
+      } else {
+        message.reactions[currentIndex].emoji = emoji;
+        message.reactions[currentIndex].reactedAt = new Date();
+      }
+    } else {
+      message.reactions = message.reactions || [];
+      message.reactions.push({ userId: me, emoji, reactedAt: new Date() });
+    }
+
+    // Maintain legacy markers for backward compatibility (optional, can be removed later)
+    if (!Array.isArray(message.attachments)) message.attachments = [];
+    const withoutLegacy = message.attachments.filter(
+      (att) => !(typeof att === "string" && att.startsWith(`react:${me}:`))
+    );
+    if (!isRemoval) {
+      withoutLegacy.push(`react:${me}:${emoji}`);
+    }
+    message.attachments = withoutLegacy;
+
+    await message.save();
+
     if (req.io) {
-      const participants = [String(message.from), String(message.to)];
-      participants.forEach((userId) => {
-        req.io.to(userId).emit("message:reacted", {
-          messageId: String(messageId),
-          reactions: updatedMessage.reactions,
-          reactedBy: String(me),
-          emoji,
-        });
+      const pFrom = String(message.from);
+      const pTo = String(message.to);
+      req.io.to(pFrom).emit("message:reacted", {
+        messageId: String(message._id),
+        reactions: normalizeReactions(message),
+        reactedBy: String(me),
+        emoji,
       });
+      req.io.to(pTo).emit("message:reacted", {
+        messageId: String(message._id),
+        reactions: normalizeReactions(message),
+        reactedBy: String(me),
+        emoji,
+      });
+
+      // Create and push a notification to the other participant
+      try {
+        const recipientId = String(message.from) === String(me) ? String(message.to) : String(message.from);
+        if (recipientId !== String(me)) {
+          const note = await NotificationService.createNotification({
+            recipientId,
+            senderId: me,
+            type: "reaction",
+            content: `reacted ${emoji} to your message`,
+            relatedId: String(message._id),
+            onModel: "Message",
+          });
+          if (note) {
+            req.io.to(recipientId).emit("notification:new", note);
+          }
+        }
+      } catch {}
     }
 
     return res.json({
-      messageId: String(messageId),
-      reactions: updatedMessage.reactions,
+      messageId: String(message._id),
+      reactions: normalizeReactions(message),
       success: true,
     });
   } catch (error) {
-    console.error("Error reacting to message:", error);
+    // Detailed logging before error response
+    console.error("Error reacting to message:", {
+      messageId: req.body?.messageId,
+      emoji: req.body?.emoji,
+      userId: req.user._id,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      messageIdFormat: req.body?.messageId
+        ? req.body.messageId.match(/^[0-9a-fA-F]{24}$/)
+          ? "MongoDB ObjectId"
+          : "Client messageId"
+        : "None",
+      findOneSucceeded: false, // Since we're in catch, assume not
+    });
     return res.status(500).json({
       message: "Error reacting to message",
       success: false,
@@ -459,8 +754,16 @@ exports.starMessage = async (req, res) => {
     );
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-    await message.toggleStar(me);
-    const isStarred = message.isStarred.includes(me);
+    const marker = `star:${me}`;
+    message.attachments = message.attachments || [];
+    const has = message.attachments.includes(marker);
+    if (has) {
+      message.attachments = message.attachments.filter((a) => a !== marker);
+    } else {
+      message.attachments.push(marker);
+    }
+    await message.save();
+    const isStarred = message.attachments.includes(marker);
 
     if (req.io) {
       req.io.to(String(me)).emit("message:starred", {
@@ -500,15 +803,13 @@ exports.pinMessage = async (req, res) => {
     );
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
-    message.isPinned = pin;
-    if (pin) {
-      message.pinnedBy = me;
-      message.pinnedAt = new Date();
-    } else {
-      message.pinnedBy = null;
-      message.pinnedAt = null;
-    }
-
+    // Track pin as per-user marker
+    const pinMarker = `pin:${me}`;
+    message.attachments = message.attachments || [];
+    const hasPin = message.attachments.includes(pinMarker);
+    if (pin && !hasPin) message.attachments.push(pinMarker);
+    if (!pin && hasPin)
+      message.attachments = message.attachments.filter((a) => a !== pinMarker);
     await message.save();
 
     if (req.io) {
@@ -558,18 +859,16 @@ exports.deleteMessage = async (req, res) => {
           .json({ message: "Only sender can delete for everyone" });
       }
 
-      // Check if message is within delete time limit (e.g., 1 hour)
-      const deleteTimeLimit = 60 * 60 * 1000; // 1 hour
-      const messageAge = Date.now() - new Date(message.createdAt).getTime();
-
-      if (messageAge > deleteTimeLimit) {
-        return res
-          .status(403)
-          .json({ message: "Delete for everyone time limit exceeded" });
-      }
-
-      message.deletedForEveryone = true;
-      message.deletedAt = new Date();
+      // Replace content and strip media so both sides see a placeholder
+      message.content = "This message was deleted";
+      message.attachments = [];
+      message.messageType = "text";
+      // Add explicit markers to ensure persistence on all code paths
+      message.set("metadata.deleted", true);
+      message.attachments = [
+        ...(Array.isArray(message.attachments) ? message.attachments : []),
+        'deletedForEveryone',
+      ];
       await message.save();
 
       if (req.io) {
@@ -577,13 +876,16 @@ exports.deleteMessage = async (req, res) => {
           req.io.to(userId).emit("message:deleted", {
             messageId: String(messageId),
             scope: "everyone",
+            placeholder: true,
           });
         });
       }
     } else {
       // Delete for me only
-      if (!message.deletedFor.includes(me)) {
-        message.deletedFor.push(me);
+      message.attachments = message.attachments || [];
+      const marker = `deletedFor:${me}`;
+      if (!message.attachments.includes(marker)) {
+        message.attachments.push(marker);
         await message.save();
       }
 
@@ -605,7 +907,7 @@ exports.deleteMessage = async (req, res) => {
   }
 };
 
-// Bulk delete messages
+// Bulk delete messages (using marker-based deletion for persistence)
 exports.bulkDelete = async (req, res) => {
   try {
     const me = req.user._id;
@@ -635,13 +937,23 @@ exports.bulkDelete = async (req, res) => {
           continue;
         }
 
-        message.deletedForEveryone = true;
-        message.deletedAt = new Date();
+        // Replace with placeholder
+        message.content = "This message was deleted";
+        message.attachments = [];
+        message.messageType = "text";
+        message.set("metadata.deleted", true);
+        message.attachments = [
+          ...(Array.isArray(message.attachments) ? message.attachments : []),
+          'deletedForEveryone',
+        ];
         await message.save();
         result.deleted += 1;
       } else {
-        if (!message.deletedFor.includes(me)) {
-          message.deletedFor.push(me);
+        // Delete for me only: add marker to attachments
+        message.attachments = message.attachments || [];
+        const marker = `deletedFor:${me}`;
+        if (!message.attachments.includes(marker)) {
+          message.attachments.push(marker);
           await message.save();
         }
         result.updated += 1;
@@ -666,6 +978,194 @@ exports.bulkDelete = async (req, res) => {
   }
 };
 
+// Bulk delete chats
+exports.bulkDeleteChats = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { chatIds = [] } = req.body || {};
+
+    if (!Array.isArray(chatIds) || chatIds.length === 0) {
+      return res.status(400).json({ message: "chatIds required" });
+    }
+
+    // Validation: ensure each chatId is a valid user ID
+    const invalidIds = chatIds.filter((id) => !id.match(/^[0-9a-fA-F]{24}$/));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        message: `Invalid chatIds: ${invalidIds.join(", ")}`,
+        success: false,
+      });
+    }
+
+    const results = [];
+
+    for (const userId of chatIds) {
+      try {
+        // Call existing deleteChat logic
+        const deleteResult = await exports.deleteChat(
+          {
+            user: { _id: me },
+            params: { userId },
+            body: { for: "me" },
+            io: req.io,
+          },
+          {
+            json: (data) => data,
+            status: (code) => ({ json: (data) => ({ ...data, status: code }) }),
+          }
+        );
+        results.push({ userId, success: true });
+        // Emit socket event for successful deletion
+        if (req.io) {
+          req.io.to(String(me)).emit("chat:deleted", {
+            userId,
+            scope: "me",
+          });
+        }
+      } catch (err) {
+        results.push({ userId, success: false, error: err.message });
+      }
+    }
+
+    const totalSuccess = results.filter((r) => r.success).length;
+    const totalFailed = results.length - totalSuccess;
+
+    return res.json({
+      results,
+      totalSuccess,
+      totalFailed,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error bulk deleting chats:", error);
+    return res.status(500).json({
+      message: "Error bulk deleting chats",
+      success: false,
+    });
+  }
+};
+
+// Bulk block users
+exports.bulkBlockUsers = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { userIds = [] } = req.body || {};
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds required" });
+    }
+
+    // Validation: ensure each userId is valid
+    const invalidIds = userIds.filter((id) => !id.match(/^[0-9a-fA-F]{24}$/));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        message: `Invalid userIds: ${invalidIds.join(", ")}`,
+        success: false,
+      });
+    }
+
+    const results = [];
+
+    for (const userId of userIds) {
+      try {
+        // Call existing block logic
+        const blockResult = await exports.block(
+          {
+            user: { _id: me },
+            body: { targetUserId: userId, action: "block" },
+            io: req.io,
+          },
+          {
+            json: (data) => data,
+            status: (code) => ({ json: (data) => ({ ...data, status: code }) }),
+          }
+        );
+        results.push({ userId, success: true });
+      } catch (err) {
+        results.push({ userId, success: false, error: err.message });
+      }
+    }
+
+    const totalSuccess = results.filter((r) => r.success).length;
+    const totalFailed = results.length - totalSuccess;
+
+    return res.json({
+      results,
+      totalSuccess,
+      totalFailed,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error bulk blocking users:", error);
+    return res.status(500).json({
+      message: "Error bulk blocking users",
+      success: false,
+    });
+  }
+};
+
+// Bulk report users
+exports.bulkReportUsers = async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { userIds = [] } = req.body || {};
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: "userIds required" });
+    }
+
+    // Validation: ensure each userId is valid
+    const invalidIds = userIds.filter((id) => !id.match(/^[0-9a-fA-F]{24}$/));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        message: `Invalid userIds: ${invalidIds.join(", ")}`,
+        success: false,
+      });
+    }
+
+    const results = [];
+
+    for (const userId of userIds) {
+      try {
+        // Call existing report logic with reason
+        const reportResult = await exports.report(
+          {
+            user: { _id: me },
+            body: {
+              targetUserId: userId,
+              reason: req.body.reason || "Bulk report",
+            },
+            io: req.io,
+          },
+          {
+            json: (data) => data,
+            status: (code) => ({ json: (data) => ({ ...data, status: code }) }),
+          }
+        );
+        results.push({ userId, success: true });
+      } catch (err) {
+        results.push({ userId, success: false, error: err.message });
+      }
+    }
+
+    const totalSuccess = results.filter((r) => r.success).length;
+    const totalFailed = results.length - totalSuccess;
+
+    return res.json({
+      results,
+      totalSuccess,
+      totalFailed,
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error bulk reporting users:", error);
+    return res.status(500).json({
+      message: "Error bulk reporting users",
+      success: false,
+    });
+  }
+};
+
 // Get shared media
 exports.getMedia = async (req, res) => {
   try {
@@ -675,62 +1175,141 @@ exports.getMedia = async (req, res) => {
 
     if (!other) return res.status(400).json({ message: "Missing userId" });
 
-    const query = {
-      $or: [
-        { from: me, to: other },
-        { from: other, to: me },
-      ],
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
-      "attachments.0": { $exists: true },
-    };
+    // Get thread between the two users
+    const thread = await Thread.findOne({
+      participants: { $all: [me, other], $size: 2 }
+    });
 
-    // Filter by media type
-    if (type !== "all") {
-      query["attachments.type"] = type;
+    if (!thread) {
+      return res.json({
+        media: [],
+        links: [],
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: 0,
+          pages: 0,
+        },
+        success: true,
+      });
     }
 
-    const messages = await Message.find(query)
+    // Build query based on type and thread
+    const baseQuery = {
+      threadId: thread._id,
+      $or: [
+        { from: me },
+        { from: other }
+      ],
+    };
+
+    let query;
+    if (type === "link" || type === "all") {
+      // For links, we need messages with content OR attachments
+      query = {
+        ...baseQuery,
+        $or: [
+          { "attachments.0": { $exists: true } },
+          { content: { $exists: true, $ne: "" } },
+        ],
+      };
+    } else {
+      // For specific media types, require attachments
+      query = {
+        ...baseQuery,
+        "attachments.0": { $exists: true },
+      };
+      if (type !== "all") {
+        query["attachments.type"] = type;
+      }
+    }
+
+    const messagesAll = await Message.find(query)
       .populate("from", "name username avatarUrl")
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
       .lean();
+    const messages = messagesAll.filter((msg) => {
+      const atts = msg.attachments || [];
+      const hasDeletedForMe = atts.includes(`deletedFor:${me}`);
+      const hasDeletedForEveryone = atts.includes("deletedForEveryone") || msg?.metadata?.deleted === true;
+      return !hasDeletedForMe && !hasDeletedForEveryone;
+    }).slice((page - 1) * limit, (page - 1) * limit + parseInt(limit));
 
     const media = [];
     const links = [];
 
     messages.forEach((msg) => {
-      msg.attachments.forEach((attachment) => {
+      (msg.attachments || []).forEach((attachment) => {
+        const url = typeof attachment === "string" ? attachment : attachment?.url;
+        // Only treat http(s) URLs as media; skip markers like react:*, reply:*, deletedFor:*
+        if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+        const lower = url.toLowerCase();
+        const type =
+          /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)
+            ? "image"
+            : /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)
+            ? "video"
+            : /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)
+            ? "audio"
+            : "document";
+
         const mediaItem = {
           id: msg._id,
           messageId: msg.messageId,
-          url: attachment.url,
-          type: attachment.type,
-          filename: attachment.filename,
-          size: attachment.size,
-          mimeType: attachment.mimeType,
-          thumbnail: attachment.thumbnail,
+          url,
+          type,
+          filename: url.split('/').pop() || 'file',
+          size: undefined,
+          mimeType: undefined,
+          thumbnail: undefined,
           timestamp: msg.createdAt,
           sender: msg.from,
-          isStarred: msg.isStarred.includes(me),
+          // Include flag to indicate if this is sent by the current user
+          isMine: String(msg.from._id || msg.from) === String(me),
+          isStarred: Array.isArray(msg.isStarred)
+            ? msg.isStarred.includes(me)
+            : false,
         };
 
-        if (attachment.type === "link") {
-          links.push(mediaItem);
-        } else {
-          media.push(mediaItem);
-        }
+        media.push(mediaItem);
       });
     });
 
-    // Extract links from message content
+    // Extract links from message content and handle shared posts
     const linkRegex = /(https?:\/\/[^\s]+)/g;
     messages.forEach((msg) => {
+      // Handle shared posts in metadata
+      if (msg.metadata?.sharedPost) {
+        const { postId, preview, imageUrl } = msg.metadata.sharedPost;
+        if (imageUrl) {
+          media.push({
+            id: msg._id,
+            messageId: msg.messageId,
+            url: imageUrl,
+            type: 'image', // or 'post' if you want a special type
+            filename: 'shared-post.jpg',
+            size: 0,
+            mimeType: 'image/*',
+            thumbnail: imageUrl,
+            timestamp: msg.createdAt,
+            sender: msg.from,
+            isMine: String(msg.from._id || msg.from) === String(me),
+            isStarred: Array.isArray(msg.isStarred) ? msg.isStarred.includes(me) : false,
+            isSharedPost: true,
+            postId: postId,
+            preview: preview || 'Shared post'
+          });
+        }
+      }
+
+      // Handle regular links in message content
       if (msg.content) {
         const foundLinks = msg.content.match(linkRegex);
         if (foundLinks) {
           foundLinks.forEach((link) => {
+            // Skip if this is a shared post image URL that we already processed
+            if (msg.metadata?.sharedPost?.imageUrl === link) return;
+            
             links.push({
               id: msg._id,
               messageId: msg.messageId,
@@ -739,7 +1318,8 @@ exports.getMedia = async (req, res) => {
               title: extractLinkTitle(link),
               timestamp: msg.createdAt,
               sender: msg.from,
-              isStarred: msg.isStarred.includes(me),
+              isMine: String(msg.from._id || msg.from) === String(me),
+              isStarred: Array.isArray(msg.isStarred) ? msg.isStarred.includes(me) : false,
             });
           });
         }
@@ -819,16 +1399,17 @@ exports.getStarredMessages = async (req, res) => {
 exports.searchMessages = async (req, res) => {
   try {
     const me = req.user._id;
-    const { query, userId, page = 1, limit = 20 } = req.query;
+    const { query, userId, page = 1, limit = 20, dateFrom, dateTo } = req.query;
 
     if (!query)
       return res.status(400).json({ message: "Search query required" });
 
     const searchQuery = {
       $or: [{ from: me }, { to: me }],
-      deletedForEveryone: false,
-      deletedFor: { $ne: me },
       $text: { $search: query },
+      // Exclude messages hidden for this viewer and global-deleted tombstones
+      attachments: { $not: { $in: [`deletedFor:${me}`, 'deletedForEveryone'] } },
+      "metadata.deleted": { $ne: true },
     };
 
     // Filter by specific user if provided
@@ -838,6 +1419,12 @@ exports.searchMessages = async (req, res) => {
         { from: userId, to: me },
       ];
     }
+
+    // Optional date filtering
+    const createdAt = {};
+    if (dateFrom && !isNaN(Date.parse(dateFrom))) createdAt.$gte = new Date(dateFrom);
+    if (dateTo && !isNaN(Date.parse(dateTo))) createdAt.$lte = new Date(dateTo);
+    if (Object.keys(createdAt).length > 0) searchQuery.createdAt = createdAt;
 
     const messages = await Message.find(searchQuery)
       .populate("from to", "name username avatarUrl")
@@ -876,22 +1463,85 @@ exports.block = async (req, res) => {
     const me = req.user._id;
     const { targetUserId, action } = req.body || {};
 
+    console.log("Block request:", { me, targetUserId, action });
+
     if (!targetUserId)
       return res.status(400).json({ message: "targetUserId required" });
+
+    // Validate targetUserId is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ message: "Invalid targetUserId format" });
+    }
+
+    // Prevent user from blocking themselves
+    if (String(me) === String(targetUserId)) {
+      return res.status(400).json({ message: "Cannot block yourself" });
+    }
+
     if (!action || !["block", "unblock"].includes(action)) {
       return res
         .status(400)
         .json({ message: "action must be 'block' or 'unblock'" });
     }
 
-    if (action === "block") {
-      await Block.updateOne(
-        { blocker: me, blocked: targetUserId },
-        { $setOnInsert: { blocker: me, blocked: targetUserId } },
-        { upsert: true }
-      );
-    } else {
-      await Block.deleteOne({ blocker: me, blocked: targetUserId });
+    // Normalize id types to strings for consistent matching
+    const blockerId = String(me);
+    const blockedId = String(targetUserId);
+
+    try {
+      if (action === "block") {
+        await Block.updateOne(
+          { blocker: blockerId, blocked: blockedId },
+          { $setOnInsert: { blocker: blockerId, blocked: blockedId } },
+          { upsert: true }
+        );
+      } else {
+        await Block.deleteOne({ blocker: blockerId, blocked: blockedId });
+      }
+    } catch (dbError) {
+      console.error("Database error in block operation:", dbError);
+      return res.status(500).json({
+        message: "Database error during block operation",
+        success: false,
+      });
+    }
+
+    // Create a system message for the blocker only (like WhatsApp banner)
+    try {
+      const participants = [String(me), String(targetUserId)].sort();
+      let thread = await Thread.findOne({
+        participants: { $all: participants, $size: 2 },
+      });
+      if (!thread) thread = await Thread.create({ participants });
+
+      const text = action === "block"
+        ? `You blocked this contact on ${new Date().toLocaleString()}`
+        : `You unblocked this contact on ${new Date().toLocaleString()}`;
+
+      const sys = await Message.create({
+        from: me,
+        to: targetUserId,
+        content: text,
+        messageType: "text",
+        threadId: String(thread._id),
+        metadata: { system: true, systemCode: action },
+        // hide from the other participant using attachments marker parsed elsewhere
+        attachments: [`deletedFor:${targetUserId}`],
+      });
+
+      // Emit to blocker timeline only
+      if (req.io) {
+        req.io.to(String(me)).emit("message:new", {
+          conversationId: String(thread._id),
+          messageId: String(sys._id),
+          senderId: String(me),
+          body: text,
+          attachments: [],
+          createdAt: sys.createdAt,
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to append system block/unblock banner:", e.message);
     }
 
     // Emit real-time update
@@ -909,7 +1559,7 @@ exports.block = async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error("Error updating block:", error);
+    console.error("Error updating block:", error, error.stack);
     return res.status(500).json({
       message: "Error updating block",
       success: false,
@@ -926,26 +1576,49 @@ exports.report = async (req, res) => {
     if (!targetUserId)
       return res.status(400).json({ message: "targetUserId required" });
 
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ message: "Invalid targetUserId" });
+    }
+    if (messageId && !mongoose.Types.ObjectId.isValid(messageId)) {
+      return res.status(400).json({ message: "Invalid messageId" });
+    }
+
     // Create report notification for admins
     const admins = await User.find({ role: "admin" }).select("_id");
+    if (admins.length === 0) {
+      console.warn("No admin users found to report to");
+      return res.json({
+        message: "Report submitted successfully",
+        success: true,
+      });
+    }
+
     const reportContent = `User report: ${me} reported ${targetUserId}${
       reason ? ` - Reason: ${reason}` : ""
     }${messageId ? ` - Message: ${messageId}` : ""}`;
 
-    await Promise.all(
-      admins.map((admin) =>
-        NotificationService.createNotification({
-          recipientId: admin._id,
-          senderId: me,
-          type: "report",
-          content: reportContent,
-          relatedId: targetUserId,
-          metadata: { messageId, reason },
-        })
-      )
-    );
+    try {
+      await Promise.allSettled(
+        admins.map((admin) =>
+          NotificationService.createNotification({
+            recipientId: admin._id,
+            senderId: me,
+            type: "message",
+            content: reportContent,
+            relatedId: messageId || targetUserId,
+            onModel: messageId ? "Message" : "User",
+          })
+        )
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating notifications for report:",
+        notificationError
+      );
+      // Continue and return success anyway, as the report intent was valid
+    }
 
-    return res.status(201).json({
+    return res.json({
       message: "Report submitted successfully",
       success: true,
     });
@@ -953,6 +1626,7 @@ exports.report = async (req, res) => {
     console.error("Error reporting user:", error);
     return res.status(500).json({
       message: "Error reporting user",
+      error: error.message,
       success: false,
     });
   }
@@ -976,6 +1650,41 @@ exports.getMessageInfo = async (req, res) => {
     ].includes(String(me));
     if (!isParticipant) return res.status(403).json({ message: "Forbidden" });
 
+    const isStarred = Array.isArray(message.attachments)
+      ? message.attachments.includes(`star:${me}`)
+      : false;
+    const isPinned = Array.isArray(message.attachments)
+      ? message.attachments.includes(`pin:${me}`)
+      : false;
+
+    // Reaction count summary
+    const reactionSummary = {};
+    if (Array.isArray(message.reactions)) {
+      message.reactions.forEach((r) => {
+        if (!r.userId || !r.userId._id) return; // Null check for userId
+        if (r.emoji) {
+          if (!reactionSummary[r.emoji]) {
+            reactionSummary[r.emoji] = { emoji: r.emoji, count: 0, users: [] };
+          }
+          reactionSummary[r.emoji].count += 1;
+          reactionSummary[r.emoji].users.push({
+            _id: r.userId._id,
+            name: r.userId.name,
+            username: r.userId.username,
+            avatarUrl: r.userId.avatarUrl || "/default-avatar.png", // Fallback avatar URL
+          });
+        }
+      });
+    }
+    const reactionsArray = Object.values(reactionSummary);
+
+    // My reaction
+    const myReaction = Array.isArray(message.reactions)
+      ? message.reactions.find(
+          (r) => r.userId && r.userId._id && String(r.userId._id) === String(me)
+        )?.emoji || null
+      : null;
+
     const messageInfo = {
       id: message._id,
       content: message.content,
@@ -984,11 +1693,12 @@ exports.getMessageInfo = async (req, res) => {
       timestamp: message.createdAt,
       deliveredAt: message.deliveredAt,
       readAt: message.readAt,
-      reactions: message.reactions,
-      isStarred: message.isStarred.includes(me),
-      isPinned: message.isPinned,
-      isEdited: message.isEdited,
-      editHistory: message.editHistory,
+      reactions: reactionsArray,
+      myReaction,
+      isStarred,
+      isPinned,
+      isEdited: false,
+      editHistory: [],
       attachments: message.attachments,
       messageType: message.messageType,
     };
@@ -1006,7 +1716,7 @@ exports.getMessageInfo = async (req, res) => {
   }
 };
 
-// Delete entire chat
+// Delete entire chat (marker-based, WhatsApp-like persistence)
 exports.deleteChat = async (req, res) => {
   try {
     const me = req.user._id;
@@ -1015,26 +1725,27 @@ exports.deleteChat = async (req, res) => {
 
     if (!other) return res.status(400).json({ message: "Missing userId" });
 
+    const match = {
+      $or: [
+        { from: me, to: other },
+        { from: other, to: me },
+      ],
+    };
+
     if (scope === "everyone") {
-      // Delete all messages between users
-      await Message.updateMany(
-        {
-          $or: [
-            { from: me, to: other },
-            { from: other, to: me },
-          ],
+      // Convert all messages between users to tombstones and mark deleted for everyone
+      await Message.updateMany(match, {
+        $set: {
+          content: "This message was deleted",
+          messageType: "text",
+          "metadata.deleted": true,
         },
-        {
-          $set: {
-            deletedForEveryone: true,
-            deletedAt: new Date(),
-          },
-        }
-      );
+        $addToSet: { attachments: "deletedForEveryone" },
+      });
 
       if (req.io) {
         req.io.to(String(me)).emit("chat:deleted", {
-          userId: other,
+          userId: String(other),
           scope: "everyone",
         });
         req.io.to(String(other)).emit("chat:deleted", {
@@ -1043,22 +1754,14 @@ exports.deleteChat = async (req, res) => {
         });
       }
     } else {
-      // Mark as deleted for current user only
-      await Message.updateMany(
-        {
-          $or: [
-            { from: me, to: other },
-            { from: other, to: me },
-          ],
-        },
-        {
-          $addToSet: { deletedFor: me },
-        }
-      );
+      // Mark as deleted for current user only using per-user marker
+      await Message.updateMany(match, {
+        $addToSet: { attachments: `deletedFor:${me}` },
+      });
 
       if (req.io) {
         req.io.to(String(me)).emit("chat:deleted", {
-          userId: other,
+          userId: String(other),
           scope: "me",
         });
       }

@@ -5,6 +5,7 @@ const Department = require('../models/Department');
 const mongoose = require('mongoose');
 const { protect } = require('../middleware/authMiddleware');
 const { getAlumniRecommendations } = require('../controllers/recommendationsController');
+const { DEFAULT_DEPARTMENTS } = require('../config/departments');
 
 // GET /api/search/users?query=...&excludeId=...
 router.get('/users', async (req, res) => {
@@ -67,13 +68,54 @@ router.get('/users', async (req, res) => {
 });
 
 // GET /api/search/departments
+// Fetch departments from actual user registrations (as per requirement)
+// Always returns: Default departments + User-registered departments (merged and sorted)
 router.get('/departments', async (req, res) => {
   try {
-    const departments = await Department.find().sort({ name: 1 });
-    res.json(departments.map(d => d.name));
+    // Step 1: Ensure default departments exist in the collection
+    for (const deptName of DEFAULT_DEPARTMENTS) {
+      try {
+        await Department.findOrCreate(deptName);
+      } catch (err) {
+        // Ignore duplicate errors, continue with next
+        if (err.code !== 11000) {
+          console.error(`Error creating default department ${deptName}:`, err.message);
+        }
+      }
+    }
+    
+    // Step 2: Get unique departments from registered users
+    const userDepartments = await User.distinct('department', { 
+      department: { $exists: true, $ne: null, $ne: '' } 
+    });
+    
+    // Step 3: Add any new user departments to the collection
+    for (const deptName of userDepartments) {
+      if (deptName && deptName.trim()) {
+        try {
+          await Department.findOrCreate(deptName.trim());
+        } catch (err) {
+          if (err.code !== 11000) {
+            console.error(`Error creating user department ${deptName}:`, err.message);
+          }
+        }
+      }
+    }
+    
+    // Step 4: Get all departments from collection (now includes defaults + user departments)
+    const allDepartments = await Department.find().sort({ name: 1 }).lean();
+    const departmentNames = allDepartments.map(d => d.name);
+    
+    // Step 5: Ensure we always have at least the default departments
+    const finalDepartments = departmentNames.length > 0 
+      ? departmentNames 
+      : DEFAULT_DEPARTMENTS;
+    
+    res.json(finalDepartments);
   } catch (error) {
     console.error('Departments fetch error:', error);
-    res.status(500).json({ message: 'Failed to fetch departments' });
+    // Always return at least default departments on error
+    res.json(DEFAULT_DEPARTMENTS);
   }
 });
 

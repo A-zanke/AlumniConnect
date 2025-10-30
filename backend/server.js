@@ -17,7 +17,6 @@ connectDB();
 
 // Initialize Express
 const app = express();
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const http = require("http").createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(http, {
@@ -37,8 +36,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", process.env.FRONTEND_ORIGIN].filter(
+      Boolean
+    ),
     credentials: true,
+    exposedHeaders: ["Content-Length", "Content-Type"],
   })
 );
 app.use(helmet());
@@ -112,8 +114,9 @@ const avatarRoutes = require("./routes/avatarRoutes");
 const forumRoutes = require("./routes/forumRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 const aiRoutes = require("./routes/aiRoutes");
-const testimonialRoutes = require('./routes/testimonialRoutes');
-app.use('/api/testimonials', testimonialRoutes);
+const testimonialRoutes = require("./routes/testimonialRoutes");
+const recommendationsRoutes = require("./routes/recommendationsRoutes");
+app.use("/api/testimonials", testimonialRoutes);
 
 app.use("/api/forum", forumRoutes);
 app.use("/api/chatbot", chatbotRoutes);
@@ -131,35 +134,9 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/messages", messagesRoutes);
 app.use("/api", avatarRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/recommendations", recommendationsRoutes);
 
-// Create uploads directory if it doesn't exist
-const fs = require("fs");
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Serve uploaded files with CORS headers
-app.use(
-  "/uploads",
-  (req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
-    res.header("Access-Control-Allow-Credentials", "true");
-    next();
-  },
-  express.static(uploadsDir)
-);
-
-// Serve message images (explicit directory) - kept for backward compatibility
-app.use(
-  "/uploads/messages",
-  (req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
-    res.header("Access-Control-Allow-Credentials", "true");
-    next();
-  },
-  express.static(path.join(__dirname, "uploads/messages"))
-);
+// NOTE: Local '/uploads' static serving has been removed.
 
 // Serve static assets in production
 if (process.env.NODE_ENV === "production") {
@@ -189,6 +166,8 @@ const Message = require("./models/Message");
 const Thread = require("./models/Thread");
 const Block = require("./models/Block");
 
+const unreadTotalDebounce = new Map();
+
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -206,6 +185,9 @@ io.use(async (socket, next) => {
 io.on("connection", (socket) => {
   // Join personal room for notifications
   socket.join(socket.userId);
+
+  // Join notification room
+  socket.join(`notif_${socket.userId}`);
 
   // Join room by role
   socket.on("joinRoom", (role) => {
@@ -236,19 +218,35 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Notification subscribe event
+  socket.on("notification:subscribe", () => {
+    socket.join(`notif_${socket.userId}`);
+  });
+
   // Chat: idempotent send + status lifecycle + presence/typing
   socket.on("typing", ({ recipientId }) => {
     if (!recipientId) return;
-    io.to(recipientId).emit("typing:update", { from: socket.userId, typing: true, at: Date.now() });
+    io.to(recipientId).emit("typing:update", {
+      from: socket.userId,
+      typing: true,
+      at: Date.now(),
+    });
   });
 
   socket.on("stop_typing", ({ recipientId }) => {
     if (!recipientId) return;
-    io.to(recipientId).emit("typing:update", { from: socket.userId, typing: false, at: Date.now() });
+    io.to(recipientId).emit("typing:update", {
+      from: socket.userId,
+      typing: false,
+      at: Date.now(),
+    });
   });
 
   socket.on("presence:ping", () => {
-    io.emit("presence:update", { userId: socket.userId, lastSeenAt: Date.now() });
+    io.emit("presence:update", {
+      userId: socket.userId,
+      lastSeenAt: Date.now(),
+    });
   });
 
   const handleSend = async (payload) => {
@@ -261,52 +259,92 @@ io.on("connection", (socket) => {
       const isConnected = me.connections.some((id) => id.toString() === to);
       if (!isConnected) return;
       // Block checks
-      const [ab, ba] = await Promise.all([
-        Block.findOne({ blocker: from, blocked: to }).lean(),
-        Block.findOne({ blocker: to, blocked: from }).lean(),
-      ]);
+      // Validate ObjectIds to avoid casting errors if payloads are wrong
+      const isValidFrom = /^[0-9a-fA-F]{24}$/.test(String(from));
+      const isValidTo = /^[0-9a-fA-F]{24}$/.test(String(to));
+      let ab = null;
+      let ba = null;
+      if (isValidFrom && isValidTo) {
+        [ab, ba] = await Promise.all([
+          Block.findOne({ blocker: from, blocked: to }).lean(),
+          Block.findOne({ blocker: to, blocked: from }).lean(),
+        ]);
+      }
       if (ab || ba) return;
       const participants = [String(from), String(to)].sort();
-      const threadId = `${participants[0]}_${participants[1]}`;
-      const messageData = { threadId, clientKey, from, to, content: content || "", isRead: false };
+      const messageData = {
+        from,
+        to,
+        content: content || "",
+        isRead: false,
+      };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-      let msg;
-      if (clientKey) {
-        msg = await Message.findOneAndUpdate(
-          { threadId, clientKey },
-          { $setOnInsert: messageData },
-          { upsert: true, new: true }
-        );
-      } else {
-        msg = await Message.create(messageData);
+      // Ensure a Thread exists without trying to $set participants in an update (avoids NotSingleValueField)
+      let thread = await Thread.findOne({
+        participants: { $all: participants, $size: 2 },
+      });
+      if (!thread) {
+        thread = await Thread.create({ participants });
       }
-      // Update per-user unread in Thread (upsert)
-      const thread = await Thread.findOneAndUpdate(
-        { participants: { $all: participants, $size: 2 } },
-        { $setOnInsert: { participants }, $set: { lastMessageAt: new Date(), lastMessage: msg._id }, $inc: { [`unreadCount.${to}`]: 1 } },
-        { upsert: true, new: true }
-      );
+      const threadId = String(thread._id);
+      messageData.threadId = threadId;
+
+      // Idempotent insert by (threadId, clientKey) to avoid duplicates
+      const query = clientKey ? { threadId, clientKey } : { _id: undefined };
+      const update = { $setOnInsert: { ...messageData, clientKey } };
+      const options = { upsert: true, new: true };
+      let msg = clientKey
+        ? await Message.findOneAndUpdate(query, update, options)
+        : await Message.create(messageData);
+
+      // Update thread fields separately without touching participants
+      thread.lastMessageAt = new Date();
+      thread.lastMessage = msg._id;
+      const currentUnread = thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0;
+      if (thread.unreadCount?.set) thread.unreadCount.set(String(to), currentUnread + 1);
+      await thread.save();
       const messagePayload = {
         conversationId: String(thread._id),
         messageId: String(msg._id),
         senderId: String(from),
         body: msg.content,
+        attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
         createdAt: msg.createdAt,
       };
       // Acknowledge to sender: sent (include clientKey if present)
-      socket.emit("message:ack", { id: String(msg._id), messageId: String(msg._id), status: "sent", clientKey: clientKey || null });
-      socket.emit("message:sent", { id: String(msg._id), messageId: String(msg._id), status: "sent", clientKey: clientKey || null });
+      socket.emit("message:ack", {
+        id: String(msg._id),
+        messageId: String(msg._id),
+        status: "sent",
+        clientKey: clientKey || null,
+      });
+      socket.emit("message:sent", {
+        id: String(msg._id),
+        messageId: String(msg._id),
+        status: "sent",
+        clientKey: clientKey || null,
+      });
       // Targeted delivery only to recipient
       io.to(to).emit("message:new", messagePayload);
       // Unread update to recipient
-      const newUnread = (thread.unreadCount?.get?.(String(to)) || thread.unreadCount?.[String(to)] || 0);
-      io.to(to).emit("unread:update", { conversationId: String(thread._id), newCount: newUnread });
+      const newUnread =
+        thread.unreadCount?.get?.(String(to)) ||
+        thread.unreadCount?.[String(to)] ||
+        0;
+      io.to(to).emit("unread:update", {
+        conversationId: String(thread._id),
+        newCount: newUnread,
+      });
       // If recipient is currently online (in room), then it's delivered
       const isRecipientOnline = !!io.sockets.adapter.rooms.get(String(to));
       if (isRecipientOnline) {
-        io.to(from).emit("message:delivered", { id: String(msg._id), messageId: String(msg._id), clientKey: clientKey || null });
+        io.to(from).emit("message:delivered", {
+          id: String(msg._id),
+          messageId: String(msg._id),
+          clientKey: clientKey || null,
+        });
       }
     } catch (e) {
       console.error("Socket chat error:", e);
@@ -318,7 +356,11 @@ io.on("connection", (socket) => {
   socket.on("sendMessage", handleSend);
 
   // Messages markRead API via socket
-  const handleMarkRead = async ({ conversationId, upToMessageId, timestamp }) => {
+  const handleMarkRead = async ({
+    conversationId,
+    upToMessageId,
+    timestamp,
+  }) => {
     try {
       const me = socket.userId;
       if (!conversationId) return;
@@ -329,22 +371,45 @@ io.on("connection", (socket) => {
       const participants = (thread.participants || []).map((p) => String(p));
       const other = participants.find((p) => p !== String(me));
       if (other) {
-        await Message.updateMany({ from: other, to: me, isRead: false }, { $set: { isRead: true, readAt: now } });
+        await Message.updateMany(
+          { from: other, to: me, isRead: false },
+          { $set: { isRead: true, readAt: now } }
+        );
       }
       thread.lastReadAt.set(String(me), now);
       thread.unreadCount.set(String(me), 0);
       await thread.save();
-      io.to(String(me)).emit("unread:update", { conversationId: String(thread._id), newCount: 0 });
-      // emit total unread for navbar
-      try {
-        const total = await Message.countDocuments({ to: me, isRead: false });
-        io.to(String(me)).emit("unread:total", { total });
-      } catch {}
+      io.to(String(me)).emit("unread:update", {
+        conversationId: String(thread._id),
+        newCount: 0,
+      });
+      // emit total unread for navbar with debouncing
+      const userId = String(me);
+      if (unreadTotalDebounce.has(userId)) {
+        clearTimeout(unreadTotalDebounce.get(userId));
+      }
+      unreadTotalDebounce.set(
+        userId,
+        setTimeout(async () => {
+          try {
+            const total = await Message.countDocuments({
+              to: me,
+              isRead: false,
+            });
+            io.to(userId).emit("unread:total", { total });
+          } catch {}
+          unreadTotalDebounce.delete(userId);
+        }, 500)
+      );
       // broadcast readReceipt to participants
       for (const p of thread.participants) {
-        io.to(String(p)).emit("messages:readReceipt", { conversationId: String(thread._id), readerId: String(me), readUpTo: now });
+        io.to(String(p)).emit("messages:readReceipt", {
+          conversationId: String(thread._id),
+          readerId: String(me),
+          readUpTo: now,
+        });
       }
-    } catch (e) { }
+    } catch (e) {}
   };
   socket.on("messages:markRead", handleMarkRead);
   // Alias accepting same payload
@@ -353,12 +418,26 @@ io.on("connection", (socket) => {
   // On connect or refresh: send unread snapshot
   (async () => {
     try {
-      const threads = await Thread.find({ participants: { $all: [socket.userId] } }).select("unreadCount").lean();
-      const snapshot = threads.map((t) => ({ conversationId: String(t._id), count: (t.unreadCount && (t.unreadCount[socket.userId] || (t.unreadCount.get && t.unreadCount.get(socket.userId)) || 0)) }));
+      const threads = await Thread.find({
+        participants: { $all: [socket.userId] },
+      })
+        .select("unreadCount")
+        .lean();
+      const snapshot = threads.map((t) => ({
+        conversationId: String(t._id),
+        count:
+          t.unreadCount &&
+          (t.unreadCount[socket.userId] ||
+            (t.unreadCount.get && t.unreadCount.get(socket.userId)) ||
+            0),
+      }));
       io.to(socket.id).emit("unread:snapshot", snapshot);
       // Also emit navbar total unread count
       try {
-        const total = await Message.countDocuments({ to: socket.userId, isRead: false });
+        const total = await Message.countDocuments({
+          to: socket.userId,
+          isRead: false,
+        });
         io.to(socket.id).emit("unread:total", { total });
       } catch {}
     } catch (e) {}
@@ -378,6 +457,21 @@ io.on("connection", (socket) => {
     try {
       const postId = payload?.postId;
       if (postId) socket.leave(`forum_post_${postId}`);
+    } catch (e) {}
+  });
+
+  // Posts rooms
+  socket.on("post:join", (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.join(`post_${postId}`);
+    } catch (e) {}
+  });
+
+  socket.on("post:leave", (payload) => {
+    try {
+      const postId = payload?.postId;
+      if (postId) socket.leave(`post_${postId}`);
     } catch (e) {}
   });
 });

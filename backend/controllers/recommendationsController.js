@@ -62,20 +62,69 @@ exports.getAlumniRecommendations = async (req, res) => {
     const me = await User.findById(req.user._id).lean();
     if (!me) return res.status(404).json({ message: "User not found" });
 
+    console.log("Fetching recommendations for user:", me.name, "Role:", me.role);
+
     // Only students get recommendations
     if (String(me.role).toLowerCase() !== "student") {
+      console.log("User is not a student, returning empty array");
       return res.json([]);
     }
 
-    // Show all alumni profiles from the database
-    const alumniList = await User.find({ role: "alumni" })
-      .select("name username avatarUrl department graduationYear industry skills careerInterests company")
+    // Check if student profile is complete enough for recommendations
+    const hasSkills = Array.isArray(me.skills) && me.skills.length > 0;
+    const hasInterests = Array.isArray(me.careerInterests) && me.careerInterests.length > 0;
+    const hasDepartment = me.department && String(me.department).trim().length > 0;
+    
+    if (!hasSkills && !hasInterests && !hasDepartment) {
+      console.log("Student profile incomplete - no skills, interests, or department");
+      return res.json([]);
+    }
+
+    // Get all alumni profiles from the database - try multiple role variations
+    const alumniList = await User.find({ 
+      role: { $in: ["alumni", "Alumni", "ALUMNI"] },
+      _id: { $ne: req.user._id } // Exclude self
+    })
+      .select("name username avatarUrl department graduationYear industry skills careerInterests company position")
       .lean();
 
-    // Return all alumni profiles without filtering or scoring
-    res.json(alumniList);
+    console.log("Found alumni count:", alumniList.length);
+
+    if (alumniList.length === 0) {
+      console.log("No alumni found in database");
+      return res.json([]);
+    }
+
+    // Calculate similarity score for each alumni
+    const scoredAlumni = alumniList.map((alumni) => {
+      const { score, matchDetails } = computeSimilarity(me, alumni);
+      
+      // Convert raw score to percentage (0-100%)
+      // Max possible score is ~40 points (skills + department + interests + industry + year)
+      const maxScore = 40;
+      const normalizedScore = Math.min(100, Math.max(0, (score / maxScore) * 100));
+      
+      console.log(`Alumni ${alumni.name}: rawScore=${score}, matchScore=${normalizedScore.toFixed(1)}%, matches:`, matchDetails);
+      
+      return {
+        ...alumni,
+        matchScore: normalizedScore,
+        matchDetails,
+        rawScore: score
+      };
+    });
+
+    // Filter out alumni with 0 score (no match at all)
+    const matchedAlumni = scoredAlumni.filter(a => a.rawScore > 0);
+    
+    // Sort by score descending
+    matchedAlumni.sort((a, b) => b.rawScore - a.rawScore);
+
+    console.log(`Found ${matchedAlumni.length} alumni with actual matches out of ${alumniList.length} total`);
+    
+    res.json(matchedAlumni);
   } catch (e) {
     console.error("getAlumniRecommendations error:", e);
-    res.status(500).json({ message: "Failed to fetch recommendations" });
+    res.status(500).json({ message: "Failed to fetch recommendations", error: e.message });
   }
 };

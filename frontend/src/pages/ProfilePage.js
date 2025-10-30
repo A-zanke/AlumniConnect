@@ -4,9 +4,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import Spinner from "../components/ui/Spinner";
 import FileInput from "../components/ui/FileInput";
-import { connectionAPI, userAPI } from "../components/utils/api";
+import { connectionAPI, userAPI, postsAPI } from "../components/utils/api";
 import { getAvatarUrl } from "../components/utils/helpers";
 import ConnectionButton from "../components/network/ConnectionButton";
+import PostCard from "../components/posts/PostCard";
 
 // Feather icons (Fi = Feather Icons)
 import {
@@ -99,7 +100,6 @@ const ProfilePage = () => {
   const [allConnections, setAllConnections] = useState([]); // For total unique connections
   const [posts, setPosts] = useState([]);
   const [showCreatePost, setShowCreatePost] = useState(false);
-  
 
   const [formData, setFormData] = useState({
     name: "",
@@ -171,6 +171,14 @@ const ProfilePage = () => {
     }
   }, [userId, username, currentUser]);
 
+  // Fetch posts when user profile is loaded
+  useEffect(() => {
+    if (user && !isOwnProfile) {
+      fetchUserPosts(user._id);
+      fetchUserConnections(user._id);
+    }
+  }, [user, isOwnProfile]);
+
   // This useEffect now primarily updates formData when a *fetched* user profile changes
   // For own profile, formData initialization is handled in the first useEffect to avoid race conditions
   useEffect(() => {
@@ -227,40 +235,69 @@ const ProfilePage = () => {
   };
 
   // Fetch both connections (I connected) and those who connected to me (mutual/one-way)
-  const fetchUserConnections = async () => {
-    if (!currentUser) return;
+  const fetchUserConnections = async (targetUserId = null) => {
     try {
-      const [sentRes, receivedRes] = await Promise.all([
-        connectionAPI.getConnections(), // connections I sent/accepted
-        connectionAPI.getPendingRequests(), // requests I received (pending)
-      ]);
-      // sentRes.data: my connections (array of users)
-      // receivedRes.data: pending requests (array of users who sent me requests)
-      const sent = sentRes.data || [];
-      const received = receivedRes.data?.map?.((r) => r.fromUser) || [];
-      // Merge, deduplicate by _id
-      const all = [...sent, ...received].reduce((acc, user) => {
-        if (!acc.find((u) => u._id === user._id)) acc.push(user);
-        return acc;
-      }, []);
-      setConnections(sent); // still show direct connections in main list
-      setAllConnections(all); // all unique connections (sent + received)
+      if (targetUserId && targetUserId !== currentUser?._id) {
+        // Fetching another user's connections
+        const response = await userAPI.getUserConnections(targetUserId);
+        const userConnections = response.data || [];
+        setAllConnections(userConnections);
+        setConnections(userConnections);
+      } else {
+        // Fetching own connections
+        const [sentRes, receivedRes] = await Promise.all([
+          connectionAPI.getConnections(), // connections I sent/accepted
+          connectionAPI.getPendingRequests(), // requests I received (pending)
+        ]);
+        // sentRes.data: my connections (array of users)
+        // receivedRes.data: pending requests (array of users who sent me requests)
+        const sent = sentRes.data || [];
+        const received = receivedRes.data?.map?.((r) => r.fromUser) || [];
+        // Merge, deduplicate by _id
+        const all = [...sent, ...received].reduce((acc, user) => {
+          if (!acc.find((u) => u._id === user._id)) acc.push(user);
+          return acc;
+        }, []);
+        setConnections(sent); // still show direct connections in main list
+        setAllConnections(all); // all unique connections (sent + received)
+      }
     } catch (error) {
       console.error("Error fetching connections:", error);
     }
   };
 
-  const fetchUserPosts = async () => {
-    if (!currentUser) return;
+  const fetchUserPosts = async (targetUserId = null) => {
+    const userId = targetUserId || user?._id || currentUser?._id;
+    console.log('fetchUserPosts called - userId:', userId, 'targetUserId:', targetUserId);
+    
+    if (!userId) {
+      console.log('No userId available for fetching posts');
+      return;
+    }
+    
+    // Only fetch posts for Alumni, Teachers, and Admin
+    const userRole = (user?.role || currentUser?.role || '').toLowerCase().trim();
+    console.log('Checking role for posts:', userRole);
+    
+    if (!['alumni', 'teacher', 'admin'].includes(userRole)) {
+      console.log('User role does not have posts access:', userRole);
+      setPosts([]);
+      return;
+    }
+    
     try {
-      const response = await axios.get(`/api/posts/user/${currentUser._id}`);
-      setPosts(response.data || []);
+      console.log('Fetching posts for user ID:', userId, 'Role:', userRole);
+      const response = await postsAPI.getUserPosts(userId);
+      console.log('Posts API response:', response);
+      const postsData = response.data?.data || response.data || [];
+      console.log('Fetched posts count:', postsData.length, 'Posts:', postsData);
+      setPosts(postsData);
     } catch (error) {
       console.error("Error fetching posts:", error);
+      console.error("Error details:", error.response?.data);
+      setPosts([]);
     }
   };
-
-  
 
   const handleConnectionAction = async (action, targetUserId = null) => {
     try {
@@ -436,21 +473,19 @@ const ProfilePage = () => {
   };
 
   // Sidebar Menu Items
-  const canViewPosts =
-    isOwnProfile && (user?.role === "teacher" || user?.role === "alumni");
-
+  // Only show Posts for Alumni, Teachers, and Admin (not Students)
+  const userRole = (user?.role || '').toLowerCase().trim();
+  const canViewPosts = ['alumni', 'teacher', 'admin'].includes(userRole);
+  
+  console.log('ProfilePage - User role:', user?.role, 'Can view posts:', canViewPosts);
+  
   const menuItems = [
     { id: "overview", label: "Profile Overview", icon: FiUser },
     { id: "about", label: "About", icon: FiInfo },
     { id: "skills", label: "Skills", icon: FiAward },
+    ...(canViewPosts ? [{ id: "posts", label: "Posts", icon: FiFileText }] : []),
     { id: "connections", label: "Connections", icon: FiUsers },
-    ...(canViewPosts
-      ? [
-          { id: "posts", label: "Posts", icon: FiFileText },
-          
-        ]
-      : []),
-    { id: "settings", label: "Settings", icon: FiSettings },
+    ...(isOwnProfile ? [{ id: "settings", label: "Settings", icon: FiSettings }] : []),
   ];
 
   if (loading) {
@@ -595,7 +630,7 @@ const ProfilePage = () => {
       <div className={`flex-1 ${isOwnProfile ? "" : "w-full"}`}>
         {/* Profile Header */}
         <motion.div
-          className="bg-white/80 backdrop-blur-sm border-b border-indigo-100 sticky top-0 z-10"
+          className={`bg-white/80 backdrop-blur-sm border-b border-indigo-100 ${isOwnProfile ? 'sticky top-0 z-10' : ''}`}
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5 }}
@@ -673,80 +708,176 @@ const ProfilePage = () => {
 
         {/* Main Content */}
         <div className="max-w-6xl mx-auto p-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeSection}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              {activeSection === "overview" && <OverviewSection user={user} />}
-              {activeSection === "about" && (
-                <AboutSection
-                  user={user}
-                  isEditing={isEditing}
-                  setIsEditing={setIsEditing}
-                  formData={formData}
-                  setFormData={setFormData}
-                  handleChange={handleChange}
-                  handleSubmit={handleSubmit}
-                />
+          {isOwnProfile ? (
+            // Own Profile - Show sections based on activeSection
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeSection}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                {activeSection === "overview" && <OverviewSection user={user} />}
+                {activeSection === "about" && (
+                  <AboutSection
+                    user={user}
+                    isEditing={isEditing}
+                    setIsEditing={setIsEditing}
+                    formData={formData}
+                    setFormData={setFormData}
+                    handleChange={handleChange}
+                    handleSubmit={handleSubmit}
+                  />
+                )}
+                {activeSection === "skills" && (
+                  <SkillsSection
+                    user={user}
+                    isEditing={isEditing}
+                    setIsEditing={setIsEditing}
+                    formData={formData}
+                    skillInput={skillInput}
+                    setSkillInput={setSkillInput}
+                    onSkillKeyDown={onSkillKeyDown}
+                    suggestions={suggestions}
+                    addSuggested={addSuggested}
+                    removeSkill={removeSkill}
+                    commitSkillInput={commitSkillInput}
+                    handleSubmit={handleSubmit}
+                  />
+                )}
+                {activeSection === "connections" && (
+                  <ConnectionsSection
+                    connections={connections}
+                    allConnections={allConnections}
+                    handleMessageUser={handleMessageUser}
+                    handleConnectionAction={handleConnectionAction}
+                    currentUser={currentUser}
+                    isOwnProfile={isOwnProfile}
+                    navigate={navigate}
+                  />
+                )}
+                {activeSection === "posts" && (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-bold text-gray-900">
+                        {isOwnProfile ? 'My Posts' : `${user?.name}'s Posts`}
+                      </h2>
+                      <span className="text-sm text-gray-600">
+                        {posts.length} {posts.length === 1 ? 'Post' : 'Posts'}
+                      </span>
+                    </div>
+                    
+                    {posts.length === 0 ? (
+                      <div className="text-center py-12 bg-white rounded-lg shadow">
+                        <FiFileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-600 text-lg mb-2">
+                          {isOwnProfile ? 'You haven\'t created any posts yet' : 'No posts yet'}
+                        </p>
+                        {isOwnProfile && (
+                          <p className="text-gray-500 text-sm">
+                            Go to Posts page to create your first post
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {posts.map(post => (
+                          <PostCard
+                            key={post._id}
+                            post={post}
+                            currentUser={currentUser}
+                            onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {activeSection === "settings" && (
+                  <SettingsSection
+                    user={user}
+                    isEditing={isEditing}
+                    setIsEditing={setIsEditing}
+                    formData={formData}
+                    setFormData={setFormData}
+                    handleChange={handleChange}
+                    avatarFile={avatarFile}
+                    setAvatarFile={setAvatarFile}
+                    handleDeleteAvatar={handleDeleteAvatar}
+                    handleSubmit={handleSubmit}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          ) : (
+            // Visitor View - Show ALL sections in a scrollable layout
+            <div className="space-y-8">
+              <OverviewSection user={user} />
+              <AboutSection
+                user={user}
+                isEditing={false}
+                setIsEditing={() => {}}
+                formData={formData}
+                setFormData={() => {}}
+                handleChange={() => {}}
+                handleSubmit={() => {}}
+                isOwnProfile={false}
+              />
+              <SkillsSection
+                user={user}
+                isEditing={false}
+                setIsEditing={() => {}}
+                formData={formData}
+                skillInput=""
+                setSkillInput={() => {}}
+                onSkillKeyDown={() => {}}
+                suggestions={[]}
+                addSuggested={() => {}}
+                removeSkill={() => {}}
+                commitSkillInput={() => {}}
+                handleSubmit={() => {}}
+                isOwnProfile={false}
+              />
+              {canViewPosts && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-bold text-gray-900">Posts</h2>
+                    <span className="text-sm text-gray-600">
+                      {posts.length} {posts.length === 1 ? 'Post' : 'Posts'}
+                    </span>
+                  </div>
+                  
+                  {posts.length === 0 ? (
+                    <div className="text-center py-12 bg-white rounded-lg shadow">
+                      <FiFileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-600 text-lg mb-2">No posts yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {posts.map(post => (
+                        <PostCard
+                          key={post._id}
+                          post={post}
+                          currentUser={currentUser}
+                          onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
-              {activeSection === "skills" && (
-                <SkillsSection
-                  user={user}
-                  isEditing={isEditing}
-                  setIsEditing={setIsEditing}
-                  formData={formData}
-                  skillInput={skillInput}
-                  setSkillInput={setSkillInput}
-                  onSkillKeyDown={onSkillKeyDown}
-                  suggestions={suggestions}
-                  addSuggested={addSuggested}
-                  removeSkill={removeSkill}
-                  commitSkillInput={commitSkillInput}
-                  handleSubmit={handleSubmit}
-                />
-              )}
-              {activeSection === "connections" && (
-                <ConnectionsSection
-                  connections={connections}
-                  allConnections={allConnections}
-                  handleMessageUser={handleMessageUser}
-                  handleConnectionAction={handleConnectionAction}
-                />
-              )}
-
-              {activeSection === "posts" && canViewPosts && (
-                <PostsSection
-                  user={user}
-                  posts={posts}
-                  setPosts={setPosts}
-                  showCreatePost={showCreatePost}
-                  setShowCreatePost={setShowCreatePost}
-                  fetchUserPosts={fetchUserPosts}
-                />
-              )}
-
-              
-
-              {activeSection === "settings" && (
-                <SettingsSection
-                  user={user}
-                  isEditing={isEditing}
-                  setIsEditing={setIsEditing}
-                  formData={formData}
-                  setFormData={setFormData}
-                  handleChange={handleChange}
-                  avatarFile={avatarFile}
-                  setAvatarFile={setAvatarFile}
-                  handleDeleteAvatar={handleDeleteAvatar}
-                  handleSubmit={handleSubmit}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
+              <ConnectionsSection
+                connections={connections}
+                allConnections={allConnections}
+                handleMessageUser={handleMessageUser}
+                handleConnectionAction={handleConnectionAction}
+                currentUser={currentUser}
+                isOwnProfile={false}
+                navigate={navigate}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1047,12 +1178,13 @@ const AboutSection = ({
   setFormData,
   handleChange,
   handleSubmit,
+  isOwnProfile = true,
 }) => (
   <div className="space-y-6">
     {/* Header */}
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">About Information</h2>
-      {!isEditing ? (
+      {isOwnProfile && !isEditing ? (
         <motion.button
           onClick={() => setIsEditing(true)}
           className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
@@ -1062,7 +1194,7 @@ const AboutSection = ({
           <FiEdit size={18} />
           Edit About
         </motion.button>
-      ) : (
+      ) : isOwnProfile && isEditing ? (
         <div className="flex gap-3">
           <motion.button
             onClick={handleSubmit}
@@ -1083,7 +1215,7 @@ const AboutSection = ({
             Cancel
           </motion.button>
         </div>
-      )}
+      ) : null}
     </div>
 
     {isEditing ? (
@@ -1588,12 +1720,13 @@ const SkillsSection = ({
   removeSkill,
   commitSkillInput,
   handleSubmit,
+  isOwnProfile = true,
 }) => (
   <div className="space-y-6">
     {/* Header */}
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">Skills & Expertise</h2>
-      {!isEditing ? (
+      {isOwnProfile && !isEditing ? (
         <motion.button
           onClick={() => setIsEditing(true)}
           className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
@@ -1603,7 +1736,7 @@ const SkillsSection = ({
           <FiEdit size={18} />
           Edit Skills
         </motion.button>
-      ) : (
+      ) : isOwnProfile && isEditing ? (
         <div className="flex gap-3">
           <motion.button
             onClick={handleSubmit}
@@ -1624,7 +1757,7 @@ const SkillsSection = ({
             Cancel
           </motion.button>
         </div>
-      )}
+      ) : null}
     </div>
 
     <motion.div
@@ -1710,7 +1843,14 @@ const ConnectionsSection = ({
   allConnections,
   handleMessageUser,
   handleConnectionAction,
-}) => (
+  currentUser,
+  isOwnProfile,
+  navigate,
+}) => {
+  // Get current user's connection IDs for checking
+  const myConnectionIds = currentUser?.connections?.map(c => c._id || c) || [];
+  
+  return (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold text-slate-800">My Connections</h2>
@@ -1774,25 +1914,62 @@ const ConnectionsSection = ({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <motion.button
-                    onClick={() => handleMessageUser(connection._id)}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <FiMessageCircle size={14} />
-                    Message
-                  </motion.button>
-                  <motion.button
-                    onClick={() =>
-                      handleConnectionAction("remove", connection._id)
-                    }
-                    className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <FiUserX size={14} /> Unfollow
-                  </motion.button>
+                  {isOwnProfile ? (
+                    // Own profile - show Message and Unfollow
+                    <>
+                      <motion.button
+                        onClick={() => handleMessageUser(connection._id)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiMessageCircle size={14} />
+                        Message
+                      </motion.button>
+                      <motion.button
+                        onClick={() =>
+                          handleConnectionAction("remove", connection._id)
+                        }
+                        className="px-3 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiUserX size={14} /> Unfollow
+                      </motion.button>
+                    </>
+                  ) : myConnectionIds.includes(connection._id) ? (
+                    // Visitor view - connection is also in YOUR connections
+                    <>
+                      <motion.button
+                        onClick={() => handleMessageUser(connection._id)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiMessageCircle size={14} />
+                        Message
+                      </motion.button>
+                      <motion.button
+                        className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium"
+                      >
+                        <FiUserCheck size={14} /> Connected
+                      </motion.button>
+                    </>
+                  ) : (
+                    // Visitor view - connection is NOT in YOUR connections
+                    <>
+                      <motion.button
+                        onClick={() => navigate(`/profile/id/${connection._id}`)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all duration-300"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiUser size={14} />
+                        View Profile
+                      </motion.button>
+                      <ConnectionButton userId={connection._id} />
+                    </>
+                  )}
                 </div>
               </motion.div>
             );
@@ -1813,7 +1990,8 @@ const ConnectionsSection = ({
       )}
     </motion.div>
   </div>
-);
+  );
+};
 
 // Settings Section Component
 const SettingsSection = ({
@@ -1972,355 +2150,5 @@ const SettingsSection = ({
     </motion.div>
   </div>
 );
-
-// Posts Section Component
-const PostsSection = ({
-  user,
-  posts,
-  setPosts,
-  showCreatePost,
-  setShowCreatePost,
-  fetchUserPosts,
-}) => {
-  const [loading, setLoading] = useState(false);
-  const [postContent, setPostContent] = useState("");
-  const [postImages, setPostImages] = useState([]);
-  const [imagePreviews, setImagePreviews] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [editingPost, setEditingPost] = useState(null);
-
-  useEffect(() => {
-    loadPosts();
-  }, []);
-
-  const loadPosts = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get(`/api/posts/user/${user._id}`);
-      setPosts(response.data);
-    } catch (error) {
-      console.error("Error fetching posts:", error);
-      toast.error("Failed to load posts");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleImageSelect = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length + postImages.length > 5) {
-      toast.error("You can upload maximum 5 images");
-      return;
-    }
-
-    const validFiles = files.filter((file) => {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`${file.name} is too large. Max size is 5MB`);
-        return false;
-      }
-      return true;
-    });
-
-    setPostImages([...postImages, ...validFiles]);
-
-    validFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreviews((prev) => [...prev, reader.result]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const removeImage = (index) => {
-    setPostImages(postImages.filter((_, i) => i !== index));
-    setImagePreviews(imagePreviews.filter((_, i) => i !== index));
-  };
-
-  const handleCreatePost = async () => {
-    if (!postContent.trim() && postImages.length === 0) {
-      toast.error("Please add some content or images");
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      const formData = new FormData();
-      formData.append("content", postContent);
-      postImages.forEach((image) => {
-        formData.append("media", image);
-      });
-
-      await axios.post("/api/posts", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      toast.success("Post created successfully!");
-      setPostContent("");
-      setPostImages([]);
-      setImagePreviews([]);
-      setShowCreatePost(false);
-      loadPosts();
-    } catch (error) {
-      console.error("Error creating post:", error);
-      toast.error(error.response?.data?.message || "Failed to create post");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDeletePost = async (postId) => {
-    if (!window.confirm("Are you sure you want to delete this post?")) return;
-
-    try {
-      await axios.delete(`/api/posts/${postId}`);
-      toast.success("Post deleted successfully");
-      loadPosts();
-    } catch (error) {
-      console.error("Error deleting post:", error);
-      toast.error("Failed to delete post");
-    }
-  };
-
-  const formatTime = (date) => {
-    const postDate = new Date(date);
-    return postDate.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Create Post Card */}
-      {!showCreatePost ? (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-sm p-6 border border-gray-200"
-        >
-          <button
-            onClick={() => setShowCreatePost(true)}
-            className="w-full flex items-center gap-4 p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
-          >
-            <img
-              src={
-                user.avatarUrl
-                  ? getAvatarUrl(user.avatarUrl)
-                  : DEFAULT_PROFILE_IMAGE
-              }
-              alt={user.name}
-              className="w-12 h-12 rounded-full object-cover"
-            />
-            <span className="text-gray-500 text-left flex-1">
-              Share something with your network...
-            </span>
-            <FiPlus className="text-indigo-600" size={24} />
-          </button>
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-sm p-6 border border-gray-200"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Create Post</h3>
-            <button
-              onClick={() => {
-                setShowCreatePost(false);
-                setPostContent("");
-                setPostImages([]);
-                setImagePreviews([]);
-              }}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <FiX size={20} />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 mb-4">
-            <img
-              src={
-                user.avatarUrl
-                  ? getAvatarUrl(user.avatarUrl)
-                  : DEFAULT_PROFILE_IMAGE
-              }
-              alt={user.name}
-              className="w-12 h-12 rounded-full object-cover"
-            />
-            <div>
-              <p className="font-semibold text-gray-800">{user.name}</p>
-              <p className="text-sm text-gray-500 capitalize">{user.role}</p>
-            </div>
-          </div>
-
-          <textarea
-            value={postContent}
-            onChange={(e) => setPostContent(e.target.value)}
-            placeholder="What do you want to share? Use **bold**, *italic*, @mentions, #hashtags, and paste links!"
-            className="w-full min-h-[120px] p-4 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none resize-none text-gray-800"
-          />
-
-          {/* Formatting Help */}
-          <div className="mt-2 flex items-start gap-2 text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
-            <FiInfo size={14} className="mt-0.5 flex-shrink-0" />
-            <div>
-              <span className="font-semibold">Formatting tips:</span> **bold**,
-              *italic*, @username for mentions, #hashtag for tags, paste URLs
-              for links
-            </div>
-          </div>
-
-          {imagePreviews.length > 0 && (
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {imagePreviews.map((preview, index) => (
-                <div key={index} className="relative group">
-                  <img
-                    src={preview}
-                    alt={`Preview ${index + 1}`}
-                    className="w-full h-48 object-cover rounded-xl"
-                  />
-                  <button
-                    onClick={() => removeImage(index)}
-                    className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <FiX size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mt-4 pt-4 border-t">
-            <label className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 cursor-pointer transition-colors">
-              <FiImage size={20} />
-              <span className="font-semibold">Add Photos</span>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleImageSelect}
-                className="hidden"
-              />
-            </label>
-
-            <button
-              onClick={handleCreatePost}
-              disabled={
-                submitting || (!postContent.trim() && postImages.length === 0)
-              }
-              className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {submitting ? "Posting..." : "Post"}
-            </button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Posts List */}
-      <div className="space-y-4">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Spinner size="lg" />
-          </div>
-        ) : posts.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-200">
-            <FiFileText className="mx-auto text-gray-300 mb-4" size={48} />
-            <p className="text-gray-500">No posts yet</p>
-            <p className="text-gray-400 text-sm mt-2">
-              Share your first post with your network
-            </p>
-          </div>
-        ) : (
-          posts.map((post) => (
-            <motion.div
-              key={post._id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-sm p-6 border border-gray-200"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={
-                      post.user?.avatarUrl
-                        ? getAvatarUrl(post.user.avatarUrl)
-                        : DEFAULT_PROFILE_IMAGE
-                    }
-                    alt={post.user?.name}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
-                  <div>
-                    <h3 className="font-semibold text-gray-800">
-                      {post.user?.name}
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                      {formatTime(post.createdAt)}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleDeletePost(post._id)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                >
-                  <FiTrash2 size={18} />
-                </button>
-              </div>
-
-              <div className="text-gray-700 mb-4 whitespace-pre-wrap">
-                {formatPostContent(post.content)}
-              </div>
-
-              {post.media && post.media.length > 0 && (
-                <div
-                  className={`mb-4 ${
-                    post.media.length === 1 ? "" : "grid grid-cols-2 gap-2"
-                  }`}
-                >
-                  {post.media.map((item, idx) => (
-                    <div key={idx} className="rounded-xl overflow-hidden">
-                      {item.type === "image" && (
-                        <img
-                          src={item.url}
-                          alt="Post media"
-                          className="w-full h-auto object-cover"
-                        />
-                      )}
-                      {item.type === "video" && (
-                        <video src={item.url} controls className="w-full" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center gap-4 pt-4 border-t text-sm text-gray-500">
-                <div className="flex items-center gap-2">
-                  <FiThumbsUp size={16} />
-                  <span>
-                    {post.reactions?.length || post.likes?.length || 0}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FiMessageCircle size={16} />
-                  <span>{post.comments?.length || 0}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FiShare size={16} />
-                  <span>{post.shares || 0}</span>
-                </div>
-              </div>
-            </motion.div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
-
-
 
 export default ProfilePage;

@@ -18,6 +18,10 @@ const chatbotController = require('../controllers/chatbotController');
 // Public route to get user profile by username
 router.get('/username/:username', getUserByUsername);
 
+// Specific routes MUST come before param routes
+router.get('/suggested/connections', protect, getSuggestedConnections);
+router.get('/mutual/connections', protect, getMyMutualConnections);
+
 // Get user profile by ID
 router.get('/:userId', protect, async (req, res) => {
   try {
@@ -70,13 +74,30 @@ router.get('/:userId', protect, async (req, res) => {
   }
 });
 
+// Get user connections
+router.get('/:userId/connections', protect, async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const user = await User.findById(req.params.userId)
+      .select('connections')
+      .populate('connections', 'name username avatarUrl role department');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.json(user.connections || []);
+  } catch (error) {
+    console.error('Error fetching user connections:', error);
+    res.status(500).json({ message: 'Error fetching connections' });
+  }
+});
+
 // Follow/Unfollow endpoints
 router.get('/:userId/following', protect, getFollowing);
 router.get('/:userId/mutual', protect, getMutualConnections);
 router.post('/:userId/follow', protect, followUser);
 router.post('/:userId/unfollow', protect, unfollowUser);
-router.get('/suggested/connections', protect, getSuggestedConnections);
-router.get('/mutual/connections', protect, getMyMutualConnections);
 
 // Presence routes
 router.put('/presence', protect, updatePresence);

@@ -152,11 +152,18 @@ async function unfollowUser(req, res) {
     const targetUser = await User.findById(targetUserId);
     if (!currentUser || !targetUser) return res.status(404).json({ message: 'User not found' });
 
+    // Remove from following/followers
     currentUser.following = (currentUser.following || []).filter(id => id.toString() !== targetUserId.toString());
     targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
+    
+    // FORCE REMOVE from connections array to ensure complete removal
+    currentUser.connections = (currentUser.connections || []).filter(id => id.toString() !== targetUserId.toString());
+    targetUser.connections = (targetUser.connections || []).filter(id => id.toString() !== currentUserId.toString());
+    
     await currentUser.save();
     await targetUser.save();
-    res.json({ message: 'Unfollowed successfully', isFollowing: false });
+    
+    res.json({ message: 'Unfollowed and removed from connections successfully', isFollowing: false });
   } catch (error) {
     console.error('Error unfollowing user:', error);
     res.status(500).json({ message: 'Error unfollowing user' });

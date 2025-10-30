@@ -546,7 +546,8 @@ const updateUserProfile = async (req, res) => {
       }
 
       if (req.file) {
-        user.avatarUrl = `/uploads/${req.file.filename}`;
+        // When using Cloudinary storage, req.file.path is the secure URL
+        user.avatarUrl = req.file.path || req.file.secure_url || user.avatarUrl;
       }
 
       const updatedUser = await user.save();

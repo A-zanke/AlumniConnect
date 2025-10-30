@@ -4,6 +4,7 @@ const ForumPost = require("../models/ForumPost");
 const ForumReport = require("../models/ForumReport");
 const Testimonial = require("../models/Testimonial");
 const Post = require("../models/Post");
+const PostReport = require("../models/PostReport");
 const { Parser } = require("json2csv");
 
 // Helper for counting by key
@@ -19,18 +20,27 @@ const countBy = (arr, key) => {
 // ===================== Analytics =====================
 const getAnalytics = async (req, res) => {
   try {
-    const [students, teachers, alumni, events, forumPosts, posts, reports] =
-      await Promise.all([
-        User.find({ role: "student" }).select("department year createdAt"),
-        User.find({ role: "teacher" }).select("department createdAt"),
-        User.find({ role: "alumni" }).select(
-          "graduationYear company industry createdAt"
-        ),
-        Event.find({}).select("createdAt createdBy status"),
-        ForumPost.find({ isDeleted: { $ne: true } }).select("createdAt"),
-        Post.find({}).select("createdAt"),
-        ForumReport.find({}).select("resolved createdAt"),
-      ]);
+    const [
+      students,
+      teachers,
+      alumni,
+      events,
+      forumPosts,
+      posts,
+      reports,
+      postReports,
+    ] = await Promise.all([
+      User.find({ role: "student" }).select("department year createdAt"),
+      User.find({ role: "teacher" }).select("department createdAt"),
+      User.find({ role: "alumni" }).select(
+        "graduationYear company industry createdAt"
+      ),
+      Event.find({}).select("createdAt createdBy status"),
+      ForumPost.find({ isDeleted: { $ne: true } }).select("createdAt"),
+      Post.find({}).populate("userId", "department").select("createdAt"),
+      ForumReport.find({}).select("resolved createdAt"),
+      PostReport.find({}).select("resolved createdAt"),
+    ]);
 
     // Monthly buckets for last 12 months
     const toMonthKey = (d) => {
@@ -91,6 +101,15 @@ const getAnalytics = async (req, res) => {
       rejected: events.filter((e) => e.status === "rejected").length,
     };
 
+    // Post-related stats
+    const totalPostReports = postReports.length;
+    const unresolvedPostReports = postReports.filter((r) => !r.resolved).length;
+    const mostEngagedPosts = await Post.find({})
+      .sort({ "reactions.length": -1, "comments.length": -1 })
+      .limit(5)
+      .populate("userId", "name");
+    const postsByDepartment = countBy(posts, "userId.department");
+
     const stats = {
       totalStudents: students.length,
       totalTeachers: teachers.length,
@@ -99,6 +118,10 @@ const getAnalytics = async (req, res) => {
       totalForumPosts: forumPosts.length,
       totalReports: reports.length,
       unresolvedReports: reports.filter((r) => !r.resolved).length,
+      totalPostReports,
+      unresolvedPostReports,
+      mostEngagedPosts,
+      postsByDepartment,
       studentByDepartment: countBy(students, "department"),
       studentByYear: countBy(students, "year"),
       alumniByGraduationYear: countBy(alumni, "graduationYear"),
@@ -376,7 +399,17 @@ const deletePost = async (req, res) => {
 
 const listAllPosts = async (req, res) => {
   try {
-    const { q } = req.query || {};
+    const {
+      q,
+      author,
+      department,
+      startDate,
+      endDate,
+      reportStatus,
+      tags,
+      page = 1,
+      limit = 10,
+    } = req.query;
     const query = {};
     if (q) {
       query.$or = [
@@ -384,11 +417,42 @@ const listAllPosts = async (req, res) => {
         { tags: { $in: [new RegExp(q, "i")] } },
       ];
     }
+    if (author) {
+      query["userId.name"] = { $regex: author, $options: "i" };
+    }
+    if (department) {
+      query["userId.department"] = department;
+    }
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+    if (reportStatus === "reported") {
+      query.isReported = true;
+    }
+    if (tags) {
+      query.tags = { $in: tags.split(",") };
+    }
     const posts = await Post.find(query)
-      .populate("userId", "name username role avatarUrl")
+      .populate("userId", "name username role avatarUrl department")
       .sort({ createdAt: -1 })
-      .limit(100);
-    res.json(posts);
+      .skip((page - 1) * limit)
+      .limit(limit);
+    const total = await Post.countDocuments(query);
+    const postsWithAnalytics = posts.map((post) => ({
+      ...post.toObject(),
+      views: post.views,
+      reactionsCount: post.reactions.length,
+      commentsCount: post.comments.length,
+      sharesCount: post.shares.length,
+    }));
+    res.json({
+      posts: postsWithAnalytics,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+    });
   } catch (err) {
     console.error("List posts error:", err);
     res.status(500).json({ message: "Failed to list posts" });
@@ -501,6 +565,135 @@ const deleteReport = async (req, res) => {
   }
 };
 
+// ===================== Post Reports Management =====================
+const listPostReports = async (req, res) => {
+  try {
+    const { resolved, page = 1, limit = 10 } = req.query;
+    const query = {};
+    if (typeof resolved !== "undefined") query.resolved = resolved === "true";
+    const reports = await PostReport.find(query)
+      .populate("reporter", "name username role email")
+      .populate({
+        path: "targetId",
+        populate: { path: "userId", select: "name username" },
+      })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+    const total = await PostReport.countDocuments(query);
+    res.json({ reports, total, page: Number(page), limit: Number(limit) });
+  } catch (err) {
+    console.error("List post reports error:", err);
+    res.status(500).json({ message: "Failed to list post reports" });
+  }
+};
+
+const resolvePostReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { moderatorNote, action } = req.body;
+    const report = await PostReport.findByIdAndUpdate(
+      id,
+      {
+        resolved: true,
+        resolvedBy: req.user._id,
+        resolvedAt: new Date(),
+        moderatorNote: moderatorNote || "Resolved by admin",
+        action: action || "Dismissed",
+      },
+      { new: true }
+    );
+    if (!report) return res.status(404).json({ message: "Report not found" });
+    if (action === "ContentRemoved") {
+      await Post.findByIdAndUpdate(report.targetId, {
+        isDeleted: true,
+        deletedAt: new Date(),
+      });
+    }
+    res.json({ message: "Report resolved", report });
+  } catch (err) {
+    console.error("Resolve post report error:", err);
+    res.status(500).json({ message: "Failed to resolve report" });
+  }
+};
+
+const deletePostReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await PostReport.findByIdAndDelete(id);
+    res.json({ message: "Report deleted" });
+  } catch (err) {
+    console.error("Delete post report error:", err);
+    res.status(500).json({ message: "Failed to delete report" });
+  }
+};
+
+// ===================== Post Analytics =====================
+const getPostAnalytics = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const post = await Post.findById(id).populate("userId", "name username");
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    const views = post.views;
+    const reactionsCount = post.reactions.length;
+    const commentsCount = post.comments.length;
+    const sharesCount = post.shares.length;
+    const engagementRate =
+      views > 0
+        ? ((reactionsCount + commentsCount + sharesCount) / views) * 100
+        : 0;
+    const reactionBreakdown = post.reactions.reduce((acc, r) => {
+      acc[r.type] = (acc[r.type] || 0) + 1;
+      return acc;
+    }, {});
+    const topCommenters = post.comments.reduce((acc, c) => {
+      const userId = c.userId.toString();
+      acc[userId] = (acc[userId] || 0) + 1;
+      return acc;
+    }, {});
+    res.json({
+      post: {
+        id: post._id,
+        content: post.content,
+        author: post.userId,
+        createdAt: post.createdAt,
+      },
+      analytics: {
+        views,
+        reactionsCount,
+        commentsCount,
+        sharesCount,
+        engagementRate,
+        reactionBreakdown,
+        topCommenters: Object.entries(topCommenters).map(([userId, count]) => ({
+          userId,
+          count,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error("Get post analytics error:", err);
+    res.status(500).json({ message: "Failed to get post analytics" });
+  }
+};
+
+// ===================== Bulk Delete Posts =====================
+const bulkDeletePosts = async (req, res) => {
+  try {
+    const { postIds } = req.body;
+    if (!Array.isArray(postIds))
+      return res.status(400).json({ message: "postIds must be an array" });
+    const result = await Post.updateMany(
+      { _id: { $in: postIds } },
+      { isDeleted: true, deletedAt: new Date() }
+    );
+    res.json({ message: `${result.modifiedCount} posts soft deleted` });
+  } catch (err) {
+    console.error("Bulk delete posts error:", err);
+    res.status(500).json({ message: "Failed to bulk delete posts" });
+  }
+};
+
 // ===================== Testimonials Management =====================
 const listTestimonials = async (req, res) => {
   try {
@@ -589,6 +782,11 @@ module.exports = {
   listReports,
   resolveReport,
   deleteReport,
+  listPostReports,
+  resolvePostReport,
+  deletePostReport,
+  getPostAnalytics,
+  bulkDeletePosts,
   listTestimonials,
   createTestimonial,
   updateTestimonial,
