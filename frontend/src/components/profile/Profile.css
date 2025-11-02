@@ -1,3 +1,10 @@
+/* ========================================
+   ENHANCED PROFILE COMPONENT STYLES
+   Desktop unchanged, Mobile optimized
+   ======================================== */
+
+/* ============ BASE STYLES (Desktop) ============ */
+
 /* Hide all form controls in education section */
 .profile-content .education-section select,
 .profile-content .education-section input,
@@ -16,4 +23,52 @@
   color: #1f2937;
   pointer-events: none;
   user-select: none;
+}
+
+/* ============ MOBILE OPTIMIZATIONS ============ */
+
+/* Tablets and below */
+@media (max-width: 768px) {
+  /* Profile Content - Full Width */
+  .profile-content {
+    padding: 0;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Education Section - Compact */
+  .profile-content .education-section {
+    padding: 1rem;
+    margin: 0 0 1rem 0;
+  }
+
+  /* Readonly Field - Touch Friendly */
+  .readonly-field {
+    padding: 0.625rem;
+    font-size: 0.9375rem;
+    border-radius: 8px;
+    line-height: 1.5;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    word-break: break-word;
+  }
+}
+
+/* Mobile Phones Only */
+@media (max-width: 480px) {
+  .profile-content {
+    padding: 0;
+  }
+
+  .profile-content .education-section {
+    padding: 0.875rem;
+    margin: 0 0 0.875rem 0;
+  }
+
+  .readonly-field {
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 8px;
+  }
 }

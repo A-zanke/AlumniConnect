@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import PostCard from '../components/posts/PostCard';
+import ReactionListModal from '../components/posts/ReactionListModal';
+import ShareModal from '../components/posts/ShareModal';
 import ConnectionButton from '../components/network/ConnectionButton';
+import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiPlus, FiSearch, FiHeart, FiMessageCircle, FiShare2,
@@ -13,7 +16,7 @@ import {
 import { toast } from 'react-toastify';
 import io from 'socket.io-client';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://10.183.168.134:5000';
 
 // LinkedIn-style Professional Reactions
 const REACTIONS = [
@@ -48,7 +51,7 @@ const PostPage = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showReactionModal, setShowReactionModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
-  const [reactionUsers, setReactionUsers] = useState([]);
+  const [reactionUsers, setReactionUsers] = useState({});
   const [showMoreMenu, setShowMoreMenu] = useState(null);
   
   // Create post form
@@ -384,13 +387,18 @@ const PostPage = () => {
               className="w-12 h-12 rounded-full object-cover"
             />
             <div>
-              <div className="flex items-center space-x-2">
-                <Link to={`/profile/id/${post.user?._id}`} className="font-semibold text-gray-900 hover:text-blue-600">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                <Link
+                  to={`/profile/id/${post.user?._id}`}
+                  className="font-semibold text-gray-900 hover:text-blue-600 leading-tight"
+                >
                   {post.user?.name}
                 </Link>
-                <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-600">
-                  {post.user?.role}
-                </span>
+                {post.user?.role && (
+                  <span className="inline-flex w-max px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-600">
+                    {post.user?.role}
+                  </span>
+                )}
               </div>
               <div className="flex items-center space-x-2 text-sm text-gray-500">
                 <span>{post.user?.department}</span>
@@ -399,8 +407,24 @@ const PostPage = () => {
               </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            {post.user?._id !== user?._id && <ConnectionButton userId={post.user?._id} />}
+          <div className="flex items-center gap-1 sm:gap-3">
+            {post.user?._id !== user?._id && (
+              <>
+                <div className="sm:hidden">
+                  <ConnectionButton
+                    userId={post.user?._id}
+                    variant="icon"
+                    hideConnected
+                  />
+                </div>
+                <div className="hidden sm:block">
+                  <ConnectionButton
+                    userId={post.user?._id}
+                    variant="compact"
+                  />
+                </div>
+              </>
+            )}
             
             {/* More Menu */}
             <div className="relative">
@@ -473,8 +497,8 @@ const PostPage = () => {
         )}
       </div>
       
-      <div className="px-6 py-3 border-t border-b border-gray-100 flex items-center justify-between text-sm text-gray-600">
-        <div className="flex items-center space-x-4">
+      <div className="px-4 sm:px-6 py-3 border-t border-b border-gray-100 flex flex-wrap items-center justify-between text-xs sm:text-sm text-gray-600 gap-y-2">
+        <div className="flex items-center gap-3">
           {post.totalReactions > 0 && (
             <button
               onClick={async () => {
@@ -499,13 +523,13 @@ const PostPage = () => {
             </button>
           )}
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center gap-3">
           <span>{post.totalComments || 0} comments</span>
           <span>{post.shareCount || 0} shares</span>
         </div>
       </div>
       
-      <div className="p-4 flex items-center justify-around">
+      <div className="p-3 sm:p-4 flex items-center justify-between sm:justify-around gap-2 text-xs sm:text-sm">
         <ReactionPicker
           post={post}
           onReact={(type) => handleReaction(post._id, type)}
@@ -513,10 +537,10 @@ const PostPage = () => {
         
         <button
           onClick={() => isDetailView ? null : navigate(`/posts/${post._id}`)}
-          className="flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex flex-1 sm:flex-initial items-center justify-center gap-2 px-3 sm:px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <FiMessageCircle className="w-5 h-5" />
-          <span>Comment</span>
+          <span className="hidden sm:inline">Comment</span>
         </button>
         
         <button
@@ -524,20 +548,20 @@ const PostPage = () => {
             setSelectedPost(post);
             setShowShareModal(true);
           }}
-          className="flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex flex-1 sm:flex-initial items-center justify-center gap-2 px-3 sm:px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <FiShare2 className="w-5 h-5" />
-          <span>Share</span>
+          <span className="hidden sm:inline">Share</span>
         </button>
         
         <button
           onClick={() => handleBookmark(post._id)}
-          className={`flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
+          className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-3 sm:px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
             post.isBookmarked ? 'text-blue-600' : ''
           }`}
         >
           <FiBookmark className="w-5 h-5" />
-          <span>Save</span>
+          <span className="hidden sm:inline">Save</span>
         </button>
       </div>
       
@@ -689,13 +713,13 @@ const PostPage = () => {
         submitting={submitting}
       />
       
-      <ReactionUsersModal
-        show={showReactionModal}
+      <ReactionListModal
+        open={showReactionModal}
+        reactions={reactionUsers}
         onClose={() => {
           setShowReactionModal(false);
-          setReactionUsers([]);
+          setReactionUsers({});
         }}
-        reactions={reactionUsers}
       />
       
       <ShareModal
@@ -705,6 +729,7 @@ const PostPage = () => {
           setSelectedPost(null);
         }}
         post={selectedPost}
+        onShared={fetchPosts}
       />
       
       <ReportModal
@@ -740,7 +765,7 @@ const ReactionPicker = ({ post, onReact }) => {
     <div className="relative">
       <button
         onClick={() => setShowPicker(!showPicker)}
-        className={`flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
+        className={`flex items-center gap-2 px-3 sm:px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
           post.userReaction ? 'text-blue-600' : ''
         }`}
       >
@@ -749,7 +774,7 @@ const ReactionPicker = ({ post, onReact }) => {
         ) : (
           <>
             <FiHeart className="w-5 h-5" />
-            <span>Like</span>
+            <span className="hidden sm:inline">Like</span>
           </>
         )}
       </button>
@@ -764,7 +789,7 @@ const ReactionPicker = ({ post, onReact }) => {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="absolute bottom-full left-0 mb-2 bg-white rounded-full shadow-xl border border-gray-200 px-4 py-3 flex space-x-3 z-20"
+            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white rounded-full shadow-xl border border-gray-200 px-3 sm:px-4 py-2 sm:py-3 flex space-x-2 sm:space-x-3 z-20"
           >
             {REACTIONS.map((reaction) => (
               <button
@@ -1336,255 +1361,6 @@ const CommentSection = ({ post, currentUser, onAddComment, onReactToComment, onD
           </p>
         )}
       </div>
-    </div>
-  );
-};
-
-const ReactionUsersModal = ({ show, onClose, reactions }) => {
-  const [selectedReaction, setSelectedReaction] = useState('all');
-  
-  if (!show) return null;
-  
-  const allUsers = Object.values(reactions || {}).flat();
-  const displayUsers = selectedReaction === 'all' 
-    ? allUsers 
-    : reactions[selectedReaction] || [];
-  
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[70vh] overflow-hidden"
-      >
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">Reactions</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <FiX className="w-5 h-5" />
-          </button>
-        </div>
-        
-        {/* Reaction Filter Tabs */}
-        <div className="flex items-center space-x-2 p-4 border-b border-gray-100 overflow-x-auto">
-          <button
-            onClick={() => setSelectedReaction('all')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              selectedReaction === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All {allUsers.length}
-          </button>
-          {Object.entries(reactions || {}).map(([type, users]) => {
-            const reaction = REACTIONS.find(r => r.type === type);
-            if (!reaction || users.length === 0) return null;
-            return (
-              <button
-                key={type}
-                onClick={() => setSelectedReaction(type)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center space-x-1 ${
-                  selectedReaction === type
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <span>{reaction.emoji}</span>
-                <span>{users.length}</span>
-              </button>
-            );
-          })}
-        </div>
-        
-        {/* Users List */}
-        <div className="overflow-y-auto max-h-96">
-          {displayUsers.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">No reactions yet</p>
-          ) : (
-            displayUsers.map((user, idx) => (
-              <Link
-                key={idx}
-                to={`/profile/id/${user._id}`}
-                onClick={onClose}
-                className="flex items-center space-x-3 p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0"
-              >
-                <img
-                  src={user.avatarUrl || '/default-avatar.png'}
-                  alt={user.name}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900">{user.name}</div>
-                  <div className="text-sm text-gray-500">
-                    {user.role} {user.department && `• ${user.department}`}
-                  </div>
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-const ShareModal = ({ show, onClose, post }) => {
-  const [connections, setConnections] = useState([]);
-  const [selectedConnections, setSelectedConnections] = useState([]);
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  useEffect(() => {
-    if (show) {
-      fetchConnections();
-    }
-  }, [show]);
-  
-  const fetchConnections = async () => {
-    try {
-      const response = await axios.get('/api/connections', {
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
-      });
-      console.log('Connections response:', response);
-      console.log('Connections data:', response.data);
-      
-      // Backend returns array of User objects directly (already accepted connections)
-      const connectionsData = Array.isArray(response.data) ? response.data : [];
-      
-      console.log('Parsed connections:', connectionsData);
-      console.log('Total connections:', connectionsData.length);
-      setConnections(connectionsData);
-    } catch (error) {
-      console.error('Failed to load connections:', error);
-      toast.error('Failed to load connections');
-    }
-  };
-  
-  const toggleConnection = (connId) => {
-    setSelectedConnections(prev =>
-      prev.includes(connId)
-        ? prev.filter(id => id !== connId)
-        : [...prev, connId]
-    );
-  };
-  
-  const handleShare = async () => {
-    if (selectedConnections.length === 0) {
-      toast.error('Please select at least one connection');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      await axios.post(`/api/posts/${post._id}/share`, {
-        connectionIds: selectedConnections,
-        message
-      });
-      toast.success('Post shared successfully!');
-      onClose();
-      setSelectedConnections([]);
-      setMessage('');
-    } catch (error) {
-      toast.error('Failed to share post');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  if (!show) return null;
-  
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-      >
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Share Post</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <FiX className="w-5 h-5" />
-          </button>
-        </div>
-        
-        <div className="p-6 space-y-4">
-          {/* Message */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Add a message (optional)
-            </label>
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Say something about this post..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              rows="3"
-            />
-          </div>
-          
-          {/* Connections List */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Share with connections
-            </label>
-            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
-              {connections.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">
-                  No connections found
-                </p>
-              ) : (
-                connections.map((user) => (
-                  <label
-                    key={user._id}
-                    className="flex items-center space-x-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedConnections.includes(user._id)}
-                      onChange={() => toggleConnection(user._id)}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <img
-                      src={user.avatarUrl || '/default-avatar.png'}
-                      alt={user.name}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">{user.name}</div>
-                      <div className="text-sm text-gray-500">{user.role || user.department}</div>
-                    </div>
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
-          
-          {/* Actions */}
-          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleShare}
-              disabled={loading || selectedConnections.length === 0}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Sharing...' : `Share with ${selectedConnections.length} connection${selectedConnections.length !== 1 ? 's' : ''}`}
-            </button>
-          </div>
-        </div>
-      </motion.div>
     </div>
   );
 };

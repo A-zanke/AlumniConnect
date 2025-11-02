@@ -1,4 +1,4 @@
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
 
 const avatarCache = new Map();
 

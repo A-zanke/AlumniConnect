@@ -187,17 +187,21 @@ const notifyTargetAudiences = async ({
   event,
   organizer,
   io,
-  targetedUsers
+  targetedUsers,
+  trigger = 'created'
 }) => {
   if (!event || !targetedUsers || targetedUsers.length === 0) return;
 
   const creatorName = organizer?.name || organizer?.username || 'Someone';
+  const actionMessage = trigger === 'approved'
+    ? `${creatorName}'s event was just approved for you: ${event.title}`
+    : `${creatorName} created an event for you: ${event.title}`;
 
   const notifications = targetedUsers.map(u => ({
     recipient: u._id,
     sender: organizer?._id,
     type: 'event',
-    content: `${creatorName} created an event for you: ${event.title}`,
+    content: actionMessage,
     relatedId: event._id,
     onModel: 'Event',
     link: `/events/${event._id}`
@@ -209,7 +213,7 @@ const notifyTargetAudiences = async ({
     targetedUsers.forEach(u => {
       io.to(u._id.toString()).emit('notification:new', {
         type: 'event',
-        content: `${creatorName} created an event for you: ${event.title}`,
+        content: actionMessage,
         relatedId: event._id,
         link: `/events/${event._id}`,
         sender: { _id: organizer?._id, name: creatorName }
@@ -386,37 +390,46 @@ const listMyEvents = async (req, res) => {
 
 const approveEvent = async (req, res) => {
   try {
-    const { eventId } = req.params;
-    const updated = await Event.findByIdAndUpdate(
-      eventId,
-      { status: 'active', approved: true },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ message: 'Event not found' });
+    const eventId = req.params.eventId || req.params.id;
+    if (!eventId) {
+      return res.status(400).json({ message: 'Event identifier is required' });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    const wasPending = event.status !== 'active' || event.approved !== true;
+
+    event.status = 'active';
+    event.approved = true;
+    await event.save();
 
     // After approval, send notifications to targeted audience (for alumni-created events in particular)
     try {
-      const organizer = await User.findById(updated.organizer).select('name username _id');
+      const organizer = await User.findById(event.organizer).select('name username _id');
       const targetedUsers = await buildTargetedUsers({
-        target_roles: ensureArray(updated.target_roles),
-        target_student_combinations: ensureArray(updated.target_student_combinations),
-        target_teacher_departments: ensureArray(updated.target_teacher_departments),
-        target_alumni_combinations: ensureArray(updated.target_alumni_combinations)
+        target_roles: ensureArray(event.target_roles),
+        target_student_combinations: ensureArray(event.target_student_combinations),
+        target_teacher_departments: ensureArray(event.target_teacher_departments),
+        target_alumni_combinations: ensureArray(event.target_alumni_combinations)
       });
 
-      if (targetedUsers.length > 0) {
+      if (wasPending && targetedUsers.length > 0) {
         await notifyTargetAudiences({
-          event: updated,
+          event,
           organizer: organizer || req.user,
           io: req.io,
-          targetedUsers
+          targetedUsers,
+          trigger: 'approved'
         });
       }
     } catch (notifyErr) {
       console.error('Error notifying users on event approval:', notifyErr);
     }
 
-    res.status(200).json({ message: 'Event approved successfully', event: updated });
+    res.status(200).json({ message: 'Event approved successfully', event });
   } catch (err) {
     console.error('Error approving event:', err);
     res.status(500).json({ message: 'Failed to approve event' });

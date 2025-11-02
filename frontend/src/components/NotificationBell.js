@@ -7,7 +7,7 @@ import { connectionAPI } from "./utils/api";
 import axios from "axios";
 import { io } from "socket.io-client";
 
-const NotificationBell = () => {
+const NotificationBell = ({ extraCount = 0 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -47,7 +47,7 @@ const NotificationBell = () => {
   useEffect(() => {
     if (!user) return;
 
-    const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+    const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
     const socket = io(baseURL, {
       auth: { token: localStorage.getItem("token") },
       withCredentials: true,
@@ -104,6 +104,7 @@ const NotificationBell = () => {
 
   // Calculate unread count
   const unreadCount = items.filter((item) => !item.read).length;
+  const totalUnread = Math.max(0, unreadCount + extraCount);
 
   const markAllAsRead = async () => {
     try {
@@ -195,38 +196,33 @@ const NotificationBell = () => {
   return (
     <div ref={ref} className="relative">
       <button
-        className="p-2 rounded-full text-gray-700 hover:text-cyan-600 relative"
+        className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/60 bg-white/80 text-gray-700 shadow-sm transition-all duration-200 hover:bg-indigo-50 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
         onClick={() => setOpen((o) => !o)}
         title="Notifications"
       >
         <FiBell size={20} />
-        {unreadCount > 0 && (
+        {totalUnread > 0 && (
           <span
-            className={`absolute -top-1 -right-1 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full text-xs px-2 py-1 font-bold shadow-lg ${
+            className={`absolute -top-1.5 -right-1.5 flex min-h-[20px] min-w-[20px] items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-1.5 text-xs font-bold text-white shadow-lg ${
               pulseBadge ? "animate-pulse" : ""
             }`}
-            style={{
-              minWidth: "20px",
-              height: "20px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
           >
-            {unreadCount > 99 ? "99+" : unreadCount}
+            {totalUnread > 99 ? "99+" : totalUnread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-96 rounded-2xl shadow-2xl bg-white border border-gray-200 z-50 animate-in slide-in-from-top-2 duration-200">
+        <div
+          className="absolute left-1/2 mt-3 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 transform sm:left-auto sm:right-0 sm:w-96 sm:max-w-md sm:translate-x-0 rounded-2xl shadow-2xl bg-white border border-gray-200 z-50 animate-in slide-in-from-top-2 duration-200"
+        >
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 Notifications
               </h3>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-500">{unreadCount} new</span>
+                <span className="text-sm text-gray-500">{totalUnread} new</span>
                 {unreadCount > 0 && (
                   <button
                     onClick={markAllAsRead}
@@ -238,19 +234,14 @@ const NotificationBell = () => {
                 )}
               </div>
             </div>
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-96 overflow-y-auto pr-1">
               {items.length === 0 ? (
                 <div className="p-6 text-center text-gray-500">
                   <div className="text-4xl mb-2">🔔</div>
                   <p>No notifications yet</p>
                 </div>
               ) : (
-                items
-                  .filter((n) => {
-                    const allowedTypes = ['message', 'reaction', 'connection_request', 'comment', 'like', 'post', 'connection_accepted', 'event'];
-                    return allowedTypes.includes(n.type);
-                  })
-                  .map((n) => (
+                items.map((n) => (
                   <div
                     key={n._id}
                     className={`flex items-start gap-3 p-4 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 rounded-xl transition-all duration-200 border-b border-gray-100 last:border-b-0 cursor-pointer ${

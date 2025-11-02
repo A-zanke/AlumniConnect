@@ -155,7 +155,7 @@ const MessagesPage = () => {
   }); // url -> boolean (for receiver)
   const [downloadProgress, setDownloadProgress] = useState({}); // url -> 0..100
 
-  const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+  const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
 
   // Media URL helpers for rendering and text auto-preview

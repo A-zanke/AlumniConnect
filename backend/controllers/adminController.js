@@ -6,6 +6,10 @@ const Testimonial = require("../models/Testimonial");
 const Post = require("../models/Post");
 const PostReport = require("../models/PostReport");
 const { Parser } = require("json2csv");
+const {
+  approveEvent: coreApproveEvent,
+  rejectEvent: coreRejectEvent,
+} = require("./eventsController");
 
 // Helper for counting by key
 const countBy = (arr, key) => {
@@ -263,14 +267,8 @@ const listAllEvents = async (req, res) => {
 
 const approveEvent = async (req, res) => {
   try {
-    const { id } = req.params;
-    const updated = await Event.findByIdAndUpdate(
-      id,
-      { status: "active", approved: true },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ message: "Event not found" });
-    res.json({ message: "Approved", event: updated });
+    req.params.eventId = req.params.eventId || req.params.id;
+    return await coreApproveEvent(req, res);
   } catch (err) {
     console.error("Approve event error:", err);
     res.status(500).json({ message: "Failed to approve" });
@@ -279,14 +277,8 @@ const approveEvent = async (req, res) => {
 
 const rejectEvent = async (req, res) => {
   try {
-    const { id } = req.params;
-    const updated = await Event.findByIdAndUpdate(
-      id,
-      { status: "rejected", approved: false },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ message: "Event not found" });
-    res.json({ message: "Rejected", event: updated });
+    req.params.eventId = req.params.eventId || req.params.id;
+    return await coreRejectEvent(req, res);
   } catch (err) {
     console.error("Reject event error:", err);
     res.status(500).json({ message: "Failed to reject" });

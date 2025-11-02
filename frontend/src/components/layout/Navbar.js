@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
   FiMenu,
   FiX,
-  FiBell,
   FiMessageSquare,
   FiUser,
+  FiUserPlus,
   FiLogOut,
   FiSearch,
   FiHome,
@@ -30,15 +30,12 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [showEventsDropdown, setShowEventsDropdown] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState(null);
+  const [activeMobileDropdown, setActiveMobileDropdown] = useState(null);
   const [msgUnreadTotal, setMsgUnreadTotal] = useState(0);
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
-    };
     const handleResize = () => {
       if (navRef.current) {
         const h = Math.max(
@@ -50,10 +47,8 @@ const Navbar = () => {
       }
     };
     handleResize();
-    window.addEventListener("scroll", handleScroll);
     window.addEventListener("resize", handleResize);
     return () => {
-      window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleResize);
     };
   }, []);
@@ -83,7 +78,7 @@ const Navbar = () => {
     refreshUnread();
 
     // Setup socket for real-time total updates
-    const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+    const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
     const s = io(baseURL, {
       auth: { token: localStorage.getItem("token") },
       withCredentials: true,
@@ -116,45 +111,115 @@ const Navbar = () => {
     navigate("/login");
   };
 
-  const isStudent = user && (user.role || "").toLowerCase() === "student";
-  const isPosterRole =
-    user &&
-    ["teacher", "alumni", "admin"].includes((user.role || "").toLowerCase());
+  const role = (user?.role || "").toLowerCase();
 
-  // Build nav ensuring Home is always first for students
-  const baseItems = [
-    { to: "/", label: "Home", icon: FiHome },
-    { to: "/about", label: "About", icon: FiUsers },
-  ];
-  const postsItem = user
-    ? [{ to: "/posts", label: "Posts", icon: FiFileText }]
-    : [];
-  const forumItem =
-    user &&
-    (user.role || "").toLowerCase() !== "teacher" &&
-    (user.role || "").toLowerCase() !== "alumni"
-      ? [{ to: "/forum", label: "Forum", icon: FiMessageCircle }]
-      : [];
-  const netItem = user
-    ? [{ to: "/network", label: "Network", icon: FiUsers }]
-    : [];
-  const adminItem =
-    user && (user.role || "").toLowerCase() === "admin"
-      ? [{ to: "/admin", label: "Admin", icon: FiUser }]
-      : [];
+  const navItems = useMemo(() => {
+    const baseLinks = [
+      { key: "home", type: "link", to: "/", label: "Home", icon: FiHome },
+      { key: "about", type: "link", to: "/about", label: "About", icon: FiUsers },
+    ];
 
-  const navItems = [
-    ...baseItems,
-    // Non-students get direct Events link
-    ...(!isStudent
-      ? [{ to: "/events", label: "Events", icon: FiCalendar }]
-      : []),
-    // For students, Posts is in the Events dropdown, so exclude it here to avoid duplication
-    ...(!isStudent ? postsItem : []),
-    ...forumItem,
-    ...netItem,
-    ...adminItem,
-  ];
+    if (!user) {
+      return [
+        ...baseLinks,
+        { key: "events", type: "link", to: "/events", label: "Events", icon: FiCalendar },
+      ];
+    }
+
+    if (role === "student") {
+      return [
+        ...baseLinks,
+        { key: "posts", type: "link", to: "/posts", label: "Posts", icon: FiFileText },
+        { key: "events", type: "link", to: "/events", label: "Events", icon: FiCalendar },
+        {
+          key: "forum",
+          type: "dropdown",
+          label: "Forum",
+          icon: FiMessageCircle,
+          to: "/forum",
+          items: [
+            { key: "forum-network", to: "/network", label: "Network", icon: FiUsers },
+          ],
+        },
+      ];
+    }
+
+    if (role === "teacher" || role === "alumni") {
+      return [
+        ...baseLinks,
+        { key: "events", type: "link", to: "/events", label: "Events", icon: FiCalendar },
+        {
+          key: "post",
+          type: "dropdown",
+          label: "Post",
+          icon: FiFileText,
+          to: "/posts",
+          items: [
+            { key: "post-network", to: "/network", label: "Network", icon: FiUsers },
+          ],
+        },
+      ];
+    }
+
+    if (role === "admin") {
+      return [
+        ...baseLinks,
+        { key: "admin", type: "link", to: "/admin", label: "Admin Panel", icon: FiUser },
+      ];
+    }
+
+    return [
+      ...baseLinks,
+      { key: "events", type: "link", to: "/events", label: "Events", icon: FiCalendar },
+    ];
+  }, [role, user]);
+
+  const mobileNavLinks = useMemo(() => {
+    const unique = [];
+    const seen = new Set();
+
+    const push = (item) => {
+      if (!item || !item.to) return;
+      const key = item.key || item.to;
+      if (seen.has(key)) return;
+      seen.add(key);
+      unique.push({
+        key,
+        to: item.to,
+        label: item.label,
+        icon: item.icon || FiChevronDown,
+      });
+    };
+
+    navItems.forEach((item) => {
+      if (item.type === "link") {
+        push(item);
+      } else if (item.type === "dropdown") {
+        if (item.to) push(item);
+        (item.items || []).forEach(push);
+      }
+    });
+
+    if (user) {
+      push({ key: "profile", to: "/profile", label: "My Profile", icon: FiUser });
+      push({ key: "messages", to: "/messages", label: "Messages", icon: FiMessageSquare });
+    }
+
+    push({ key: "search", to: "/search", label: "Search", icon: FiSearch });
+
+    return unique;
+  }, [navItems, user]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setActiveMobileDropdown(null);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    setActiveDropdown(null);
+    setActiveMobileDropdown(null);
+  }, [location.pathname]);
 
   // Keep global navbar visible on admin pages; admin has its own side nav
 
@@ -176,7 +241,7 @@ const Navbar = () => {
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-20 items-center">
+        <div className="flex justify-between h-16 sm:h-20 items-center">
           {/* Enhanced Logo */}
           <motion.div
             className="flex items-center"
@@ -185,15 +250,15 @@ const Navbar = () => {
           >
             <Link to="/" className="flex items-center gap-3 group">
               <motion.div
-                className="w-12 h-12 bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg"
+                className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg"
                 whileHover={{ rotate: 360 }}
                 transition={{ duration: 0.8 }}
               >
-                <span className="text-white font-black text-xl">A</span>
+                <span className="text-white font-black text-lg sm:text-xl">A</span>
               </motion.div>
 
               <motion.span
-                className="text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent tracking-tight"
+                className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent tracking-tight"
                 animate={{
                   backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
                 }}
@@ -213,130 +278,142 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex lg:items-center lg:space-x-2">
-            {/* Search Button - moved before nav items */}
+            {navItems.map((item, index) => {
+              if (item.type === "link") {
+                const Icon = item.icon;
+                return (
+                  <motion.div
+                    key={item.key}
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <NavLink
+                      to={item.to}
+                      label={item.label}
+                      icon={Icon}
+                      isActive={location.pathname === item.to}
+                    />
+                  </motion.div>
+                );
+              }
+
+              const dropdownItems = [
+                ...(item.to
+                  ? [
+                      {
+                        key: `${item.key}-parent`,
+                        to: item.to,
+                        label: item.label,
+                        icon: item.icon,
+                      },
+                    ]
+                  : []),
+                ...(item.items || []),
+              ];
+              const activeChild = dropdownItems.find((child) =>
+                location.pathname.startsWith(child.to)
+              );
+              const dropdownActive = Boolean(activeChild);
+              const DisplayIcon = (activeChild?.icon || item.icon);
+              const displayLabel = activeChild?.label || item.label;
+              const targetLink = activeChild?.to || item.to || location.pathname;
+
+              return (
+                <motion.div
+                  key={item.key}
+                  className="relative"
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  onMouseEnter={() => setActiveDropdown(item.key)}
+                  onMouseLeave={() => setActiveDropdown(null)}
+                >
+                  <Link
+                    to={targetLink}
+                    onClick={(e) => {
+                      if (!item.to) {
+                        e.preventDefault();
+                        setActiveDropdown((prev) =>
+                          prev === item.key ? null : item.key
+                        );
+                      } else {
+                        setActiveDropdown(null);
+                      }
+                    }}
+                    className={`relative flex items-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all duration-300 group ${
+                      dropdownActive
+                        ? "text-indigo-600 bg-indigo-100"
+                        : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
+                    }`}
+                  >
+                    <DisplayIcon
+                      size={18}
+                      className="transition-transform duration-300 group-hover:rotate-12"
+                    />
+                    <span>{displayLabel}</span>
+                    <FiChevronDown
+                      size={16}
+                      className={`transition-transform duration-300 ${
+                        activeDropdown === item.key ? "rotate-180" : ""
+                      }`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveDropdown((prev) =>
+                          prev === item.key ? null : item.key
+                        );
+                      }}
+                    />
+                  </Link>
+
+                  <AnimatePresence>
+                    {activeDropdown === item.key && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="absolute top-full left-0 mt-2 w-52 bg-white rounded-xl shadow-lg border z-50"
+                      >
+                        {dropdownItems.map((child) => {
+                          const ChildIcon = child.icon;
+                          return (
+                            <Link
+                              key={child.key}
+                              to={child.to}
+                              onClick={() => setActiveDropdown(null)}
+                              className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+                                location.pathname.startsWith(child.to)
+                                  ? "bg-indigo-50 text-indigo-600 font-semibold"
+                                  : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
+                              }`}
+                            >
+                              <ChildIcon size={18} />
+                              <span>{child.label}</span>
+                            </Link>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+
             <motion.button
               onClick={() => navigate("/search")}
-              className="mr-4 p-3 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group navbar-icon-btn search-icon"
+              className="ml-4 p-3 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-200 transition-all duration-300 group navbar-icon-btn search-icon"
               whileHover={{ scale: 1.1, rotate: 15 }}
               whileTap={{ scale: 0.9 }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
+              transition={{ delay: 0.3 }}
             >
               <FiSearch
                 size={22}
                 className="text-indigo-600 group-hover:text-purple-600 transition-colors duration-300"
               />
             </motion.button>
-
-            {isStudent ? (
-              <>
-                {/* Home first for students */}
-                <motion.div
-                  key={navItems[0].to}
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0 }}
-                >
-                  <NavLink
-                    to={navItems[0].to}
-                    label={navItems[0].label}
-                    icon={navItems[0].icon}
-                    isActive={location.pathname === navItems[0].to}
-                  />
-                </motion.div>
-
-                {/* Events Dropdown for Students - now second */}
-                <motion.div
-                  className="relative"
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  onMouseEnter={() => setShowEventsDropdown(true)}
-                  onMouseLeave={() => setShowEventsDropdown(false)}
-                >
-                  <button
-                    className={`relative flex items-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all duration-300 group ${
-                      location.pathname === "/events" ||
-                      location.pathname === "/posts"
-                        ? "text-indigo-600 bg-indigo-100"
-                        : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
-                    }`}
-                  >
-                    <FiCalendar
-                      size={18}
-                      className="transition-transform duration-300 group-hover:rotate-12"
-                    />
-                    <span>Events</span>
-                    <FiChevronDown
-                      size={16}
-                      className={`transition-transform duration-300 ${
-                        showEventsDropdown ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-
-                  <AnimatePresence>
-                    {showEventsDropdown && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border z-50"
-                      >
-                        <Link
-                          to="/events"
-                          className="flex items-center gap-3 px-4 py-3 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-t-xl transition-colors"
-                        >
-                          <FiCalendar size={18} />
-                          <span>All Events</span>
-                        </Link>
-                        <Link
-                          to="/posts"
-                          className="flex items-center gap-3 px-4 py-3 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-b-xl transition-colors"
-                        >
-                          <FiFileText size={18} />
-                          <span>Posts</span>
-                        </Link>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-
-                {/* Rest of navItems for students */}
-                {navItems.slice(1).map((item, index) => (
-                  <motion.div
-                    key={item.to}
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: (index + 2) * 0.1 }}
-                  >
-                    <NavLink
-                      to={item.to}
-                      label={item.label}
-                      icon={item.icon}
-                      isActive={location.pathname === item.to}
-                    />
-                  </motion.div>
-                ))}
-              </>
-            ) : (
-              navItems.map((item, index) => (
-                <motion.div
-                  key={item.to}
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <NavLink
-                    to={item.to}
-                    label={item.label}
-                    icon={item.icon}
-                    isActive={location.pathname === item.to}
-                  />
-                </motion.div>
-              ))
-            )}
 
             {user ? (
               <motion.div
@@ -345,11 +422,7 @@ const Navbar = () => {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
               >
-                {/* Messages */}
-                <motion.div
-                  whileHover={{ scale: 1.06 }}
-                  whileTap={{ scale: 0.94 }}
-                >
+                <motion.div whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}>
                   <Link
                     to="/messages"
                     className="navbar-icon-btn message-icon group relative inline-flex items-center justify-center rounded-xl px-3 py-2 backdrop-blur border border-white/40 transition-colors"
@@ -369,14 +442,9 @@ const Navbar = () => {
                   </Link>
                 </motion.div>
 
-                {/* Notifications */}
                 <NotificationBell />
 
-                {/* User Button (direct link to profile) */}
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Link
                     to="/profile"
                     className="flex items-center gap-3 p-2 rounded-xl border-2 border-transparent hover:border-indigo-300 hover:bg-indigo-50 transition-all duration-300"
@@ -431,37 +499,68 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <motion.button
-            onClick={toggleMenu}
-            className="lg:hidden p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 focus:outline-none transition-all duration-300"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <AnimatePresence mode="wait">
-              {isOpen ? (
-                <motion.div
-                  key="close"
-                  initial={{ rotate: -90, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  exit={{ rotate: 90, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
+          {/* Mobile utility row */}
+          <div className="lg:hidden flex items-center gap-2">
+            {user ? (
+              <>
+                <div className="-mr-1">
+                  <NotificationBell />
+                </div>
+                <Link
+                  to="/profile"
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-indigo-100 border border-indigo-200 overflow-hidden"
                 >
-                  <FiX size={24} />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="menu"
-                  initial={{ rotate: 90, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  exit={{ rotate: -90, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <FiMenu size={24} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.button>
+                  <img
+                    src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : "/default-avatar.png"}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = "/default-avatar.png";
+                    }}
+                  />
+                </Link>
+              </>
+            ) : (
+              <button
+                onClick={() => navigate("/login")}
+                className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold shadow"
+              >
+                Login
+              </button>
+            )}
+
+            <motion.button
+              onClick={toggleMenu}
+              className="p-3 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-100 focus:outline-none transition-all duration-300"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <AnimatePresence mode="wait">
+                {isOpen ? (
+                  <motion.div
+                    key="close"
+                    initial={{ rotate: -90, opacity: 0 }}
+                    animate={{ rotate: 0, opacity: 1 }}
+                    exit={{ rotate: 90, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <FiX size={24} />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="menu"
+                    initial={{ rotate: 90, opacity: 0 }}
+                    animate={{ rotate: 0, opacity: 1 }}
+                    exit={{ rotate: -90, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <FiMenu size={24} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.button>
+          </div>
         </div>
       </div>
 
@@ -469,217 +568,103 @@ const Navbar = () => {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            className="lg:hidden absolute top-full left-0 right-0 backdrop-blur-2xl bg-white/95 border-b border-white/20 shadow-2xl"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="lg:hidden absolute top-full left-0 right-0 px-4 pb-6"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25 }}
           >
-            <div className="px-4 py-6 space-y-2">
-              {isStudent ? (
-                <>
-                  {/* Home first for students in mobile */}
-                  <motion.div
-                    key={navItems[0].to}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0 }}
-                  >
-                    <MobileNavLink
-                      to={navItems[0].to}
-                      label={navItems[0].label}
-                      icon={navItems[0].icon}
-                      onClick={toggleMenu}
-                      isActive={location.pathname === navItems[0].to}
-                    />
-                  </motion.div>
+            <div className="rounded-3xl shadow-2xl bg-white/95 backdrop-blur border border-indigo-100 overflow-hidden">
+              <div className="px-4 pt-5 pb-4 flex items-center gap-3 border-b border-indigo-50">
+                <div className="flex-1">
+                  <p className="text-xs uppercase tracking-wide text-indigo-400">Quick Jump</p>
+                  <p className="text-base font-semibold text-slate-800">Navigate Anywhere</p>
+                </div>
+                <button
+                  onClick={() => {
+                    toggleMenu();
+                    navigate("/search");
+                  }}
+                  className="p-2 rounded-xl text-indigo-600 bg-indigo-50"
+                >
+                  <FiSearch size={18} />
+                </button>
+              </div>
 
-                  {/* Events Dropdown for Students in Mobile - now second */}
+              <div className="grid grid-cols-2 gap-3 px-4 py-5">
+                {mobileNavLinks.map((item, index) => (
                   <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="space-y-1"
+                    key={item.key}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
                   >
-                    <button
-                      onClick={() => setShowEventsDropdown(!showEventsDropdown)}
-                      className={`w-full flex items-center justify-between px-4 py-4 rounded-xl font-semibold transition-all duration-300 ${
-                        location.pathname === "/events" ||
-                        location.pathname === "/posts"
-                          ? "text-indigo-600 bg-gradient-to-r from-indigo-100 to-purple-100"
-                          : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
+                    <Link
+                      to={item.to}
+                      onClick={toggleMenu}
+                      className={`flex items-center gap-3 px-3 py-3 rounded-2xl border transition-all duration-300 ${
+                        location.pathname.startsWith(item.to)
+                          ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                          : "border-indigo-100 bg-white hover:border-indigo-300 hover:shadow"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <FiCalendar size={20} />
-                        <span>Events</span>
-                      </div>
-                      <FiChevronDown
-                        size={16}
-                        className={`transition-transform duration-300 ${
-                          showEventsDropdown ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
-
-                    <AnimatePresence>
-                      {showEventsDropdown && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="ml-4 space-y-1"
-                        >
-                          <MobileNavLink
-                            to="/events"
-                            label="All Events"
-                            icon={FiCalendar}
-                            onClick={toggleMenu}
-                            isActive={location.pathname === "/events"}
-                          />
-                          <MobileNavLink
-                            to="/posts"
-                            label="Posts"
-                            icon={FiFileText}
-                            onClick={toggleMenu}
-                            isActive={location.pathname === "/posts"}
-                          />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                      <item.icon size={18} />
+                      <span className="text-sm font-semibold">{item.label}</span>
+                    </Link>
                   </motion.div>
+                ))}
+              </div>
 
-                  {/* Rest of navItems for students in mobile */}
-                  {navItems.slice(1).map((item, index) => (
-                    <motion.div
-                      key={item.to}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: (index + 2) * 0.1 }}
-                    >
-                      <MobileNavLink
-                        to={item.to}
-                        label={item.label}
-                        icon={item.icon}
-                        onClick={toggleMenu}
-                        isActive={location.pathname === item.to}
-                      />
-                    </motion.div>
-                  ))}
-                </>
-              ) : (
-                <>
-                  {navItems.map((item, index) => (
-                    <motion.div
-                      key={item.to}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                    >
-                      <MobileNavLink
-                        to={item.to}
-                        label={item.label}
-                        icon={item.icon}
-                        onClick={toggleMenu}
-                        isActive={location.pathname === item.to}
-                      />
-                    </motion.div>
-                  ))}
-                </>
-              )}
-
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: navItems.length * 0.1 }}
-              >
-                <MobileNavLink
-                  to="/search"
-                  label="Search"
-                  icon={FiSearch}
-                  onClick={toggleMenu}
-                  isActive={location.pathname === "/search"}
-                />
-              </motion.div>
-            </div>
-
-            {user ? (
-              <motion.div
-                className="border-t border-white/20 px-4 py-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
-              >
-                <div className="flex items-center mb-4 p-3 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50">
-                  {user.avatarUrl ? (
+              {user ? (
+                <div className="px-4 pt-4 pb-5 border-t border-indigo-50 bg-indigo-50/60">
+                  <div className="flex items-center gap-3 p-3 rounded-2xl bg-white shadow-sm">
                     <img
-                      className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 shadow"
-                      src={getAvatarUrl(user.avatarUrl)}
+                      src={user.avatarUrl ? getAvatarUrl(user.avatarUrl) : "/default-avatar.png"}
                       alt={user.name}
+                      className="w-12 h-12 rounded-full object-cover border border-indigo-100"
                     />
-                  ) : (
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow">
-                      {user.name?.charAt(0).toUpperCase()}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
+                      <p className="text-xs text-indigo-500 uppercase tracking-wide">{user.role}</p>
                     </div>
-                  )}
-                  <div className="ml-4">
-                    <div className="text-lg font-bold text-slate-800">
-                      {user.name}
-                    </div>
-                    <div className="text-sm text-slate-500">{user.role}</div>
+                    <Link
+                      to="/profile"
+                      onClick={toggleMenu}
+                      className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold"
+                    >
+                      View
+                    </Link>
                   </div>
-                </div>
 
-                <div className="space-y-1">
-                  <MobileNavLink
-                    to="/profile"
-                    label="Profile"
-                    icon={FiUser}
-                    onClick={toggleMenu}
-                  />
-                  <MobileNavLink
-                    to="/messages"
-                    label="Messages"
-                    icon={FiMessageSquare}
-                    onClick={toggleMenu}
-                  />
-
-                  <motion.button
+                  <button
                     onClick={() => {
                       toggleMenu();
                       handleLogout();
                     }}
-                    className="w-full flex items-center px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 font-semibold"
-                    whileHover={{ x: 5 }}
+                    className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-red-600 bg-white hover:bg-red-50 border border-red-100 font-semibold"
                   >
-                    <FiLogOut className="mr-3" />
-                    Sign out
-                  </motion.button>
+                    <FiLogOut /> Sign out
+                  </button>
                 </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                className="border-t border-white/20 px-4 py-6 space-y-3"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
-              >
-                <Link
-                  to="/login"
-                  className="block px-6 py-3 text-center rounded-xl border-2 border-indigo-500 text-indigo-600 font-semibold hover:bg-indigo-50 transition-all duration-300"
-                  onClick={toggleMenu}
-                >
-                  Login
-                </Link>
-                <Link
-                  to="/register"
-                  className="block px-6 py-3 text-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold shadow-lg hover:shadow-indigo-500/25 transition-all duration-300"
-                  onClick={toggleMenu}
-                >
-                  Join Now
-                </Link>
-              </motion.div>
-            )}
+              ) : (
+                <div className="px-4 pt-4 pb-5 border-t border-indigo-50 bg-indigo-50/60 grid grid-cols-2 gap-3">
+                  <Link
+                    to="/login"
+                    onClick={toggleMenu}
+                    className="px-3 py-3 rounded-xl border border-indigo-200 text-indigo-600 text-center font-semibold"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    to="/register"
+                    onClick={toggleMenu}
+                    className="px-3 py-3 rounded-xl bg-indigo-600 text-white text-center font-semibold shadow"
+                  >
+                    Join Now
+                  </Link>
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

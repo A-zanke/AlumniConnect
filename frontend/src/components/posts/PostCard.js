@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import {
-  FiHeart, FiMessageCircle, FiShare2, FiBookmark,
-  FiMoreVertical, FiTrash2, FiFlag
+  FiHeart,
+  FiMessageCircle,
+  FiShare2,
+  FiBookmark,
+  FiMoreVertical,
+  FiTrash2,
+  FiFlag
 } from 'react-icons/fi';
 import ConnectionButton from '../network/ConnectionButton';
+import MediaCarousel from './MediaCarousel';
+import ReactionListModal from './ReactionListModal';
 
 // LinkedIn-style Professional Reactions
 const REACTIONS = [
@@ -27,7 +34,7 @@ const ReactionPicker = ({ post, onReact }) => {
     <div className="relative">
       <button
         onClick={() => setShowPicker(!showPicker)}
-        className={`flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
+        className={`flex items-center space-x-0 sm:space-x-2 px-3 sm:px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
           post.userReaction ? 'text-blue-600' : ''
         }`}
       >
@@ -36,7 +43,7 @@ const ReactionPicker = ({ post, onReact }) => {
         ) : (
           <>
             <FiHeart className="w-5 h-5" />
-            <span>Like</span>
+            <span className="hidden sm:inline">Like</span>
           </>
         )}
       </button>
@@ -65,37 +72,20 @@ const ReactionPicker = ({ post, onReact }) => {
   );
 };
 
-const MediaCarousel = ({ media }) => {
-  if (!media || media.length === 0) return null;
-  
-  return (
-    <div className="grid grid-cols-1 gap-2 mt-4">
-      {media.map((item, idx) => (
-        <div key={idx} className="relative rounded-lg overflow-hidden">
-          {item.type === 'image' ? (
-            <img
-              src={item.url}
-              alt="Post media"
-              className="w-full h-auto object-cover"
-            />
-          ) : item.type === 'video' ? (
-            <video
-              src={item.url}
-              controls
-              className="w-full h-auto"
-            />
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const PostCard = ({ post, currentUser, onDelete, showCommentSection = false }) => {
+const PostCard = ({
+  post,
+  currentUser,
+  onDelete,
+  showCommentSection = false,
+  onShare,
+  onShowReactions
+}) => {
   const navigate = useNavigate();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [localPost, setLocalPost] = useState(post);
+  const [showReactionModal, setShowReactionModal] = useState(false);
+  const [reactionData, setReactionData] = useState({});
 
   const handleReaction = async (reactionType) => {
     try {
@@ -140,41 +130,72 @@ const PostCard = ({ post, currentUser, onDelete, showCommentSection = false }) =
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300"
+      className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 w-full overflow-hidden"
     >
       {/* Header */}
-      <div className="p-6 border-b border-gray-100">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center space-x-3">
-            <img
-              src={localPost.user?.avatarUrl || '/default-avatar.png'}
-              alt={localPost.user?.name}
-              className="w-12 h-12 rounded-full object-cover"
-            />
-            <div>
-              <div className="flex items-center space-x-2">
+      <div className="p-4 sm:p-6 border-b border-gray-100">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {(() => {
+              const avatarSrc = localPost.user?.avatarUrl || '/default-avatar.png';
+              return (
+                <img
+                  src={avatarSrc}
+                  alt={localPost.user?.name}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover cursor-zoom-in"
+                  data-avatar-src={avatarSrc}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = '/default-avatar.png';
+                    e.target.setAttribute('data-avatar-src', '/default-avatar.png');
+                  }}
+                />
+              );
+            })()}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <Link
                   to={`/profile/id/${localPost.user?._id}`}
                   className="font-semibold text-gray-900 hover:text-blue-600"
                 >
                   {localPost.user?.name}
                 </Link>
-                <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-600">
-                  {localPost.user?.role}
-                </span>
+                {localPost.user?.role && (
+                  <span className="px-2 py-1 text-[11px] font-medium rounded-full bg-blue-100 text-blue-600">
+                    {localPost.user?.role}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center space-x-2 text-sm text-gray-500">
-                <span>{localPost.user?.department}</span>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-gray-500">
+                {localPost.user?.department && (
+                  <span className="truncate max-w-[150px] sm:max-w-none">
+                    {localPost.user?.department}
+                  </span>
+                )}
                 <span>•</span>
                 <span>{new Date(localPost.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-1 sm:gap-3">
             {localPost.user?._id !== currentUser?._id && (
-              <ConnectionButton userId={localPost.user?._id} />
+              <>
+                <div className="sm:hidden">
+                  <ConnectionButton
+                    userId={localPost.user?._id}
+                    variant="icon"
+                    hideConnected
+                  />
+                </div>
+                <div className="hidden sm:block">
+                  <ConnectionButton
+                    userId={localPost.user?._id}
+                    variant="compact"
+                  />
+                </div>
+              </>
             )}
-            
+
             {/* More Menu */}
             <div className="relative">
               <button
@@ -218,7 +239,7 @@ const PostCard = ({ post, currentUser, onDelete, showCommentSection = false }) =
       </div>
       
       {/* Content */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <p className="text-gray-800 whitespace-pre-wrap mb-4">
           {localPost.content?.length > 300 && !expanded
             ? localPost.content.substring(0, 300) + '...'
@@ -247,59 +268,94 @@ const PostCard = ({ post, currentUser, onDelete, showCommentSection = false }) =
       </div>
       
       {/* Stats */}
-      <div className="px-6 py-3 border-t border-b border-gray-100 flex items-center justify-between text-sm text-gray-600">
-        <div className="flex items-center space-x-4">
+      <div className="px-4 sm:px-6 py-3 border-t border-b border-gray-100 flex flex-wrap items-center justify-between text-xs sm:text-sm text-gray-600 gap-y-2">
+        <div className="flex items-center gap-2">
           {localPost.totalReactions > 0 && (
-            <div className="flex items-center space-x-1">
-              <span className="flex -space-x-1">
-                {Object.keys(localPost.reactionCounts || {}).slice(0, 3).map(type => {
-                  const reaction = REACTIONS.find(r => r.type === type);
-                  return reaction ? <span key={type} className="text-xl">{reaction.emoji}</span> : null;
-                })}
+            <button
+              onClick={async () => {
+                try {
+                  const response = await axios.get(`/api/posts/${post._id}/reactions`);
+                  setReactionData(response.data.reactions || {});
+                  setShowReactionModal(true);
+                } catch (error) {
+                  toast.error('Failed to load reactions');
+                }
+              }}
+              className="flex items-center gap-1 hover:underline"
+            >
+              <span className="flex -space-x-1 text-sm sm:text-base">
+                {Object.keys(localPost.reactionCounts || {})
+                  .slice(0, 3)
+                  .map((type) => {
+                    const reaction = REACTIONS.find((r) => r.type === type);
+                    return reaction ? (
+                      <span key={type}>{reaction.emoji}</span>
+                    ) : null;
+                  })}
               </span>
               <span>{localPost.totalReactions}</span>
-            </div>
+            </button>
           )}
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <span>{localPost.totalComments || 0} comments</span>
           <span>{localPost.shareCount || 0} shares</span>
         </div>
       </div>
-      
+
       {/* Actions */}
-      <div className="p-4 flex items-center justify-around">
-        <ReactionPicker
-          post={localPost}
-          onReact={handleReaction}
-        />
-        
+      <div className="p-3 sm:p-4 flex items-center justify-between gap-2 sm:justify-around text-xs sm:text-sm">
+        <ReactionPicker post={localPost} onReact={handleReaction} />
+
         <button
           onClick={() => navigate(`/posts/${post._id}`)}
-          className="flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex items-center justify-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <FiMessageCircle className="w-5 h-5" />
-          <span>Comment</span>
+          <span className="hidden sm:inline">Comment</span>
         </button>
-        
+
         <button
-          onClick={() => toast.info('Share feature coming soon')}
-          className="flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors"
+          onClick={() => {
+            if (onShare) {
+              onShare(localPost);
+            }
+          }}
+          className="flex items-center justify-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <FiShare2 className="w-5 h-5" />
-          <span>Share</span>
+          <span className="hidden sm:inline">Share</span>
         </button>
-        
+
         <button
           onClick={handleBookmark}
-          className={`flex items-center space-x-2 px-4 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
+          className={`flex items-center justify-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors ${
             localPost.isBookmarked ? 'text-blue-600' : ''
           }`}
         >
           <FiBookmark className="w-5 h-5" />
-          <span>Save</span>
+          <span className="hidden sm:inline">Save</span>
         </button>
       </div>
+
+      {showCommentSection && (
+        <div className="px-6 pb-6">
+          {/* Placeholder for in-card comments */}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showReactionModal && (
+          <ReactionListModal
+            open={showReactionModal}
+            reactions={reactionData}
+            onClose={() => {
+              setShowReactionModal(false);
+              setReactionData({});
+            }}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

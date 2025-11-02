@@ -168,11 +168,41 @@ exports.getConversations = async (req, res) => {
     const convMap = new Map();
 
     for (const msg of messages) {
-      const otherId =
-        String(msg.from._id) === String(me)
-          ? String(msg.to._id)
-          : String(msg.from._id);
-      const otherUser = String(msg.from._id) === String(me) ? msg.to : msg.from;
+      if (!msg || !msg.from || !msg.to) {
+        // Skip malformed or orphaned records
+        continue;
+      }
+
+      const rawFromId = msg.from._id || msg.from;
+      const rawToId = msg.to._id || msg.to;
+
+      if (!rawFromId || !rawToId) {
+        continue;
+      }
+
+      const isFromMe = String(rawFromId) === String(me);
+      const otherId = isFromMe ? String(rawToId) : String(rawFromId);
+
+      if (!otherId) {
+        continue;
+      }
+
+      let otherUser = isFromMe ? msg.to : msg.from;
+
+      if (!otherUser || !otherUser._id) {
+        // Attempt to fetch the user if populate returned null (deleted user, etc.)
+        try {
+          const fetched = await User.findById(otherId)
+            .select("name username avatarUrl isOnline lastSeen")
+            .lean();
+          if (!fetched) {
+            continue;
+          }
+          otherUser = fetched;
+        } catch (err) {
+          continue;
+        }
+      }
 
       if (!convMap.has(otherId)) {
         // Get unread count for this conversation

@@ -3,8 +3,19 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 import { io } from 'socket.io-client';
+import {
+  FiUserPlus,
+  FiUserCheck,
+  FiCheck,
+  FiClock
+} from 'react-icons/fi';
 
-const ConnectionButton = ({ userId }) => {
+const ConnectionButton = ({
+  userId,
+  variant = 'default',
+  className = '',
+  hideConnected = false
+}) => {
   const [status, setStatus] = useState('none');
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
@@ -15,7 +26,7 @@ const ConnectionButton = ({ userId }) => {
       
       // Set up socket connection if not already established
       if (!window.socket) {
-        window.socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', { 
+        window.socket = io(process.env.REACT_APP_API_URL || 'http://10.183.168.134:5000', { 
           withCredentials: true 
         });
       }
@@ -129,21 +140,98 @@ const ConnectionButton = ({ userId }) => {
 
   if (!user || !userId || user._id === userId) return null;
 
+  const baseClasses = (() => {
+    switch (variant) {
+      case 'compact':
+        return 'px-3 py-1.5 text-xs rounded-lg';
+      case 'icon':
+        return 'p-2.5 rounded-full';
+      default:
+        return 'px-4 py-2 text-sm rounded-lg';
+    }
+  })();
+
+  const statusStyles = {
+    connected: variant === 'icon'
+      ? 'bg-emerald-100 text-emerald-600 border border-emerald-200'
+      : 'bg-green-500 text-white hover:bg-green-600',
+    requested: variant === 'icon'
+      ? 'bg-amber-100 text-amber-700 border border-amber-200'
+      : 'bg-gray-500 text-white cursor-not-allowed',
+    pending: variant === 'icon'
+      ? 'bg-amber-100 text-amber-700 border border-amber-200'
+      : 'bg-gray-500 text-white cursor-not-allowed',
+    incoming: variant === 'icon'
+      ? 'bg-blue-100 text-blue-600 border border-blue-200'
+      : 'bg-blue-500 text-white hover:bg-blue-600',
+    default: variant === 'icon'
+      ? 'bg-blue-600 text-white hover:bg-blue-700'
+      : 'bg-blue-500 text-white hover:bg-blue-600'
+  };
+
+  const statusIcons = {
+    connected: <FiCheck className="h-4 w-4" />, 
+    requested: <FiClock className="h-4 w-4" />, 
+    pending: <FiClock className="h-4 w-4" />, 
+    incoming: <FiUserCheck className="h-4 w-4" />, 
+    default: <FiUserPlus className="h-4 w-4" />
+  };
+
+  const statusLabels = {
+    connected: 'Connected',
+    requested: 'Requested',
+    pending: 'Pending',
+    incoming: 'Accept Request',
+    default: 'Connect'
+  };
+
+  const currentStatus = ['connected', 'requested', 'pending', 'incoming'].includes(status)
+    ? status
+    : 'default';
+
+  if (hideConnected && status === 'connected') {
+    return null;
+  }
+
   const renderButton = () => {
+    if (variant === 'icon') {
+      const icon = statusIcons[currentStatus] || statusIcons.default;
+      const ariaLabel = statusLabels[currentStatus] || statusLabels.default;
+
+      return (
+        <button
+          onClick={
+            currentStatus === 'default'
+              ? sendRequest
+              : currentStatus === 'incoming'
+              ? acceptRequest
+              : undefined
+          }
+          disabled={loading || currentStatus === 'requested' || currentStatus === 'pending' || currentStatus === 'connected'}
+          className={`${baseClasses} ${statusStyles[currentStatus] || statusStyles.default} transition-colors shadow-sm ${className}`}
+          aria-label={ariaLabel}
+        >
+          {icon}
+          <span className="sr-only">{ariaLabel}</span>
+        </button>
+      );
+    }
+
     switch (status) {
       case 'connected':
         return (
           <button
-            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+            className={`${baseClasses} ${statusStyles.connected} transition-colors ${className}`}
             disabled
           >
             Connected
           </button>
         );
       case 'requested':
+      case 'pending':
         return (
           <button
-            className="px-4 py-2 bg-gray-500 text-white rounded-lg cursor-not-allowed"
+            className={`${baseClasses} ${statusStyles.requested} transition-colors ${className}`}
             disabled
           >
             Pending
@@ -154,7 +242,7 @@ const ConnectionButton = ({ userId }) => {
           <button
             onClick={acceptRequest}
             disabled={loading}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+            className={`${baseClasses} ${statusStyles.incoming} transition-colors disabled:opacity-50 ${className}`}
           >
             {loading ? 'Accepting...' : 'Accept Request'}
           </button>
@@ -164,7 +252,7 @@ const ConnectionButton = ({ userId }) => {
           <button
             onClick={sendRequest}
             disabled={loading}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+            className={`${baseClasses} ${statusStyles.default} transition-colors disabled:opacity-50 ${className}`}
           >
             {loading ? 'Sending...' : 'Connect'}
           </button>

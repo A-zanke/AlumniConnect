@@ -8,6 +8,7 @@ import { connectionAPI, userAPI, postsAPI } from "../components/utils/api";
 import { getAvatarUrl } from "../components/utils/helpers";
 import ConnectionButton from "../components/network/ConnectionButton";
 import PostCard from "../components/posts/PostCard";
+import ShareModal from "../components/posts/ShareModal";
 
 // Feather icons (Fi = Feather Icons)
 import {
@@ -17,6 +18,7 @@ import {
   FiUsers,
   FiSettings,
   FiMessageCircle,
+  FiMenu,
   FiUserX,
   FiUserCheck,
   FiUserPlus,
@@ -99,6 +101,8 @@ const ProfilePage = () => {
   const [connections, setConnections] = useState([]);
   const [allConnections, setAllConnections] = useState([]); // For total unique connections
   const [posts, setPosts] = useState([]);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTarget, setShareTarget] = useState(null);
   const [showCreatePost, setShowCreatePost] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -129,6 +133,19 @@ const ProfilePage = () => {
     audience: "public",
     media: null,
   });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    return window.innerWidth >= 1024;
+  });
+  const [isDesktopView, setIsDesktopView] = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    return window.innerWidth >= 1024;
+  });
+  const [skipNextSkillCommit, setSkipNextSkillCommit] = useState(false);
 
   const isOwnProfile = !userId && !username;
 
@@ -178,6 +195,25 @@ const ProfilePage = () => {
       fetchUserConnections(user._id);
     }
   }, [user, isOwnProfile]);
+
+  useEffect(() => {
+    if (!isOwnProfile || typeof window === "undefined") return;
+
+    const updateSidebarState = () => {
+      const desktop = window.innerWidth >= 1024;
+      setIsDesktopView(desktop);
+      setIsSidebarOpen(desktop);
+    };
+
+    updateSidebarState();
+    window.addEventListener("resize", updateSidebarState);
+    return () => window.removeEventListener("resize", updateSidebarState);
+  }, [isOwnProfile]);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setAvatarFile(null);
+  }, [activeSection]);
 
   // This useEffect now primarily updates formData when a *fetched* user profile changes
   // For own profile, formData initialization is handled in the first useEffect to avoid race conditions
@@ -267,34 +303,31 @@ const ProfilePage = () => {
   };
 
   const fetchUserPosts = async (targetUserId = null) => {
-    const userId = targetUserId || user?._id || currentUser?._id;
-    console.log('fetchUserPosts called - userId:', userId, 'targetUserId:', targetUserId);
-    
-    if (!userId) {
-      console.log('No userId available for fetching posts');
+    const profileId = targetUserId || user?._id || currentUser?._id;
+    if (!profileId) {
       return;
     }
-    
-    // Only fetch posts for Alumni, Teachers, and Admin
-    const userRole = (user?.role || currentUser?.role || '').toLowerCase().trim();
-    console.log('Checking role for posts:', userRole);
-    
-    if (!['alumni', 'teacher', 'admin'].includes(userRole)) {
-      console.log('User role does not have posts access:', userRole);
+
+    const activeRole = (user?.role || currentUser?.role || "").toLowerCase().trim();
+    if (!["alumni", "teacher", "admin"].includes(activeRole)) {
       setPosts([]);
       return;
     }
-    
+
     try {
-      console.log('Fetching posts for user ID:', userId, 'Role:', userRole);
-      const response = await postsAPI.getUserPosts(userId);
-      console.log('Posts API response:', response);
+      const response = await postsAPI.getUserPosts(profileId);
       const postsData = response.data?.data || response.data || [];
-      console.log('Fetched posts count:', postsData.length, 'Posts:', postsData);
-      setPosts(postsData);
+      const filtered = postsData.filter((post) => {
+        const ownerId =
+          post?.user?._id ||
+          post?.author?._id ||
+          post?.createdBy?.id ||
+          post?.createdBy?._id;
+        return ownerId && String(ownerId) === String(profileId);
+      });
+      setPosts(filtered);
     } catch (error) {
       console.error("Error fetching posts:", error);
-      console.error("Error details:", error.response?.data);
       setPosts([]);
     }
   };
@@ -358,6 +391,11 @@ const ProfilePage = () => {
   }, [skillInput, normalizedSkills]);
 
   const commitSkillInput = () => {
+    if (skipNextSkillCommit) {
+      setSkipNextSkillCommit(false);
+      setSkillInput("");
+      return;
+    }
     const raw = skillInput.trim();
     if (!raw) return;
     const parts = raw
@@ -379,7 +417,10 @@ const ProfilePage = () => {
     }
   };
 
-  const addSuggested = (s) => {
+  const addSuggested = (s, { fromSuggestion = false } = {}) => {
+    if (fromSuggestion) {
+      setSkipNextSkillCommit(true);
+    }
     setFormData((prev) => ({
       ...prev,
       skills: Array.from(new Set([...(prev.skills || []), s])),
@@ -474,17 +515,15 @@ const ProfilePage = () => {
 
   // Sidebar Menu Items
   // Only show Posts for Alumni, Teachers, and Admin (not Students)
-  const userRole = (user?.role || '').toLowerCase().trim();
-  const canViewPosts = ['alumni', 'teacher', 'admin'].includes(userRole);
-  
-  console.log('ProfilePage - User role:', user?.role, 'Can view posts:', canViewPosts);
-  
+  const userRole = (user?.role || "").toLowerCase().trim();
+  const canViewPosts = ["alumni", "teacher", "admin"].includes(userRole);
+
   const menuItems = [
     { id: "overview", label: "Profile Overview", icon: FiUser },
     { id: "about", label: "About", icon: FiInfo },
     { id: "skills", label: "Skills", icon: FiAward },
-    ...(canViewPosts ? [{ id: "posts", label: "Posts", icon: FiFileText }] : []),
     { id: "connections", label: "Connections", icon: FiUsers },
+    ...(canViewPosts ? [{ id: "posts", label: "Posts", icon: FiFileText }] : []),
     ...(isOwnProfile ? [{ id: "settings", label: "Settings", icon: FiSettings }] : []),
   ];
 
@@ -524,137 +563,180 @@ const ProfilePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex w-full overflow-x-hidden">
       {/* Left Sidebar */}
-      {isOwnProfile && (
-        <motion.div
-          className="w-80 bg-gradient-to-b from-slate-900 via-indigo-900 to-slate-900 min-h-screen sticky top-0 shadow-2xl"
-          initial={{ x: -100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-        >
-          {/* Header */}
-          <div className="p-6 border-b border-white/10">
-            <motion.h2
-              className="text-2xl font-bold bg-gradient-to-r from-white via-orange-200 to-indigo-200 bg-clip-text text-transparent"
-              initial={{ y: -20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              Profile Menu
-            </motion.h2>
-            <motion.p
-              className="text-slate-300 text-sm mt-2"
-              initial={{ y: -20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.3 }}
-            >
-              Manage your profile and settings
-            </motion.p>
-          </div>
+      {isOwnProfile && (isDesktopView ? true : isSidebarOpen) && (
+        <>
+          {!isDesktopView && isSidebarOpen && (
+            <div
+              className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm lg:hidden"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
 
-          {/* Menu Items */}
-          <div className="p-4 space-y-2">
-            {menuItems.map((item, index) => (
-              <motion.button
-                key={item.id}
-                onClick={() => setActiveSection(item.id)}
-                className={`w-full flex items-center justify-between p-4 rounded-xl text-left transition-all duration-300 group ${
-                  activeSection === item.id
-                    ? "bg-gradient-to-r from-indigo-600 to-orange-600 text-white shadow-lg shadow-indigo-500/30"
-                    : "text-slate-300 hover:bg-white/5 hover:text-white"
-                }`}
-                initial={{ x: -50, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                transition={{ delay: 0.1 * index, duration: 0.4 }}
-                whileHover={{ x: 5 }}
-                whileTap={{ scale: 0.98 }}
+          <ShareModal
+            show={showShareModal}
+            post={shareTarget}
+            onClose={() => {
+              setShowShareModal(false);
+              setShareTarget(null);
+            }}
+          />
+
+          <motion.aside
+            className={`fixed lg:static inset-y-0 left-0 z-50 lg:z-auto transform lg:transform-none lg:flex-shrink-0 w-72 sm:w-80 bg-gradient-to-br from-slate-950 via-indigo-900 to-purple-800/90 shadow-[0_24px_60px_-20px_rgba(73,56,140,0.75)] border border-white/10 backdrop-blur-xl lg:min-h-screen rounded-r-[32px] lg:rounded-none flex flex-col ${
+              isDesktopView ? "translate-x-0" : ""
+            }`}
+            initial={isDesktopView ? false : { x: -320, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-white/10/70 flex items-center justify-between">
+              <motion.h2
+                className="text-2xl font-bold bg-gradient-to-r from-white via-orange-200 to-indigo-200 bg-clip-text text-transparent"
+                initial={{ y: -20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
               >
-                <div className="flex items-center gap-3">
+                Profile Menu
+              </motion.h2>
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(false)}
+                className="lg:hidden p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition"
+                aria-label="Close profile menu"
+              >
+                <FiX size={20} />
+              </button>
+            </div>
+
+            {/* Menu Items */}
+            <div className="p-5 space-y-3 flex-1 overflow-y-auto">
+              {menuItems.map((item, index) => (
+                <motion.button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveSection(item.id);
+                    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                      setIsSidebarOpen(false);
+                    }
+                  }}
+                  className={`relative w-full flex items-center justify-between px-5 py-4 rounded-2xl border border-white/10 transition-all duration-300 group overflow-hidden backdrop-blur-sm ${
+                    activeSection === item.id
+                      ? "text-white shadow-xl shadow-indigo-500/40 ring-1 ring-white/40"
+                      : "text-slate-200/80 hover:text-white"
+                  } ${
+                    activeSection === item.id
+                      ? "bg-gradient-to-r from-indigo-600/80 via-violet-500/70 to-fuchsia-500/60"
+                      : "bg-white/[0.08] hover:bg-white/15"
+                  }`}
+                  initial={{ x: -50, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.1 * index, duration: 0.4 }}
+                  whileHover={{ x: 5 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {activeSection === item.id && (
+                    <motion.span
+                      layoutId="profile-menu-active-glow"
+                      className="absolute inset-0 bg-gradient-to-r from-white/15 via-white/10 to-transparent"
+                      transition={{ type: "spring", stiffness: 200, damping: 28 }}
+                    />
+                  )}
+                  <div className="flex items-center gap-3">
+                    <motion.div
+                      className={`relative z-10 p-2.5 rounded-xl shadow-inner ${
+                        activeSection === item.id
+                          ? "bg-white/25"
+                          : "bg-slate-900/40 group-hover:bg-slate-800/60"
+                      }`}
+                      whileHover={{ scale: 1.1, rotate: 5 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <item.icon size={18} />
+                    </motion.div>
+                    <span className="relative z-10 font-semibold tracking-wide">
+                      {item.label}
+                    </span>
+                  </div>
                   <motion.div
-                    className={`p-2 rounded-lg ${
-                      activeSection === item.id
-                        ? "bg-white/20"
-                        : "bg-slate-800 group-hover:bg-slate-700"
-                    }`}
-                    whileHover={{ scale: 1.1, rotate: 5 }}
+                    initial={{ opacity: 0 }}
+                    animate={{
+                      opacity: activeSection === item.id ? 1 : 0,
+                      x: activeSection === item.id ? 0 : -10,
+                    }}
                     transition={{ duration: 0.2 }}
                   >
-                    <item.icon size={18} />
+                    <FiChevronRight size={16} />
                   </motion.div>
-                  <span className="font-semibold">{item.label}</span>
-                </div>
+                </motion.button>
+              ))}
+            </div>
+
+            {/* Logout Button */}
+            <motion.div
+              className="p-4"
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.6, duration: 0.4 }}
+            >
+              <motion.button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 group"
+                whileHover={{ scale: 1.02, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+              >
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{
-                    opacity: activeSection === item.id ? 1 : 0,
-                    x: activeSection === item.id ? 0 : -10,
-                  }}
+                  className="p-2 bg-white/20 rounded-lg"
+                  whileHover={{ rotate: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <FiChevronRight size={16} />
+                  <FiLogOut size={18} />
                 </motion.div>
+                <span className="group-hover:tracking-wide transition-all duration-300">
+                  Sign Out
+                </span>
               </motion.button>
-            ))}
-          </div>
-
-          {/* Logout Button */}
-          <motion.div
-            className="absolute bottom-6 left-4 right-4"
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.8, duration: 0.5 }}
-          >
-            <motion.button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-3 p-4 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg shadow-red-500/30 hover:shadow-red-500/50 transition-all duration-300 group"
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <motion.div
-                className="p-2 bg-white/20 rounded-lg"
-                whileHover={{ rotate: -10 }}
-                transition={{ duration: 0.2 }}
-              >
-                <FiLogOut size={18} />
-              </motion.div>
-              <span className="group-hover:tracking-wide transition-all duration-300">
-                Sign Out
-              </span>
-            </motion.button>
-          </motion.div>
-        </motion.div>
+            </motion.div>
+          </motion.aside>
+        </>
       )}
 
       {/* Right Content Area */}
       <div className={`flex-1 ${isOwnProfile ? "" : "w-full"}`}>
         {/* Profile Header */}
         <motion.div
-          className={`bg-white/80 backdrop-blur-sm border-b border-indigo-100 ${isOwnProfile ? 'sticky top-0 z-10' : ''}`}
+          className="bg-white/80 backdrop-blur-sm border-b border-indigo-100"
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
-          <div className="max-w-6xl mx-auto p-6">
+          <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 pb-6">
             <div className="flex flex-col md:flex-row items-center gap-6">
               <motion.div
                 className="relative"
                 whileHover={{ scale: 1.05 }}
                 transition={{ duration: 0.2 }}
               >
-                <img
-                  className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200"
-                  src={
-                    user.avatarUrl
-                      ? getAvatarUrl(user.avatarUrl)
-                      : DEFAULT_PROFILE_IMAGE
-                  }
-                  alt={user.name}
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = DEFAULT_PROFILE_IMAGE;
-                  }}
-                />
+                {(() => {
+                  const avatarSrc = user.avatarUrl
+                    ? getAvatarUrl(user.avatarUrl)
+                    : DEFAULT_PROFILE_IMAGE;
+                  return (
+                    <img
+                      className="h-24 w-24 rounded-full border-4 border-white shadow-xl object-cover ring-4 ring-orange-200 cursor-zoom-in"
+                      src={avatarSrc}
+                      alt={user.name}
+                      data-avatar-src={avatarSrc}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = DEFAULT_PROFILE_IMAGE;
+                        e.target.setAttribute("data-avatar-src", DEFAULT_PROFILE_IMAGE);
+                      }}
+                    />
+                  );
+                })()}
               </motion.div>
 
               <div className="flex-1 text-center md:text-left">
@@ -693,7 +775,7 @@ const ProfilePage = () => {
                 {!isOwnProfile && currentUser && (
                   <motion.button
                     onClick={() => handleMessageUser(userId || user?._id)}
-                    className="flex items-center px-4 py-2 bg-gradient-to-r from-slate-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-slate-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transition-all duration-300"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
@@ -705,6 +787,17 @@ const ProfilePage = () => {
             </div>
           </div>
         </motion.div>
+
+        {isOwnProfile && !isDesktopView && !isSidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(true)}
+            aria-label="Open profile menu"
+            className="lg:hidden fixed bottom-20 right-5 z-40 inline-flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 text-white shadow-xl shadow-indigo-500/40 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-300"
+          >
+            <FiMenu size={24} />
+          </button>
+        )}
 
         {/* Main Content */}
         <div className="max-w-6xl mx-auto p-6">
@@ -787,6 +880,10 @@ const ProfilePage = () => {
                             key={post._id}
                             post={post}
                             currentUser={currentUser}
+                            onShare={(selected) => {
+                              setShareTarget(selected);
+                              setShowShareModal(true);
+                            }}
                             onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
                           />
                         ))}
@@ -860,6 +957,10 @@ const ProfilePage = () => {
                           key={post._id}
                           post={post}
                           currentUser={currentUser}
+                          onShare={(selected) => {
+                            setShareTarget(selected);
+                            setShowShareModal(true);
+                          }}
                           onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
                         />
                       ))}
@@ -917,14 +1018,14 @@ const OverviewSection = ({ user }) => (
                 </>
               ) : user.role === "student" ? (
                 <>
-                  🏫 Department: {user.department || "Not specified"} Year :{" "}
-                  {user.year || ":"} 🎓 Graduation {user.graduationYear || ":"}
+                  🏫 Department : {user.department || "Not specified"} Year :{" "}
+                  {user.year || ":"}  🎓Graduation {user.graduationYear || ":"}
                 </>
               ) : (
                 // Teacher
                 <>
-                  🏫 Department: {user.department || "Not specified"} 🎓
-                  Graduation {user.graduationYear || ":"}
+                  🏫 Department: {user.department || "Not specified"} 
+                  🎓 Graduation {user.graduationYear || ":"}
                 </>
               )}
             </span>
@@ -1182,12 +1283,12 @@ const AboutSection = ({
 }) => (
   <div className="space-y-6">
     {/* Header */}
-    <div className="flex justify-between items-center">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-2xl font-bold text-slate-800">About Information</h2>
       {isOwnProfile && !isEditing ? (
         <motion.button
           onClick={() => setIsEditing(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
+          className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
@@ -1195,10 +1296,10 @@ const AboutSection = ({
           Edit About
         </motion.button>
       ) : isOwnProfile && isEditing ? (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
           <motion.button
             onClick={handleSubmit}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -1207,7 +1308,7 @@ const AboutSection = ({
           </motion.button>
           <motion.button
             onClick={() => setIsEditing(false)}
-            className="flex items-center gap-2 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
+            className="flex items-center gap-2 px-5 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -1724,12 +1825,12 @@ const SkillsSection = ({
 }) => (
   <div className="space-y-6">
     {/* Header */}
-    <div className="flex justify-between items-center">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-2xl font-bold text-slate-800">Skills & Expertise</h2>
       {isOwnProfile && !isEditing ? (
         <motion.button
           onClick={() => setIsEditing(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
+          className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
@@ -1737,10 +1838,10 @@ const SkillsSection = ({
           Edit Skills
         </motion.button>
       ) : isOwnProfile && isEditing ? (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
           <motion.button
             onClick={handleSubmit}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -1749,7 +1850,7 @@ const SkillsSection = ({
           </motion.button>
           <motion.button
             onClick={() => setIsEditing(false)}
-            className="flex items-center gap-2 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
+            className="flex items-center gap-2 px-5 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -1801,7 +1902,10 @@ const SkillsSection = ({
                   <button
                     key={s}
                     type="button"
-                    onClick={() => addSuggested(s)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      addSuggested(s, { fromSuggestion: true });
+                    }}
                     className="text-left px-3 py-2 rounded-lg hover:bg-indigo-50 text-sm"
                   >
                     {s}
@@ -1887,19 +1991,24 @@ const ConnectionsSection = ({
               >
                 <div className="flex items-center gap-3 mb-3">
                   <a href={profileUrl} className="focus:outline-none">
-                    <img
-                      className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition"
-                      src={
-                        connection.avatarUrl
-                          ? getAvatarUrl(connection.avatarUrl)
-                          : DEFAULT_PROFILE_IMAGE
-                      }
-                      alt={connection.name}
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = DEFAULT_PROFILE_IMAGE;
-                      }}
-                    />
+                    {(() => {
+                      const avatarSrc = connection.avatarUrl
+                        ? getAvatarUrl(connection.avatarUrl)
+                        : DEFAULT_PROFILE_IMAGE;
+                      return (
+                        <img
+                          className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition cursor-zoom-in"
+                          src={avatarSrc}
+                          alt={connection.name}
+                          data-avatar-src={avatarSrc}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = DEFAULT_PROFILE_IMAGE;
+                            e.target.setAttribute("data-avatar-src", DEFAULT_PROFILE_IMAGE);
+                          }}
+                        />
+                      );
+                    })()}
                   </a>
                   <div className="flex-1">
                     <a
@@ -2007,12 +2116,12 @@ const SettingsSection = ({
   handleSubmit,
 }) => (
   <div className="space-y-6">
-    <div className="flex justify-between items-center">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
       {!isEditing ? (
         <motion.button
           onClick={() => setIsEditing(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300"
+          className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
@@ -2020,10 +2129,10 @@ const SettingsSection = ({
           Edit Settings
         </motion.button>
       ) : (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
           <motion.button
             onClick={handleSubmit}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
+            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -2035,7 +2144,7 @@ const SettingsSection = ({
               setIsEditing(false);
               setAvatarFile(null);
             }}
-            className="flex items-center gap-2 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300"
+            className="flex items-center gap-2 px-5 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -2044,7 +2153,7 @@ const SettingsSection = ({
           </motion.button>
           <motion.button
             onClick={handleDeleteAvatar}
-            className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
+            className="flex items-center gap-2 px-5 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >

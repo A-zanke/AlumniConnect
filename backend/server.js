@@ -19,8 +19,14 @@ connectDB();
 const app = express();
 const http = require("http").createServer(app);
 const { Server } = require("socket.io");
+const allowedOrigins = [
+  "http://10.183.168.134:3000",
+  "http://localhost:3000",
+  process.env.FRONTEND_ORIGIN,
+].filter(Boolean);
+
 const io = new Server(http, {
-  cors: { origin: "http://localhost:3000", credentials: true },
+  cors: { origin: allowedOrigins, credentials: true },
 });
 global.io = io;
 
@@ -36,9 +42,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: ["http://localhost:3000", process.env.FRONTEND_ORIGIN].filter(
-      Boolean
-    ),
+    origin: allowedOrigins,
     credentials: true,
     exposedHeaders: ["Content-Length", "Content-Type"],
   })

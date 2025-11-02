@@ -86,10 +86,9 @@ const SearchPage = () => {
   const handleSearch = async () => {
     setLoading(true);
     try {
+      const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
       const response = await axios.get(
-        `http://localhost:5000/api/search/users?query=${encodeURIComponent(
-          query
-        )}&excludeId=${currentUserId}`,
+        `${baseURL}/api/search/users?query=${encodeURIComponent(query)}&excludeId=${currentUserId}`,
         { withCredentials: true }
       );
       setResults(response.data);
@@ -274,68 +273,47 @@ const SearchPage = () => {
                     {users.map((user, index) => (
                       <motion.div
                         key={user._id}
-                        initial={{ opacity: 0, y: 30 }}
+                        initial={{ opacity: 0, y: 24 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        whileHover={{ scale: 1.02, y: -5 }}
-                        className="group flex items-center bg-white rounded-2xl sm:rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-blue-300 overflow-hidden"
+                        transition={{ delay: index * 0.04 }}
+                        whileHover={{ scale: 1.015, y: -3 }}
+                        className="group flex items-center gap-4 sm:gap-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer border border-slate-100 hover:border-blue-300 overflow-hidden px-4 py-4 sm:px-5 sm:py-5"
                         onClick={() => handleProfileClick(user)}
                       >
-                        <div className="p-4 sm:p-6">
-                          <div className="relative">
+                        <div className="flex items-center gap-4 sm:gap-6 flex-1 min-w-0">
+                          <div className="relative flex-shrink-0">
                             <img
                               src={user.avatarUrl || "/default-avatar.png"}
                               alt={user.name}
                               onError={handleImgError}
-                              className="w-16 h-16 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-white shadow-xl group-hover:scale-110 transition-transform duration-300 ring-4 ring-blue-100"
+                              className="w-14 h-14 sm:w-20 sm:h-20 rounded-full object-cover border-4 border-white shadow-lg ring-2 sm:ring-4 ring-blue-100 group-hover:scale-105 transition-transform duration-300"
                             />
-                            <div className="absolute -bottom-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full border-4 border-white"></div>
+                            <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full border-2 sm:border-[3px] border-white"></div>
                           </div>
-                        </div>
-                        <div className="flex-1 p-3 sm:p-6 pr-3 sm:pr-4">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-1 sm:gap-0">
-                            <h3 className="text-lg sm:text-2xl font-black text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
-                              {user.name}
-                            </h3>
-                            <span className="text-xs sm:text-sm text-gray-500 font-medium">
-                              @{user.username}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1 sm:gap-2 mb-2 sm:mb-3">
-                            {user.skills &&
-                              user.skills.slice(0, 3).map((skill, idx) => (
-                                <span
-                                  key={idx}
-                                  className="bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs font-semibold"
-                                >
-                                  {skill}
-                                </span>
-                              ))}
-                            {user.skills && user.skills.length > 3 && (
-                              <span className="bg-gray-100 text-gray-600 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs font-semibold">
-                                +{user.skills.length - 3}
+                          <div className="flex-1 min-w-0 space-y-1 sm:space-y-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 min-w-0">
+                              <h3 className="text-lg sm:text-xl font-semibold text-slate-900 leading-tight truncate group-hover:text-blue-600 transition-colors">
+                                {user.name || "Unnamed User"}
+                              </h3>
+                              <span className="text-xs sm:text-sm text-slate-500 font-medium truncate">
+                                @{user.username || "unknown"}
                               </span>
-                            )}
-                          </div>
-                          <p className="text-gray-600 text-xs sm:text-sm mb-2 sm:mb-3 flex items-center gap-1 sm:gap-2">
-                            <FiBriefcase className="text-indigo-500" />
-                            {user.position || user.department || user.major || "No position"}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="capitalize bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 px-2 sm:px-3 py-1 rounded-full font-bold">
-                              {user.role}
-                            </span>
+                            </div>
+                            <p className="text-xs sm:text-sm text-slate-600 flex items-center gap-1 truncate">
+                              <FiBriefcase className="text-indigo-500 flex-shrink-0" />
+                              {user.department || user.position || user.major || "Department not set"}
+                            </p>
                           </div>
                         </div>
-                        <div className="p-3 sm:p-6">
+                        <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
                           <button
-                            className={`px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all duration-300 transform hover:scale-105 shadow-lg whitespace-nowrap ${
+                            className={`px-3 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 shadow-sm whitespace-nowrap ${
                               connectionStatuses[user._id] === "connected"
-                                ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                                 : connectionStatuses[user._id] === "requested" ||
                                   connectionStatuses[user._id] === "pending"
-                                ? "bg-yellow-100 text-yellow-700 cursor-not-allowed"
-                                : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl"
+                                ? "bg-amber-100 text-amber-700 cursor-not-allowed"
+                                : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700"
                             }`}
                             disabled={
                               connectionStatuses[user._id] === "pending" ||
@@ -345,12 +323,21 @@ const SearchPage = () => {
                             onClick={(e) => handleConnect(e, user._id)}
                           >
                             {connectionStatuses[user._id] === "pending"
-                              ? "⏳ Pending"
+                              ? "Pending"
                               : connectionStatuses[user._id] === "requested"
-                              ? "📤 Requested"
+                              ? "Requested"
                               : connectionStatuses[user._id] === "connected"
-                              ? "✅ Connected"
-                              : "🔗 Connect"}
+                              ? "Connected"
+                              : "Connect"}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleProfileClick(user);
+                            }}
+                            className="hidden sm:inline-flex px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:bg-slate-50 transition-colors"
+                          >
+                            View Profile
                           </button>
                         </div>
                       </motion.div>

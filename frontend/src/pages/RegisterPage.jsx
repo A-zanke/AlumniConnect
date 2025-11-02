@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from "../context/AuthContext";
 import "./RegisterPage.css";
 
@@ -25,6 +26,8 @@ const RegisterPage = () => {
   const [loading, setLoading] = useState(false);         // overall submit loading
   const [otpLoading, setOtpLoading] = useState(false);   // send OTP button loading
   const [verifyLoading, setVerifyLoading] = useState(false); // verify OTP button loading
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const { register, sendOtp, verifyOtp, checkUsername } = useAuth();
   const [otpSent, setOtpSent] = useState(false);
@@ -390,27 +393,47 @@ const RegisterPage = () => {
             {/* Passwords */}
             <div className="register-field">
               <label>Password</label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                placeholder="Create a password"
-              />
+              <div className="register-password-wrapper">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  placeholder="Create a password"
+                />
+                <button
+                  type="button"
+                  className="register-password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
               <small>Min 6 characters. Use a mix for better security.</small>
             </div>
 
             <div className="register-field">
               <label>Confirm Password</label>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                required
-                placeholder="Confirm your password"
-              />
+              <div className="register-password-wrapper">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  required
+                  placeholder="Confirm your password"
+                />
+                <button
+                  type="button"
+                  className="register-password-toggle"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
             </div>
 
             <button
