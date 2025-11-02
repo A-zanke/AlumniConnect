@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { forumAPI } from '../utils/forumApi';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,6 +25,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   const [userReaction, setUserReaction] = useState(null);
   const [showReactors, setShowReactors] = useState(false);
   const [reactors, setReactors] = useState([]);
+  const reactionPickerRef = useRef(null);
   const navigate = useNavigate();
 
   const preview = useMemo(() => {
@@ -67,24 +68,31 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
 
   const [reactionCounts, setReactionCounts] = useState(() => computeCounts(post.reactions));
 
-  const topReactions = useMemo(() => {
-    const entries = Object.entries(reactionCounts || {}).filter(([, c]) => c > 0);
-    entries.sort((a, b) => b[1] - a[1]);
-    const top = entries.slice(0, 3);
-    const total = entries.reduce((s, [, c]) => s + c, 0);
-    const topSum = top.reduce((s, [, c]) => s + c, 0);
-    const rest = Math.max(total - topSum, 0);
-    return { top, rest, total };
-  }, [reactionCounts]);
+  const reactionSummaryList = useMemo(
+    () =>
+      Object.entries(reactionCounts || {})
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1]),
+    [reactionCounts]
+  );
 
-  // Get top 3 reactions for summary display (array of [type,count])
-  const getTopReactions = useMemo(() => {
-    const entries = Object.entries(reactionCounts)
-      .filter(([, count]) => count > 0)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
-    return entries;
-  }, [reactionCounts]);
+  const summaryTotal = useMemo(
+    () => reactionSummaryList.reduce((total, [, count]) => total + count, 0),
+    [reactionSummaryList]
+  );
+
+  React.useEffect(() => {
+    if (!showReactionsPicker) return;
+    const handleClickOutside = (event) => {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(event.target)) {
+        setShowReactionsPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showReactionsPicker]);
 
   const handleReaction = async (type = 'like') => {
     if (isLoading) return;
@@ -404,30 +412,59 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
           </div>
         )}
 
-        {/* Author and Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-600">
-              By <Author />
+        {/* Author & actions */}
+        <div className="pt-4 border-t border-gray-100 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-gray-600">
+                By <Author />
+              </div>
+              <span className="text-gray-400">•</span>
+              <span className="text-sm text-gray-500">
+                {new Date(post.createdAt).toLocaleDateString()}
+              </span>
             </div>
-            <span className="text-gray-400">•</span>
-            <span className="text-sm text-gray-500">
-              {new Date(post.createdAt).toLocaleDateString()}
+
+            <div className="flex items-center gap-6 text-xs sm:text-sm text-gray-500">
+              <span>{post.commentCount || 0} comments</span>
+              {typeof post.shareCount === 'number' && (
+                <span>{post.shareCount} shares</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+            {summaryTotal > 0 ? (
+              <button
+                onClick={openReactors}
+                className="flex items-center gap-3 px-4 py-2 rounded-full bg-gray-50 text-gray-700 hover:bg-gray-100 transition-all"
+              >
+                <span className="flex items-center gap-2 flex-wrap">
+                  {reactionSummaryList.map(([type, count]) => (
+                    <span key={type} className="flex items-center gap-1 text-sm">
+                      <span className="text-lg leading-none">{EMOJI_BY_KEY[type] || '👍'}</span>
+                      <span className="font-medium">{count}</span>
+                    </span>
+                  ))}
+                </span>
+                <span className="font-semibold text-sm sm:text-base">{summaryTotal}</span>
+              </button>
+            ) : (
+              <span className="text-gray-500">Be the first to react</span>
+            )}
+
+            <span className="text-xs sm:text-sm text-gray-500">
+              Updated {new Date(post.updatedAt || post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 relative">
-            {/* Reactions */}
-            <div
-              className="flex items-center gap-2 relative"
-              onMouseEnter={() => setShowReactionsPicker(true)}
-              onMouseLeave={() => setShowReactionsPicker(false)}
-            >
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            <div ref={reactionPickerRef} className="relative">
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowReactionsPicker(v => !v)}
                 disabled={isLoading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
+                className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-full font-medium transition-all ${
                   userReaction
                     ? 'bg-red-50 text-red-600 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-700 hover:bg-red-50 hover:text-red-600'
@@ -439,14 +476,11 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                 ) : (
                   <FiHeart className={post.hasUserReacted ? 'fill-current' : ''} />
                 )}
-                <span onClick={(e) => { e.stopPropagation(); openReactors(); }} className="cursor-pointer" title="View who reacted">
-                  {reactionCount}
-                </span>
+                <span className="hidden sm:inline font-medium">React</span>
               </motion.button>
 
-              {/* Reaction Picker */}
               {showReactionsPicker && (
-                <div className="absolute -top-12 left-0 bg-white border border-gray-200 rounded-full shadow p-2 flex gap-2 z-10">
+                <div className="absolute left-1/2 -translate-x-1/2 -top-16 sm:-top-14 bg-white border border-gray-200 rounded-full shadow-lg p-2 flex flex-wrap gap-1 justify-center w-max max-w-[calc(100vw-2rem)] z-20">
                   {REACTIONS.map(r => (
                     <button
                       key={r.key}
@@ -459,52 +493,38 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                   ))}
                 </div>
               )}
-              {/* Inline top-3 summary next to the button */}
-              {topReactions.total > 0 && (
-                <div className="flex items-center gap-1 text-sm text-gray-600 ml-1">
-                  {topReactions.top.map(([type, count]) => (
-                    <span key={type} className="flex items-center gap-0.5">
-                      <span className="text-base leading-none">{EMOJI_BY_KEY[type] || '👍'}</span>
-                      <span className="font-medium">{count}</span>
-                    </span>
-                  ))}
-                  {topReactions.rest > 0 && (
-                    <span className="text-xs text-gray-500">+{topReactions.rest}</span>
-                  )}
-                </div>
-              )}
             </div>
 
-            {/* Comment Button */}
             <Link
               to={`/forum/${post._id}`}
-              className="flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-all"
+              className="flex items-center justify-center gap-2 px-3 py-2 rounded-full font-medium bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-all"
             >
-              <FiMessageSquare />
-              <span>{post.commentCount || 0}</span>
+              <FiMessageSquare className="w-4 h-4" />
+              <span className="hidden sm:inline">Comment</span>
+              <span className="sm:hidden text-sm">{post.commentCount || 0}</span>
             </Link>
 
-            {/* Share Button */}
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowShareModal(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-gray-50 text-gray-700 hover:bg-green-50 hover:text-green-600 transition-all"
+              className="flex items-center justify-center gap-2 px-3 py-2 rounded-full font-medium bg-gray-50 text-gray-700 hover:bg-green-50 hover:text-green-600 transition-all"
             >
-              <FiShare2 />
+              <FiShare2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Share</span>
             </motion.button>
 
-            {/* Bookmark Button */}
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={handleBookmark}
               disabled={isLoading}
-              className={`p-2 rounded-full transition-all ${
+              className={`flex items-center justify-center gap-2 px-3 py-2 rounded-full transition-all ${
                 post.hasUserBookmarked
                   ? 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100'
                   : 'bg-gray-50 text-gray-700 hover:bg-yellow-50 hover:text-yellow-600'
               }`}
             >
-              <FiBookmark className={post.hasUserBookmarked ? 'fill-current' : ''} />
+              <FiBookmark className={post.hasUserBookmarked ? 'fill-current w-4 h-4' : 'w-4 h-4'} />
+              <span className="hidden sm:inline">Save</span>
             </motion.button>
           </div>
         </div>

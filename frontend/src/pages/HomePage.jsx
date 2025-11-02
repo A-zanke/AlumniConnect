@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FaUserGraduate, FaUsers, FaCalendarAlt, FaComments, FaNetworkWired, 
   FaRocket, FaGraduationCap, FaHeart, FaStar, FaThumbsUp, FaShare, FaComment,
-  FaUserFriends, FaHandshake, FaBriefcase, FaGithub, FaLinkedin, FaTwitter,
+  FaUserFriends, FaHandshake, FaBriefcase, FaGithub, FaLinkedin,
   FaMapMarkerAlt, FaPhone, FaEnvelope, FaChevronLeft, FaChevronRight,
   FaInstagram, FaFacebook, FaPlay, FaPause, FaQuoteLeft, FaLightbulb,
   FaChartLine, FaBell, FaAward, FaTrophy, FaBook, FaMedal
@@ -17,11 +17,17 @@ import jobImage from '../assets/generated_images/Job_and_Event_Updates_ba694180.
 import aiImage from '../assets/generated_images/AI_Recommendations_System_8ecce832.png';
 import networkImage from '../assets/generated_images/Social_Networking_Platform_d78c65ce.png';
 import updatesImage from '../assets/generated_images/College_Updates_System_6da2d9ea.png';
-
+import dummyImg from '../assets/images/Alumni1.png'
 // Import your assets
 import campusvdo from '../assets/generated-video.mp4';
 import campusvdo2 from '../assets/video (1).mp4';
 import ashishImg from '../assets/images/Ashish zanke.jpg';
+import prajeshImg from '../assets/images/Prajesh kadam.png';
+import kunalImg from '../assets/images/Kunal mahajan.jpg';
+import sachinImg from '../assets/images/Sachin gunjakar.png';
+import deanImg from '../assets/images/Dean.jpg';
+import hodImg from '../assets/images/Hod.jpg';
+import athrvaImg from '../assets/images/AtharvaD.png'
 
 const HomePage = () => {
   const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
@@ -96,14 +102,14 @@ const HomePage = () => {
   // Professional testimonials (reduced to 3)
   const testimonials = [
     {
-      name: "Sarah Chen",
-      role: "Senior Software Engineer",
+      name: "Atharva Domale",
+      role: "Data Scientist",
       company: "Google Inc.",
-      department: "Computer Science",
-      graduationYear: "Class of 2018",
+      department: "Artificial intelligence & Data Science",
+      graduationYear: "Class of 2025",
       feedback: "The alumni network transformed my career trajectory. Through the mentorship program, I connected with industry leaders who provided invaluable guidance. The platform's AI-powered recommendations helped me discover opportunities I never knew existed.",
       rating: 5,
-      image: "../assets/images/Alumni1.png",
+      image: athrvaImg,
       linkedIn: "linkedin.com/in/sarahchen"
     },
     {
@@ -114,7 +120,7 @@ const HomePage = () => {
       graduationYear: "Class of 2017",
       feedback: "This platform is more than a network—it's a community. The real-time chat feature kept me connected with my batchmates globally, and the job board helped me land my dream role at Microsoft. Truly exceptional experience.",
       rating: 5,
-      image: "/assets/images/avatars/michael-rodriguez.jpg",
+      image: dummyImg,
       linkedIn: "linkedin.com/in/mrodriguez"
     },
     {
@@ -125,7 +131,7 @@ const HomePage = () => {
       graduationYear: "Class of 2015",
       feedback: "The forum discussions allowed me to collaborate with fellow alumni on cutting-edge research. The platform's professional ecosystem fostered meaningful connections that led to groundbreaking partnerships in renewable energy technology.",
       rating: 5,
-      image: "/assets/images/avatars/priya-sharma.jpg",
+      image: dummyImg,
       linkedIn: "linkedin.com/in/drpriyasharma"
     }
   ];
@@ -133,11 +139,11 @@ const HomePage = () => {
   // Faculty/Deans data with enhanced information
   const faculty = [
     {
-      name: "Dr. max Wilson",
+      name: "Dr. Nilesh G patil",
       title: "Dean of Engineering",
       department: "Computer Science & Engineering",
       badge: "Dean",
-      // image: "../assets/images/Alumni1.png",
+      image: deanImg,
       bio: "Leading innovation in computer science education with over 20 years of experience in academia and industry research.",
       email: "j.wilson@mitaoe.ac.in",
       education: "Ph.D. Computer Science, MIT USA",
@@ -146,11 +152,11 @@ const HomePage = () => {
       awards: ["IEEE Fellow 2020", "Best Educator Award 2019"]
     },
     {
-      name: "Dr. Maria Garcia",
-      title: "Head of Technology",
-      department: "Information Technology", 
+      name: "Dr. Kavita Bhosale",
+      title: "Head of Department",
+      department: "Artificial intelligence and Data Science", 
       badge: "Department Head",
-      image: "../assets/images/Alumni1.png",
+      image: hodImg,
       bio: "Pioneering advanced research in artificial intelligence and machine learning, mentoring the next generation of tech leaders.",
       email: "m.garcia@mitaoe.ac.in",
       education: "Ph.D. Information Technology, Stanford University",
@@ -169,37 +175,37 @@ const HomePage = () => {
       image: ashishImg,
       department: "Machine Learning",
       expertise: ["Deep Learning", "NLP", "Computer Vision"],
-      social: { github: "#", linkedin: "#", twitter: "#" },
+      social: { github: "#", linkedin: "#"},
       bio: "Specialized in building scalable AI solutions with 5+ years of experience"
     },
     {
       name: "Prajesh Kadam", 
       role: "Senior Data Scientist",
       title: "Backend Architecture Lead",
-      // image: "/assets/images/team/prajesh-kadam.jpg",
+      image: prajeshImg, 
       department: "Data Engineering",
       expertise: ["Big Data", "ML Pipelines", "Cloud Infrastructure"],
-      social: { github: "#", linkedin: "#", twitter: "#" },
+      social: { github: "https://github.com/prajesh125", linkedin: "https://www.linkedin.com/in/prajesh-kadam-a72041258" },
       bio: "Expert in designing robust data pipelines and distributed systems"
     },
     {
       name: "Sachin Gunjkar",
       role: "Data Scientist", 
       title: "Full Stack Developer",
-      // image: "/assets/images/team/sachin-gunjkar.jpg",
+      image: sachinImg,
       department: "Software Development",
       expertise: ["React", "Node.js", "Database Design"],
-      social: { github: "#", linkedin: "#", twitter: "#" },
+      social: { github: "#", linkedin: "#" },
       bio: "Passionate about creating seamless user experiences with modern tech"
     },
     {
       name: "Kunal Mahajan",
       role: "ML Engineer",
       title: "AI Research Engineer",
-      // image: "/assets/images/team/kunal-mahajan.jpg",
+      image: kunalImg,
       department: "Research & Development",
       expertise: ["Recommendation Systems", "Neural Networks", "TensorFlow"],
-      social: { github: "#", linkedin: "#", twitter: "#" },
+      social: { github: "https://github.com/KunalMahajan25", linkedin: "https://www.linkedin.com/in/kunal-mahajan-1b962434b"},
       bio: "Focused on cutting-edge AI research and production-ready ML models"
     }
   ];
@@ -932,7 +938,7 @@ const HomePage = () => {
                       </div>
                     </div>
                     {/* Status Indicator */}
-                    <div className="absolute -bottom-2 -right-2 bg-green-500 w-6 h-6 rounded-full border-4 border-slate-900"></div>
+                    
                   </motion.div>
 
                   {/* Member Info */}
@@ -979,13 +985,7 @@ const HomePage = () => {
                       >
                         <FaLinkedin size={24} />
                       </a>
-                      <a 
-                        href={member.social.twitter} 
-                        className="text-white/70 hover:text-sky-400 transition-colors duration-300 hover:scale-125 transform"
-                        aria-label="Twitter"
-                      >
-                        <FaTwitter size={24} />
-                      </a>
+                      
                     </div>
                   </div>
                 </div>
