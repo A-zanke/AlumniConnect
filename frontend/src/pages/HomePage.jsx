@@ -25,8 +25,8 @@ import ashishImg from '../assets/images/Ashish zanke.jpg';
 import prajeshImg from '../assets/images/Prajesh kadam.png';
 import kunalImg from '../assets/images/Kunal mahajan.jpg';
 import sachinImg from '../assets/images/Sachin gunjakar.png';
-import deanImg from '../assets/images/Dean.jpg';
-import hodImg from '../assets/images/Hod.jpg';
+// import deanImg from '../assets/images/Dean.jpg';
+// import hodImg from '../assets/images/Hod.jpg';
 import athrvaImg from '../assets/images/AtharvaD.png'
 
 const HomePage = () => {
@@ -143,7 +143,7 @@ const HomePage = () => {
       title: "Dean of Engineering",
       department: "Computer Science & Engineering",
       badge: "Dean",
-      image: deanImg,
+      // image: deanImg,
       bio: "Leading innovation in computer science education with over 20 years of experience in academia and industry research.",
       email: "j.wilson@mitaoe.ac.in",
       education: "Ph.D. Computer Science, MIT USA",
@@ -156,7 +156,7 @@ const HomePage = () => {
       title: "Head of Department",
       department: "Artificial intelligence and Data Science", 
       badge: "Department Head",
-      image: hodImg,
+      // image: hodImg,
       bio: "Pioneering advanced research in artificial intelligence and machine learning, mentoring the next generation of tech leaders.",
       email: "m.garcia@mitaoe.ac.in",
       education: "Ph.D. Information Technology, Stanford University",
@@ -170,20 +170,20 @@ const HomePage = () => {
   const teamMembers = [
     {
       name: "Ashish Zanke",
-      role: "Lead Data Scientist",
-      title: "Project Lead & AI Architect",
+      role: "Data Scientist",
+      title: "Project Lead & Full Stack Developer",
       image: ashishImg,
-      department: "Machine Learning",
-      expertise: ["Deep Learning", "NLP", "Computer Vision"],
-      social: { github: "#", linkedin: "#"},
-      bio: "Specialized in building scalable AI solutions with 5+ years of experience"
+      department: "Artificial Intelligence & Data Science",
+      expertise: ["Python", "Data Science", "Ai/ML", "Mern Stack"],
+      social: { github: "#", linkedin: "https://www.linkedin.com/in/ashish-zanke-3741b627a"},
+      bio: "Specialized in building scalable AI solutions "
     },
     {
       name: "Prajesh Kadam", 
-      role: "Senior Data Scientist",
+      role: "Data Scientist",
       title: "Backend Architecture Lead",
       image: prajeshImg, 
-      department: "Data Engineering",
+      department: "Artificial Intelligence & Data Science",
       expertise: ["Big Data", "ML Pipelines", "Cloud Infrastructure"],
       social: { github: "https://github.com/prajesh125", linkedin: "https://www.linkedin.com/in/prajesh-kadam-a72041258" },
       bio: "Expert in designing robust data pipelines and distributed systems"
@@ -1038,10 +1038,10 @@ const HomePage = () => {
                   <div className="flex-1">
                     <h3 className="text-2xl font-bold text-gray-800 mb-2">Address</h3>
                     <p className="text-gray-600 text-lg leading-relaxed">
-                      MIT Academy of Engineering<br />
-                      Alandi Road, Dehu Phata<br />
-                      Pune, Maharashtra 412105<br />
-                      India
+                      Maharashtra Institute of Technology<br />(Autonomous Institute)<br />
+                      Gate No 5, Beed Bypass Rd, Satara Parisar, <br />
+                      Chhatrapati Sambhajinagar, <br />
+                      Maharashtra 431010, India
                     </p>
                   </div>
                 </div>
@@ -1059,8 +1059,8 @@ const HomePage = () => {
                   </div>
                   <div className="flex-1">
                     <h3 className="text-2xl font-bold text-gray-800 mb-2">Phone</h3>
-                    <p className="text-gray-600 text-lg">+91 20 6681 3000</p>
-                    <p className="text-gray-600 text-lg">+91 20 6681 3001</p>
+                    <p className="text-gray-600 text-lg">+91-240-2375375</p>
+                    <p className="text-gray-600 text-lg">+91-240-2376154</p>
                   </div>
                 </div>
               </motion.div>
@@ -1077,8 +1077,7 @@ const HomePage = () => {
                   </div>
                   <div className="flex-1">
                     <h3 className="text-2xl font-bold text-gray-800 mb-2">Email</h3>
-                    <p className="text-gray-600 text-lg">alumni@mitaoe.ac.in</p>
-                    <p className="text-gray-600 text-lg">info@mitaoe.ac.in</p>
+                    <p className="text-gray-600 text-lg">admissions@mit.asia</p>
                   </div>
                 </div>
               </motion.div>
@@ -1093,7 +1092,7 @@ const HomePage = () => {
             >
               <div className="relative h-full rounded-2xl overflow-hidden shadow-2xl border-4 border-white group">
                 <iframe
-                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3780.1575407894847!2d73.93154931490034!3d18.637824387379654!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bc2c1a0c1e1c1c1%3A0x1c1c1c1c1c1c1c1c!2sMIT%20Academy%20of%20Engineering!5e0!3m2!1sen!2sin!4v1234567890123!5m2!1sen!2sin"
+                  src="https://www.google.com/maps/embed?pb=!1m12!1m8!1m3!1d120073.48077066877!2d75.3482569!3d19.8697077!3m2!1i1024!2i768!4f13.1!2m1!1smit%20aurangabad%20maharashtra!5e0!3m2!1sen!2sin!4v1762177861274!5m2!1sen!2sin"
                   width="100%"
                   height="100%"
                   style={{ border: 0 }}

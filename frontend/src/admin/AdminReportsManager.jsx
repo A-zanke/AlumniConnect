@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import AdminNavbar from "./AdminNavbar.jsx";
 import { motion } from "framer-motion";
+import AdminShell from "./AdminShell.jsx";
+import { Link } from "react-router-dom";
 import {
   FaCheckCircle,
   FaTimesCircle,
@@ -195,37 +196,50 @@ const AdminReportsManager = () => {
   const renderPreview = (report) => {
     if (report.targetType === "post") {
       return (
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">
-            Post by {report.targetId?.userId?.name}
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
+          <p className="text-sm text-slate-400">
+            Post by {" "}
+            <Link to={`/profile/id/${report.targetId?.userId?._id}`} className="text-indigo-300 hover:text-indigo-200">
+              {report.targetId?.userId?.name}
+            </Link>
+            {" · "}
+            <Link to={`/posts/${report.targetId?._id}`} className="underline">Open post</Link>
           </p>
-          <p className="text-gray-800">
+          <p className="mt-1 text-slate-100">
             {report.targetId?.content?.substring(0, 100)}...
           </p>
           {report.targetId?.media?.length > 0 && (
-            <p className="text-sm text-gray-500">Has media</p>
+            <p className="text-xs text-slate-400 mt-1">Has media</p>
           )}
         </div>
       );
     } else if (report.targetType === "comment") {
       return (
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">
-            Comment by {report.targetId?.userId?.name}
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
+          <p className="text-sm text-slate-400">
+            Comment by {" "}
+            <Link to={`/profile/id/${report.targetId?.userId?._id}`} className="text-indigo-300 hover:text-indigo-200">
+              {report.targetId?.userId?.name}
+            </Link>
           </p>
-          <p className="text-gray-800">
+          <p className="mt-1 text-slate-100">
             {report.targetId?.content?.substring(0, 100)}...
           </p>
         </div>
       );
     } else if (report.targetType === "forumPost") {
       return (
-        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">
-            Forum Post by {report.targetId?.author?.name}
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
+          <p className="text-sm text-slate-400">
+            Forum Post by {" "}
+            <Link to={`/profile/id/${report.targetId?.author?._id}`} className="text-indigo-300 hover:text-indigo-200">
+              {report.targetId?.author?.name}
+            </Link>
+            {" · "}
+            <Link to={`/forum/${report.targetId?._id}`} className="underline">Open thread</Link>
           </p>
-          <p className="font-semibold">{report.targetId?.title}</p>
-          <p className="text-gray-800">
+          <p className="font-semibold text-slate-100">{report.targetId?.title}</p>
+          <p className="text-slate-100">
             {report.targetId?.content?.substring(0, 100)}...
           </p>
         </div>
@@ -235,62 +249,38 @@ const AdminReportsManager = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <AdminNavbar />
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-xl p-6 mb-6"
-        >
-          <h2 className="text-3xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+    <AdminShell title="Reports Center" subtitle="Review post and forum reports; take actions quickly">
+      <div className="space-y-6 px-4 sm:px-6 lg:px-0">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
             <FaChartBar /> Reports Analytics
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-blue-600">
-                {analytics.total || 0}
-              </p>
-              <p className="text-sm text-gray-600">Total Reports</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-slate-200">
+            <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+              <p className="text-2xl font-bold text-indigo-300">{analytics.total || 0}</p>
+              <p className="text-xs text-slate-400">Total Reports</p>
             </div>
-            <div className="bg-yellow-50 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-yellow-600">
-                {analytics.pending || 0}
-              </p>
-              <p className="text-sm text-gray-600">Pending</p>
+            <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+              <p className="text-2xl font-bold text-amber-300">{analytics.pending || 0}</p>
+              <p className="text-xs text-slate-400">Pending</p>
             </div>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-green-600">
-                {analytics.resolved || 0}
-              </p>
-              <p className="text-sm text-gray-600">Resolved</p>
+            <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+              <p className="text-2xl font-bold text-emerald-300">{analytics.resolved || 0}</p>
+              <p className="text-xs text-slate-400">Resolved</p>
             </div>
-            <div className="bg-red-50 p-4 rounded-lg">
-              <p className="text-2xl font-bold text-red-600">
-                {Object.keys(analytics.byReason || {}).length}
-              </p>
-              <p className="text-sm text-gray-600">Unique Reasons</p>
+            <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+              <p className="text-2xl font-bold text-rose-300">{Object.keys(analytics.byReason || {}).length}</p>
+              <p className="text-xs text-slate-400">Unique Reasons</p>
             </div>
           </div>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-xl p-6"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-white/10 bg-white/5 p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-            <h2 className="text-3xl font-bold text-gray-800 mb-4 md:mb-0">
-              Reports Management
-            </h2>
+            <h2 className="text-2xl font-bold text-white mb-4 md:mb-0">Reports Management</h2>
 
             <div className="flex flex-col md:flex-row gap-2">
-              <select
-                value={reportTypeFilter}
-                onChange={(e) => setReportTypeFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg"
-              >
+              <select value={reportTypeFilter} onChange={(e) => setReportTypeFilter(e.target.value)} className="px-4 py-2 rounded-lg bg-slate-900/70 border border-white/10 text-slate-200">
                 <option value="all">All Types</option>
                 <option value="forum">Forum Posts</option>
                 <option value="posts">Community Posts</option>
@@ -304,7 +294,7 @@ const AdminReportsManager = () => {
                     className={`px-4 py-2 rounded-lg font-semibold capitalize transition-all ${
                       statusFilter === f
                         ? "bg-indigo-600 text-white shadow-lg"
-                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        : "bg-white/10 text-slate-200 hover:bg-white/20"
                     }`}
                   >
                     {f}
@@ -316,16 +306,10 @@ const AdminReportsManager = () => {
 
           {selectedReports.length > 0 && (
             <div className="mb-4 flex gap-2">
-              <button
-                onClick={handleBulkResolve}
-                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold"
-              >
+              <button onClick={handleBulkResolve} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold">
                 Bulk Resolve ({selectedReports.length})
               </button>
-              <button
-                onClick={handleBulkDismiss}
-                className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold"
-              >
+              <button onClick={handleBulkDismiss} className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-semibold">
                 Bulk Dismiss ({selectedReports.length})
               </button>
             </div>
@@ -338,56 +322,37 @@ const AdminReportsManager = () => {
           ) : (
             <div className="space-y-4">
               {reports.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  No reports found
-                </div>
+                <div className="text-center py-12 text-slate-400">No reports found</div>
               ) : (
                 reports.map((report) => (
-                  <motion.div
-                    key={report._id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-200"
-                  >
+                  <motion.div key={report._id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="rounded-xl border border-white/10 bg-white/5 p-6">
                     <div className="flex items-start gap-4">
                       <input
                         type="checkbox"
                         checked={selectedReports.includes(report._id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedReports([
-                              ...selectedReports,
-                              report._id,
-                            ]);
+                            setSelectedReports([...selectedReports, report._id]);
                           } else {
-                            setSelectedReports(
-                              selectedReports.filter((id) => id !== report._id)
-                            );
+                            setSelectedReports(selectedReports.filter((id) => id !== report._id));
                           }
                         }}
                         className="mt-1"
                       />
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3">
+                        <div className="mb-3 flex items-center gap-3">
                           {getStatusBadge(report.resolved)}
-                          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold capitalize">
-                            {report.targetType === "forumPost"
-                              ? "Forum"
-                              : report.targetType}
+                          <span className="px-3 py-1 rounded-full text-xs font-semibold capitalize bg-indigo-500/20 text-indigo-200">
+                            {report.targetType === "forumPost" ? "Forum" : report.targetType}
                           </span>
-                          <FaExclamationTriangle
-                            className={getSeverityColor(report.reason)}
-                          />
+                          <FaExclamationTriangle className={getSeverityColor(report.reason)} />
                         </div>
 
-                        <p className="text-gray-800 font-semibold mb-2">
+                        <p className="text-slate-200 font-semibold mb-2">
                           Reporter:{" "}
-                          <a
-                            href={`/profile/${report.reporter?._id}`}
-                            className="text-blue-600 hover:underline"
-                          >
+                          <Link to={`/profile/id/${report.reporter?._id}`} className="text-indigo-300 hover:text-indigo-200">
                             {report.reporter?.name}
-                          </a>{" "}
+                          </Link>{" "}
                           ({report.reporter?.role})
                         </p>
                         <p className="text-gray-600 mb-2">
@@ -433,7 +398,7 @@ const AdminReportsManager = () => {
                                 : "Dismissed";
                               handleResolve(report._id, note || "", action);
                             }}
-                            className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-all"
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold transition-all"
                           >
                             <FaCheckCircle />
                             Resolve
@@ -441,7 +406,7 @@ const AdminReportsManager = () => {
                         )}
                         <button
                           onClick={() => handleDeleteContent(report)}
-                          className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold transition-all"
+                          className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold transition-all"
                         >
                           <FaTrash />
                           Delete Content
@@ -453,21 +418,21 @@ const AdminReportsManager = () => {
                                 report.targetId?.author?._id
                             )
                           }
-                          className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all"
+                          className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold transition-all"
                         >
                           <FaUserSlash />
                           Ban User
                         </button>
                         <button
                           onClick={() => handleDelete(report._id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-all"
+                          className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-semibold transition-all"
                         >
                           <FaTrash />
                           Delete Report
                         </button>
                         <button
                           onClick={() => setSelectedReport(report)}
-                          className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition-all"
+                          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold transition-all"
                         >
                           <FaEye />
                           View Full
@@ -481,7 +446,7 @@ const AdminReportsManager = () => {
           )}
         </motion.div>
       </div>
-    </div>
+    </AdminShell>
   );
 };
 

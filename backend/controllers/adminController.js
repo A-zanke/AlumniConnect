@@ -33,17 +33,62 @@ const getAnalytics = async (req, res) => {
       posts,
       reports,
       postReports,
+      topPosts,
     ] = await Promise.all([
-      User.find({ role: "student" }).select("department year createdAt"),
-      User.find({ role: "teacher" }).select("department createdAt"),
+      User.find({ role: "student" }).select("department year createdAt isOnline lastSeen"),
+      User.find({ role: "teacher" }).select("department createdAt isOnline lastSeen"),
       User.find({ role: "alumni" }).select(
-        "graduationYear company industry createdAt"
+        "graduationYear company industry createdAt isOnline lastSeen"
       ),
       Event.find({}).select("createdAt createdBy status"),
       ForumPost.find({ isDeleted: { $ne: true } }).select("createdAt"),
       Post.find({}).populate("userId", "department").select("createdAt"),
       ForumReport.find({}).select("resolved createdAt"),
       PostReport.find({}).select("resolved createdAt"),
+      Post.aggregate([
+        {
+          $project: {
+            title: 1,
+            content: 1,
+            createdAt: 1,
+            userId: 1,
+            reactionCount: { $size: { $ifNull: ["$reactions", []] } },
+            commentCount: { $size: { $ifNull: ["$comments", []] } },
+            shareCount: { $size: { $ifNull: ["$shares", []] } },
+          },
+        },
+        {
+          $addFields: {
+            engagementScore: {
+              $add: ["$reactionCount", "$commentCount", "$shareCount"],
+            },
+          },
+        },
+        { $sort: { engagementScore: -1, createdAt: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "user",
+          },
+        },
+        { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            title: 1,
+            content: 1,
+            createdAt: 1,
+            engagementScore: 1,
+            reactionCount: 1,
+            commentCount: 1,
+            shareCount: 1,
+            "user._id": 1,
+            "user.name": 1,
+          },
+        },
+      ]),
     ]);
 
     // Monthly buckets for last 12 months
@@ -62,6 +107,24 @@ const getAnalytics = async (req, res) => {
         arr.push(
           `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`
         );
+      }
+      return arr;
+    })();
+    const last12Weeks = (() => {
+      const arr = [];
+      const now = new Date();
+      // align to Monday of current week
+      const d = new Date(now);
+      const day = d.getDay();
+      const diff = (day === 0 ? -6 : 1) - day; // Monday as start
+      d.setDate(d.getDate() + diff);
+      for (let i = 11; i >= 0; i--) {
+        const wd = new Date(d);
+        wd.setDate(d.getDate() - i * 7);
+        const y = wd.getFullYear();
+        const m = String(wd.getMonth() + 1).padStart(2, "0");
+        const dayStr = String(wd.getDate()).padStart(2, "0");
+        arr.push(`${y}-${m}-${dayStr}`);
       }
       return arr;
     })();
@@ -99,6 +162,60 @@ const getAnalytics = async (req, res) => {
         (postSeries[toMonthKey(p.createdAt)] || 0) + 1;
     });
 
+    // Reports series by month
+    const reportsStatus = last12Keys.reduce((acc, k) => {
+      acc[k] = { pending: 0, resolved: 0 };
+      return acc;
+    }, {});
+    const reportsType = last12Keys.reduce((acc, k) => {
+      acc[k] = { forum: 0, posts: 0 };
+      return acc;
+    }, {});
+    reports.forEach((r) => {
+      const k = toMonthKey(r.createdAt);
+      reportsType[k].forum += 1;
+      if (r.resolved) reportsStatus[k].resolved += 1;
+      else reportsStatus[k].pending += 1;
+    });
+    postReports.forEach((r) => {
+      const k = toMonthKey(r.createdAt);
+      reportsType[k].posts += 1;
+      if (r.resolved) reportsStatus[k].resolved += 1;
+      else reportsStatus[k].pending += 1;
+    });
+
+    // Active vs inactive by role (active = lastSeen within 7 days OR isOnline)
+    const isActive = (u) => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      return Boolean(u.isOnline) || (u.lastSeen && new Date(u.lastSeen) >= sevenDaysAgo);
+    };
+    const activeInactiveByRole = [
+      {
+        role: "Students",
+        active: students.filter(isActive).length,
+        inactive: students.length - students.filter(isActive).length,
+      },
+      {
+        role: "Teachers",
+        active: teachers.filter(isActive).length,
+        inactive: teachers.length - teachers.filter(isActive).length,
+      },
+      {
+        role: "Alumni",
+        active: alumni.filter(isActive).length,
+        inactive: alumni.length - alumni.filter(isActive).length,
+      },
+    ];
+
+    // Active users by month (any role) using lastSeen
+    const activeByMonth = last12Keys.reduce((acc, k) => ({ ...acc, [k]: 0 }), {});
+    const allUsers = [...students, ...teachers, ...alumni];
+    allUsers.forEach((u) => {
+      if (!u.lastSeen) return;
+      const k = toMonthKey(u.lastSeen);
+      if (k in activeByMonth) activeByMonth[k] += 1;
+    });
+
     const eventReqStats = {
       pending: events.filter((e) => e.status === "pending").length,
       active: events.filter((e) => e.status === "active").length,
@@ -108,10 +225,17 @@ const getAnalytics = async (req, res) => {
     // Post-related stats
     const totalPostReports = postReports.length;
     const unresolvedPostReports = postReports.filter((r) => !r.resolved).length;
-    const mostEngagedPosts = await Post.find({})
-      .sort({ "reactions.length": -1, "comments.length": -1 })
-      .limit(5)
-      .populate("userId", "name");
+    const mostEngagedPosts = topPosts.map((p) => ({
+      _id: p._id,
+      title: p.title,
+      content: p.content,
+      createdAt: p.createdAt,
+      engagementScore: p.engagementScore,
+      reactionCount: p.reactionCount,
+      commentCount: p.commentCount,
+      shareCount: p.shareCount,
+      user: p.user ? { _id: p.user._id, name: p.user.name } : null,
+    }));
     const postsByDepartment = countBy(posts, "userId.department");
 
     const stats = {
@@ -126,6 +250,12 @@ const getAnalytics = async (req, res) => {
       unresolvedPostReports,
       mostEngagedPosts,
       postsByDepartment,
+      usersByRole: [
+        { name: "Students", value: students.length },
+        { name: "Teachers", value: teachers.length },
+        { name: "Alumni", value: alumni.length },
+      ],
+      activeInactiveByRole,
       studentByDepartment: countBy(students, "department"),
       studentByYear: countBy(students, "year"),
       alumniByGraduationYear: countBy(alumni, "graduationYear"),
@@ -152,6 +282,17 @@ const getAnalytics = async (req, res) => {
         month: k,
         posts: postSeries[k] || 0,
       })),
+      reportsStatusSeries: last12Keys.map((k) => ({
+        month: k,
+        pending: reportsStatus[k].pending,
+        resolved: reportsStatus[k].resolved,
+      })),
+      reportsTypeSeries: last12Keys.map((k) => ({
+        month: k,
+        forum: reportsType[k].forum,
+        posts: reportsType[k].posts,
+      })),
+      activeUsersSeries: last12Keys.map((k) => ({ month: k, active: activeByMonth[k] || 0 })),
       eventRequestStats: [
         { name: "Pending", value: eventReqStats.pending },
         { name: "Active", value: eventReqStats.active },

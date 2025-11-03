@@ -33,12 +33,16 @@ import AdminForumManager from "./admin/AdminForumManager.jsx";
 import AdminUserList from "./admin/AdminUserList.jsx";
 import AdminEventList from "./admin/AdminEventList.jsx";
 import AdminEventDetail from "./admin/AdminEventDetail.jsx";
+import AdminPostsManager from "./admin/AdminPostsManager.jsx";
+import AdminReportsManager from "./admin/AdminReportsManager.jsx";
+import AdminSettings from "./admin/AdminSettings.jsx";
 import { AvatarPreviewProvider } from "./components/ui/AvatarPreviewProvider";
 
 function RouteAwareLayout({ children }) {
   const location = useLocation();
   const isMessagesRoute = location.pathname.startsWith("/messages");
   const isProfileRoute = location.pathname.startsWith("/profile");
+  const isAdminRoute = location.pathname.startsWith("/admin");
   const [isDesktop, setIsDesktop] = useState(() => {
     if (typeof window === "undefined") return true;
     return window.innerWidth >= 1024;
@@ -54,7 +58,17 @@ function RouteAwareLayout({ children }) {
     return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
-  const showChatbot = !isMessagesRoute && (!isProfileRoute || isDesktop);
+  const showChatbot =
+    !isAdminRoute && !isMessagesRoute && (!isProfileRoute || isDesktop);
+
+  if (isAdminRoute) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-950">
+        <Navbar />
+        <main className="flex-grow">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -199,6 +213,38 @@ function App() {
                   element={
                     <PrivateRoute roles={["admin"]}>
                       <AdminEventDetail />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/posts"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <PostsPage />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/reports"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminReportsManager />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/settings"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminSettings />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/network"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <NetworkPage />
                     </PrivateRoute>
                   }
                 />

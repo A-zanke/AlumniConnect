@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import AdminNavbar from './AdminNavbar.jsx';
+import { Link } from 'react-router-dom';
 import { exportToCsv } from './utils/csv';
+import AdminShell from './AdminShell.jsx';
+import { DataPanel, TableShell } from './components/AdminPrimitives.jsx';
+
+const FilterChip = ({ label, value, render }) => (
+  <label className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300 shadow-inner shadow-white/5">
+    <span className="pl-1 text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">{label}</span>
+    {render(value)}
+  </label>
+);
 
 const AdminForumManager = () => {
   const [posts, setPosts] = useState([]);
@@ -32,52 +41,106 @@ const AdminForumManager = () => {
 
   const displayed = useMemo(() => posts, [posts]);
 
-  return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <AdminNavbar />
-      <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 12 }}>Forum Manager</h2>
+  if (loading) {
+    return (
+      <AdminShell title="Loading forum" subtitle="Gathering the latest campus conversations">
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-20 w-20 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+        </div>
+      </AdminShell>
+    );
+  }
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <input placeholder="Search" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 8, border: '1px solid #e5e7eb', borderRadius: 8 }} />
-        <input placeholder="Category" value={category} onChange={e => setCategory(e.target.value)} style={{ padding: 8, border: '1px solid #e5e7eb', borderRadius: 8 }} />
-        <button onClick={fetchPosts} style={{ padding: '8px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8 }}>Filter</button>
-        <button onClick={() => exportToCsv(`forum_${new Date().toISOString().slice(0,10)}.csv`, displayed)} style={{ padding: '8px 12px', background: '#111827', color: '#fff', border: 'none', borderRadius: 8 }}>Download CSV</button>
+  return (
+    <AdminShell
+      title="Forum Intelligence"
+      subtitle="Moderate threads, decode engagement, keep the community vibrant"
+      rightSlot={
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => exportToCsv(`forum_${new Date().toISOString().slice(0,10)}.csv`, displayed)}
+            className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white shadow-lg shadow-indigo-500/30 transition hover:brightness-110"
+          >
+            Download CSV
+          </button>
+        </div>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <FilterChip
+          label="Search"
+          value={q}
+          render={(value) => (
+            <input
+              placeholder="Find topics"
+              value={value}
+              onChange={(e) => setQ(e.target.value)}
+              className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-indigo-400"
+            />
+          )}
+        />
+        <FilterChip
+          label="Category"
+          value={category}
+          render={(value) => (
+            <input
+              placeholder="Department, interest..."
+              value={value}
+              onChange={(e) => setCategory(e.target.value)}
+              className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-slate-500 outline-none focus:border-indigo-400"
+            />
+          )}
+        />
+        <FilterChip
+          label="Actions"
+          value={null}
+          render={() => (
+            <button
+              onClick={fetchPosts}
+              className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-100 transition hover:border-white/30 hover:bg-white/20"
+            >
+              Apply Filters
+            </button>
+          )}
+        />
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Title</th>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Author</th>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Created</th>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayed.map(p => (
-                <tr key={p._id}>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>{p.title}</td>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>{p.author?.name} ({p.author?.role})</td>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>{new Date(p.createdAt).toLocaleString()}</td>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>
-                    <button onClick={() => onDelete(p._id)} style={{ padding: '6px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8 }}>Delete</button>
-                  </td>
-                </tr>
-              ))}
-              {displayed.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 12 }}>No posts found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+      <DataPanel title="Threads Radar" description="Spotlight on the latest conversations across campus">
+        <TableShell headers={['Title', 'Author', 'Created', 'Actions']}>
+          {displayed.map((p) => (
+            <tr key={p._id} className="hover:bg-white/5">
+              <td className="px-4 py-4 font-semibold text-slate-100">
+                <Link to={`/forum/${p._id}`} className="text-indigo-200 hover:text-indigo-100">
+                  {p.title}
+                </Link>
+              </td>
+              <td className="px-4 py-4 text-slate-300">
+                <Link to={`/profile/id/${p.author?._id}`} className="hover:underline">
+                  {p.author?.name}
+                </Link> ({p.author?.role})
+              </td>
+              <td className="px-4 py-4 text-slate-300">{new Date(p.createdAt).toLocaleString()}</td>
+              <td className="px-4 py-4">
+                <button
+                  onClick={() => onDelete(p._id)}
+                  className="rounded-xl bg-red-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-red-200 transition hover:bg-red-500/30"
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+          {displayed.length === 0 && (
+            <tr>
+              <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
+                No posts found
+              </td>
+            </tr>
+          )}
+        </TableShell>
+      </DataPanel>
+    </AdminShell>
   );
 };
 
 export default AdminForumManager;
-

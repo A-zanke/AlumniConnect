@@ -471,28 +471,28 @@ export default function About() {
 
   const developers = [
     {
-      name: "Ashish Kumar",
+      name: "Ashish Zanke",
       role: "Project Lead & Full Stack Developer",
       bio: "Leading the AlumniConnect initiative with a vision to bridge the gap between students and alumni through innovative technology solutions.",
       skills: ["React", "Node.js", "System Design", "Team Leadership"],
       social: { github: "#", linkedin: "#" }
     },
     {
-      name: "Kunal Sharma",
+      name: "Kunal Mahajan",
       role: "Frontend Developer",
       bio: "Crafting beautiful and intuitive user experiences that make networking seamless and engaging for our community.",
       skills: ["React", "TypeScript", "UI/UX", "Framer Motion"],
       social: { github: "#", linkedin: "#" }
     },
     {
-      name: "Prajesh Patel",
+      name: "Prajesh Kadam",
       role: "Backend Developer",
       bio: "Building robust and scalable backend systems that power real-time communication and data management for thousands of users.",
       skills: ["Node.js", "PostgreSQL", "APIs", "WebSockets"],
       social: { github: "#", linkedin: "#" }
     },
     {
-      name: "Sachin Verma",
+      name: "Sachin Gunjkar",
       role: "Full Stack Developer",
       bio: "Implementing AI-powered features and ensuring seamless integration between all platform components for optimal performance.",
       skills: ["Python", "React", "AI/ML", "Cloud Services"],
@@ -502,8 +502,8 @@ export default function About() {
 
   const facultyMembers = [
     {
-      name: "Dr. Rajesh Mehta",
-      title: "Dean of Students",
+      name: "Dr. Nilesh G Patil",
+      title: "Dean of MIT",
       department: "MIT College of Engineering",
       badge: "Dean",
       credentials: [
@@ -514,10 +514,10 @@ export default function About() {
       ]
     },
     {
-      name: "Prof. Priya Deshmukh",
-      title: "Faculty Advisor",
-      department: "Department of Information Technology",
-      badge: "Advisor",
+      name: "Dr. Kavita Bhosale",
+      title: "HOD",
+      department: "AIDS",
+      badge: "HOD",
       credentials: [
         "M.Tech in Information Technology",
         "15+ years of teaching experience",

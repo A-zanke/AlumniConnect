@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import AdminNavbar from './AdminNavbar.jsx';
 import { exportToCsv } from './utils/csv';
+import AdminShell from './AdminShell.jsx';
+import { DataPanel, TableShell } from './components/AdminPrimitives.jsx';
+
+const FilterChip = ({ label, value, render }) => (
+  <label className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300 shadow-inner shadow-white/5">
+    <span className="pl-1 text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">{label}</span>
+    {render(value)}
+  </label>
+);
 
 const AdminEventList = () => {
   const [events, setEvents] = useState([]);
@@ -28,58 +36,112 @@ const AdminEventList = () => {
 
   const displayed = useMemo(() => events, [events]);
 
+  if (loading) {
+    return (
+      <AdminShell title="Loading events" subtitle="Compiling the campus calendar">
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-20 w-20 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+        </div>
+      </AdminShell>
+    );
+  }
+
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <AdminNavbar />
-      <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 12 }}>Events</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <select value={status} onChange={e => setStatus(e.target.value)} style={{ padding: 8, border: '1px solid #e5e7eb', borderRadius: 8 }}>
-          <option value="">All</option>
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        <button onClick={() => exportToCsv(`events_${new Date().toISOString().slice(0,10)}.csv`, displayed)} style={{ padding: '8px 12px', background: '#111827', color: '#fff', border: 'none', borderRadius: 8 }}>Download CSV</button>
+    <AdminShell
+      title="Experience Control"
+      subtitle="Oversee every event, approval, and pulse point"
+      rightSlot={
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => exportToCsv(`events_${new Date().toISOString().slice(0,10)}.csv`, displayed)}
+            className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white shadow-lg shadow-indigo-500/30 transition hover:brightness-110"
+          >
+            Download CSV
+          </button>
+        </div>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <FilterChip
+          label="Status"
+          value={status}
+          render={(value) => (
+            <select
+              value={value}
+              onChange={(e) => setStatus(e.target.value)}
+              className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
+            >
+              <option value="">All</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          )}
+        />
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Title</th>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Status</th>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Creator</th>
-                <th style={{ padding: 12, background: '#f3f4f6', textAlign: 'left' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayed.map(e => (
-                <tr key={e._id}>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>
-                    <Link to={`/admin/events/${e._id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{e.title}</Link>
-                  </td>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb', textTransform: 'capitalize' }}>{e.status || (e.approved ? 'active' : 'pending')}</td>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>{e.organizer?.name || e.createdBy?.name || '-'}</td>
-                  <td style={{ padding: 12, borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8 }}>
-                    {e.status === 'pending' && <button onClick={() => approve(e._id)} style={{ padding: '6px 10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 8 }}>Approve</button>}
-                    {e.status === 'pending' && <button onClick={() => reject(e._id)} style={{ padding: '6px 10px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 8 }}>Reject</button>}
-                    <button onClick={() => del(e._id)} style={{ padding: '6px 10px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8 }}>Delete</button>
-                  </td>
-                </tr>
-              ))}
-              {displayed.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 12 }}>No events found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+      <DataPanel title="Events Universe" description="Real-time breakdown of every scheduled experience">
+        <TableShell headers={['Title', 'Status', 'Creator', 'Actions']}>
+          {displayed.map((e) => (
+            <tr key={e._id} className="hover:bg-white/5">
+              <td className="px-4 py-4 font-semibold text-slate-100">
+                <Link to={`/admin/events/${e._id}`} className="text-indigo-200 hover:text-indigo-100">
+                  {e.title}
+                </Link>
+              </td>
+              <td className="px-4 py-4 capitalize">
+                <span
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
+                    (e.status || (e.approved ? 'active' : 'pending')) === 'pending'
+                      ? 'bg-amber-500/20 text-amber-200'
+                      : (e.status || (e.approved ? 'active' : 'pending')) === 'rejected'
+                      ? 'bg-red-500/20 text-red-200'
+                      : 'bg-emerald-500/20 text-emerald-200'
+                  }`}
+                >
+                  {e.status || (e.approved ? 'active' : 'pending')}
+                </span>
+              </td>
+              <td className="px-4 py-4 text-slate-300">{e.organizer?.name || e.createdBy?.name || '-'}</td>
+              <td className="px-4 py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  {e.status === 'pending' && (
+                    <>
+                      <button
+                        onClick={() => approve(e._id)}
+                        className="rounded-xl bg-emerald-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-emerald-200 transition hover:bg-emerald-500/30"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => reject(e._id)}
+                        className="rounded-xl bg-amber-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-amber-200 transition hover:bg-amber-500/30"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => del(e._id)}
+                    className="rounded-xl bg-red-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-red-200 transition hover:bg-red-500/30"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {displayed.length === 0 && (
+            <tr>
+              <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
+                No events found
+              </td>
+            </tr>
+          )}
+        </TableShell>
+      </DataPanel>
+    </AdminShell>
   );
 };
 
 export default AdminEventList;
-

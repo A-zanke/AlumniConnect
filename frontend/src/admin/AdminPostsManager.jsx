@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import AdminNavbar from "./AdminNavbar.jsx";
+import AdminShell from "./AdminShell.jsx";
+import { DataPanel, TableShell } from "./components/AdminPrimitives.jsx";
 import { motion } from "framer-motion";
 import {
   FaTrash,
@@ -223,18 +224,20 @@ const AdminPostsManager = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-        <AdminNavbar />
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-xl p-6"
-        >
-          <h2 className="text-3xl font-bold text-gray-800 mb-6">
-            Posts Management
-          </h2>
+    <AdminShell
+      title="Posts Intelligence"
+      subtitle="Monitor content flow, engagement patterns, and community discourse"
+      rightSlot={
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white shadow-lg shadow-indigo-500/30 transition hover:brightness-110"
+          >
+            Export Posts
+          </button>
+        </div>
+      }
+    >
 
           <div className="flex gap-4 mb-6">
             <div className="flex-1 relative">
@@ -628,9 +631,6 @@ const AdminPostsManager = () => {
               Next
             </button>
           </div>
-        </motion.div>
-      </div>
-
       {showViewModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-96 overflow-y-auto">
@@ -720,7 +720,7 @@ const AdminPostsManager = () => {
           </div>
         </div>
       )}
-    </div>
+    </AdminShell>
   );
 };
 
