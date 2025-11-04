@@ -1876,9 +1876,13 @@ exports.getBlocks = async (req, res) => {
 // Report user/message
 exports.report = async (req, res) => {
   try {
+    console.log("Report request body:", req.body);
     const { userId, messageId, reason, description } = req.body;
 
+    console.log("Extracted values - userId:", userId, "reason:", reason);
+
     if (!userId || !reason) {
+      console.log("Validation failed - userId:", !!userId, "reason:", !!reason);
       return res.status(400).json({
         message: "User ID and reason are required",
         success: false,
@@ -1915,7 +1919,8 @@ exports.report = async (req, res) => {
       reason: reason,
       description: description || '',
       messageContent: message ? message.content : '',
-      conversationId: message ? message.threadId : null
+      conversationId: message ? message.threadId : null,
+      source: 'messages' // Add source field to identify where report came from
     });
 
     return res.json({

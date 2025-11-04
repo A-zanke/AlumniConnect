@@ -32,7 +32,14 @@ const AdminReportsManager = () => {
 
       if (reportTypeFilter === "all" || reportTypeFilter === "forum") {
         const res = await axios.get("/api/admin/reports", { params });
-        forumReports = res.data || [];
+        const rawForumReports = res.data || [];
+        // Ensure forum reports have the correct targetType
+        forumReports = rawForumReports.map(report => ({
+          ...report,
+          targetType: report.targetType === 'post' ? 'forumPost' : report.targetType,
+          source: 'forum'
+        }));
+        console.log("Processed forum reports:", forumReports); // Debug log
       }
       if (
         reportTypeFilter === "all" ||
@@ -45,6 +52,7 @@ const AdminReportsManager = () => {
       if (reportTypeFilter === "all" || reportTypeFilter === "messages") {
         try {
           const res = await axios.get("/api/admin/message-reports", { params });
+          console.log("Message reports response:", res.data); // Debug log
           const messageReports = (Array.isArray(res.data) ? res.data : res.data?.reports) || [];
           // Ensure message reports have the correct targetType
           const processedMessageReports = messageReports.map(report => ({
@@ -53,7 +61,9 @@ const AdminReportsManager = () => {
             type: 'message'
           }));
           postReports = [...postReports, ...processedMessageReports];
+          console.log("Processed message reports:", processedMessageReports); // Debug log
         } catch (err) {
+          console.error("Error fetching message reports:", err);
           // Try alternative endpoint for message reports
           try {
             const res = await axios.get("/api/admin/reports/messages", { params });
@@ -65,7 +75,7 @@ const AdminReportsManager = () => {
             }));
             postReports = [...postReports, ...processedMessageReports];
           } catch (err2) {
-            console.log("Message reports not available:", err2.message);
+            console.error("Message reports not available:", err2.message);
           }
         }
       }
@@ -126,62 +136,94 @@ const AdminReportsManager = () => {
 
   const handleResolve = async (report, note = "", action = "Resolved") => {
     try {
-      const endpoint =
-        report.targetType === 'forumPost'
-          ? `/api/admin/reports/${report._id}/resolve`
-          : `/api/admin/post-reports/${report._id}/resolve`;
+      let endpoint;
+      if (report.targetType === 'forumPost') {
+        endpoint = `/api/admin/reports/${report._id}/resolve`;
+      } else if (report.targetType === 'message' || report.type === 'message') {
+        endpoint = `/api/admin/message-reports/${report._id}/resolve`;
+      } else {
+        endpoint = `/api/admin/post-reports/${report._id}/resolve`;
+      }
       await axios.put(endpoint, { moderatorNote: note, action });
       await fetchReports();
     } catch (err) {
-      alert("Failed to resolve report");
+      console.error('Failed to resolve report:', err);
+      alert("Failed to resolve report: " + (err.response?.data?.message || err.message));
     }
   };
 
   const handleDelete = async (report) => {
     if (!window.confirm("Delete this report?")) return;
     try {
-      const endpoint =
-        report.targetType === 'forumPost'
-          ? `/api/admin/reports/${report._id}`
-          : `/api/admin/post-reports/${report._id}`;
+      let endpoint;
+      if (report.targetType === 'forumPost') {
+        endpoint = `/api/admin/reports/${report._id}`;
+      } else if (report.targetType === 'message' || report.type === 'message') {
+        endpoint = `/api/admin/message-reports/${report._id}`;
+      } else {
+        endpoint = `/api/admin/post-reports/${report._id}`;
+      }
       await axios.delete(endpoint);
       await fetchReports();
     } catch (err) {
-      alert("Failed to delete report");
+      console.error('Failed to delete report:', err);
+      alert("Failed to delete report: " + (err.response?.data?.message || err.message));
     }
   };
 
   const handleDeleteContent = async (report) => {
     if (!window.confirm("Delete the reported content?")) return;
     try {
-      if (report.targetType === "forumPost") {
-        await axios.delete(`/api/admin/forums/${report.targetId._id}`);
-      } else {
-        await axios.delete(`/api/admin/posts/${report.targetId._id}`);
+      // Validate that we have a target ID
+      if (!report.targetId || !report.targetId._id) {
+        alert("Cannot delete content: No target ID found");
+        return;
       }
+
+      const targetId = report.targetId._id;
+      
+      if (report.targetType === "forumPost") {
+        await axios.delete(`/api/forum/${targetId}`);
+      } else if (report.targetType === "message" || report.type === "message") {
+        // For messages, we can't delete them directly, just resolve the report
+        alert("Message content cannot be deleted. Please resolve the report instead.");
+        return;
+      } else if (report.targetType === "post") {
+        await axios.delete(`/api/posts/${targetId}`);
+      } else {
+        alert("Unknown content type, cannot delete");
+        return;
+      }
+      
+      alert("Content deleted successfully");
       await fetchReports();
     } catch (err) {
-      alert("Failed to delete content");
+      console.error('Failed to delete content:', err);
+      alert("Failed to delete content: " + (err.response?.data?.message || err.message));
     }
   };
 
   const handleBulkResolve = async () => {
     if (selectedReports.length === 0) return;
-    const note = prompt("Enter resolution note for selected reports:");
     try {
       await Promise.all(
         selectedReports.map((id) => {
           const rep = reports.find((r) => r._id === id);
-          const endpoint =
-            rep?.targetType === 'forumPost'
-              ? `/api/admin/reports/${id}/resolve`
-              : `/api/admin/post-reports/${id}/resolve`;
-          return axios.put(endpoint, { moderatorNote: note || '', action: 'Resolved' });
+          let endpoint;
+          if (rep?.targetType === 'forumPost') {
+            endpoint = `/api/admin/reports/${id}/resolve`;
+          } else if (rep?.targetType === 'message' || rep?.type === 'message') {
+            endpoint = `/api/admin/message-reports/${id}/resolve`;
+          } else {
+            endpoint = `/api/admin/post-reports/${id}/resolve`;
+          }
+          return axios.put(endpoint, { moderatorNote: 'Bulk resolved', action: 'Resolved' });
         })
       );
       setSelectedReports([]);
       await fetchReports();
     } catch (err) {
+      console.error('Failed to resolve selected reports:', err);
       alert("Failed to resolve selected reports");
     }
   };
@@ -192,16 +234,21 @@ const AdminReportsManager = () => {
       await Promise.all(
         selectedReports.map((id) => {
           const rep = reports.find((r) => r._id === id);
-          const endpoint =
-            rep?.targetType === 'forumPost'
-              ? `/api/admin/reports/${id}/resolve`
-              : `/api/admin/post-reports/${id}/resolve`;
+          let endpoint;
+          if (rep?.targetType === 'forumPost') {
+            endpoint = `/api/admin/reports/${id}/resolve`;
+          } else if (rep?.targetType === 'message' || rep?.type === 'message') {
+            endpoint = `/api/admin/message-reports/${id}/resolve`;
+          } else {
+            endpoint = `/api/admin/post-reports/${id}/resolve`;
+          }
           return axios.put(endpoint, { moderatorNote: 'Dismissed', action: 'Dismissed' });
         })
       );
       setSelectedReports([]);
       await fetchReports();
     } catch (err) {
+      console.error('Failed to dismiss selected reports:', err);
       alert("Failed to dismiss selected reports");
     }
   };
@@ -224,7 +271,22 @@ const AdminReportsManager = () => {
   };
 
   const renderPreview = (report) => {
+    // Determine the correct page based on report source and type
+    const getViewLink = (report) => {
+      console.log("Report for link determination:", report); // Debug log
+      if (report.targetType === "forumPost" || report.source === "forum") {
+        return { url: "/forum", text: "View in forum" };
+      } else if (report.targetType === "post" || report.source === "posts") {
+        return { url: "/posts", text: "View in posts" };
+      } else if (report.targetType === "message") {
+        return { url: `/messages/${report.reportedUser?._id}`, text: "Open conversation" };
+      }
+      // Default fallback
+      return { url: "/posts", text: "View content" };
+    };
+
     if (report.targetType === "post") {
+      const link = getViewLink(report);
       return (
         <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
           <p className="text-sm text-slate-400">
@@ -233,7 +295,12 @@ const AdminReportsManager = () => {
               {report.targetId?.userId?.name}
             </Link>
             {" · "}
-            <Link to={`/posts/${report.targetId?._id}`} className="underline">Open post</Link>
+            <Link 
+              to={link.url}
+              className="underline text-indigo-300 hover:text-indigo-200"
+            >
+              {link.text}
+            </Link>
           </p>
           <p className="mt-1 text-slate-100">
             {report.targetId?.content?.substring(0, 100)}...
@@ -243,34 +310,39 @@ const AdminReportsManager = () => {
           )}
         </div>
       );
-    } else if (report.targetType === "comment") {
-      return (
-        <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
-          <p className="text-sm text-slate-400">
-            Comment by {" "}
-            <Link to={`/profile/id/${report.targetId?.userId?._id}`} className="text-indigo-300 hover:text-indigo-200">
-              {report.targetId?.userId?.name}
-            </Link>
-          </p>
-          <p className="mt-1 text-slate-100">
-            {report.targetId?.content?.substring(0, 100)}...
-          </p>
-        </div>
-      );
     } else if (report.targetType === "forumPost") {
       return (
         <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
           <p className="text-sm text-slate-400">
             Forum Post by {" "}
-            <Link to={`/profile/id/${report.targetId?.author?._id}`} className="text-indigo-300 hover:text-indigo-200">
-              {report.targetId?.author?.name}
+            <Link to={`/profile/id/${report.targetId?.author?._id || report.targetId?.userId?._id}`} className="text-indigo-300 hover:text-indigo-200">
+              {report.targetId?.author?.name || report.targetId?.userId?.name}
             </Link>
             {" · "}
-            <Link to={`/forum/${report.targetId?._id}`} className="underline">Open thread</Link>
+            <Link 
+              to="/forum"
+              className="underline text-indigo-300 hover:text-indigo-200"
+            >
+              View in forum
+            </Link>
           </p>
           <p className="font-semibold text-slate-100">{report.targetId?.title}</p>
           <p className="text-slate-100">
             {report.targetId?.content?.substring(0, 100)}...
+          </p>
+        </div>
+      );
+    } else if (report.targetType === "message" || report.type === "message") {
+      return (
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-slate-200">
+          <p className="text-sm text-slate-400">
+            Message from {" "}
+            <Link to={`/profile/id/${report.reportedUser?._id}`} className="text-indigo-300 hover:text-indigo-200">
+              {report.reportedUser?.name}
+            </Link>
+          </p>
+          <p className="text-slate-100">
+            {report.messageContent ? `"${report.messageContent.substring(0, 100)}..."` : "Message content not available"}
           </p>
         </div>
       );
@@ -314,7 +386,6 @@ const AdminReportsManager = () => {
                 <option value="all">All Types</option>
                 <option value="forum">Forum Posts</option>
                 <option value="posts">Community Posts</option>
-                <option value="comments">Comments</option>
                 <option value="messages">Messages</option>
               </select>
               <div className="flex gap-2">
@@ -448,13 +519,6 @@ const AdminReportsManager = () => {
                         >
                           <FaTrash />
                           Delete Report
-                        </button>
-                        <button
-                          onClick={() => setSelectedReport(report)}
-                          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold transition-all"
-                        >
-                          <FaEye />
-                          View Full
                         </button>
                       </div>
                     </div>

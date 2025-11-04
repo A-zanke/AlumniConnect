@@ -376,6 +376,12 @@ const MessagesPage = () => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
 
+  useEffect(() => {
+    if (selectedUser) {
+      fetchMessages();
+    }
+  }, [selectedUser, fetchMessages]);
+
   // Socket.IO connection
   useEffect(() => {
     if (user) {
@@ -1038,16 +1044,58 @@ const MessagesPage = () => {
     }
   };
 
-  const handleReport = async () => {
+  const handleReport = async (userToReport = null) => {
     try {
-      const reason = prompt("Report reason?") || "";
+      const targetUser = userToReport || selectedUser;
+      if (!targetUser || !targetUser._id) {
+        toast.error("No user selected to report");
+        return;
+      }
+
+      const reasons = [
+        { value: 'spam', label: 'Spam' },
+        { value: 'harassment', label: 'Harassment' }, 
+        { value: 'inappropriate', label: 'Inappropriate Content' },
+        { value: 'fake', label: 'Fake Profile' },
+        { value: 'abuse', label: 'Abuse' },
+        { value: 'bullying', label: 'Bullying' },
+        { value: 'hate_speech', label: 'Hate Speech' },
+        { value: 'violence', label: 'Violence/Threats' },
+        { value: 'other', label: 'Other' }
+      ];
+      
+      const reasonList = reasons.map((r, i) => `${i + 1}. ${r.label}`).join('\n');
+      const selection = prompt(`Report ${targetUser.name}?\n\nSelect a reason (enter number 1-${reasons.length}):\n\n${reasonList}`);
+      
+      if (!selection || !selection.trim()) {
+        toast.error("Please select a reason for reporting");
+        return;
+      }
+      
+      const reasonIndex = parseInt(selection.trim()) - 1;
+      if (reasonIndex < 0 || reasonIndex >= reasons.length) {
+        toast.error("Please enter a valid number from the list");
+        return;
+      }
+      
+      const selectedReasonValue = reasons[reasonIndex].value;
+      
+      console.log("Reporting user:", targetUser._id, "with reason:", selectedReasonValue);
+      
       const token = localStorage.getItem("token");
+      const payload = { 
+        userId: targetUser._id, 
+        reason: selectedReasonValue 
+      };
+      
+      console.log("Report payload:", payload);
+      
       await axios.post(
         `${baseURL}/api/messages/report`,
-        { targetUserId: selectedUser._id, reason },
+        payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success("Report submitted successfully");
+      toast.success(`Report submitted successfully for ${targetUser.name}`);
     } catch (e) {
       console.error("Report error:", e.response?.data || e.message);
       toast.error(e.response?.data?.message || "Failed to submit report");
@@ -1142,18 +1190,62 @@ const MessagesPage = () => {
     try {
       const ids = Array.from(selectedChatIds);
       if (ids.length === 0) return;
-      const reason = prompt("Report reason?") || "";
+
+      const reasons = [
+        { value: 'spam', label: 'Spam' },
+        { value: 'harassment', label: 'Harassment' }, 
+        { value: 'inappropriate', label: 'Inappropriate Content' },
+        { value: 'fake', label: 'Fake Profile' },
+        { value: 'abuse', label: 'Abuse' },
+        { value: 'bullying', label: 'Bullying' },
+        { value: 'hate_speech', label: 'Hate Speech' },
+        { value: 'violence', label: 'Violence/Threats' },
+        { value: 'other', label: 'Other' }
+      ];
+      
+      const reasonList = reasons.map((r, i) => `${i + 1}. ${r.label}`).join('\n');
+      const selection = prompt(`Report ${ids.length} selected users?\n\nSelect a reason (enter number 1-${reasons.length}):\n\n${reasonList}`);
+      
+      if (!selection || !selection.trim()) {
+        toast.error("Please select a reason for reporting");
+        return;
+      }
+      
+      const reasonIndex = parseInt(selection.trim()) - 1;
+      if (reasonIndex < 0 || reasonIndex >= reasons.length) {
+        toast.error("Please enter a valid number from the list");
+        return;
+      }
+      
+      const selectedReasonValue = reasons[reasonIndex].value;
+      
+      // Report each user individually using the same API
       const token = localStorage.getItem("token");
-      await axios.post(
-        `${baseURL}/api/messages/bulk-report`,
-        { userIds: ids, reason },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const reportPromises = ids.map(async (chatId) => {
+        // Find the user from connections
+        const connection = connections.find(c => c._id === chatId);
+        if (!connection?.user?._id) return;
+        
+        const payload = { 
+          userId: connection.user._id, 
+          reason: selectedReasonValue 
+        };
+        
+        return axios.post(
+          `${baseURL}/api/messages/report`,
+          payload,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      });
+
+      await Promise.all(reportPromises);
+      
       setSelectedChatIds(new Set());
       setChatSelectionMode(false);
-      toast.success(`${ids.length} users reported`);
+      toast.success(`${ids.length} users reported successfully`);
     } catch (e) {
-      toast.error("Failed to report users");
+      console.error("Bulk report error:", e.response?.data || e.message);
+      toast.error("Failed to report some users");
     }
   };
 

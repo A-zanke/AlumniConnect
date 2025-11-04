@@ -10,7 +10,9 @@ const messageReportSchema = new mongoose.Schema({
   targetId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Message',
-    required: true
+    required: function() {
+      return this.targetType === 'message';
+    }
   },
   reportedUser: {
     type: mongoose.Schema.Types.ObjectId,
@@ -25,7 +27,7 @@ const messageReportSchema = new mongoose.Schema({
   reason: {
     type: String,
     required: true,
-    enum: ['spam', 'harassment', 'inappropriate', 'fake', 'other'],
+    enum: ['spam', 'harassment', 'inappropriate', 'fake', 'abuse', 'bullying', 'hate_speech', 'violence', 'other'],
     default: 'inappropriate'
   },
   description: {
@@ -44,6 +46,11 @@ const messageReportSchema = new mongoose.Schema({
     type: String,
     enum: ['pending', 'dismissed', 'warning', 'suspended', 'banned'],
     default: 'pending'
+  },
+  source: {
+    type: String,
+    enum: ['messages', 'forum', 'posts'],
+    default: 'messages'
   },
   resolvedBy: {
     type: mongoose.Schema.Types.ObjectId,

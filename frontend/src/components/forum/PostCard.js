@@ -25,6 +25,8 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
   const [userReaction, setUserReaction] = useState(null);
   const [showReactors, setShowReactors] = useState(false);
   const [reactors, setReactors] = useState([]);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [modalImageIndex, setModalImageIndex] = useState(0);
   const reactionPickerRef = useRef(null);
   const navigate = useNavigate();
 
@@ -184,6 +186,19 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
   };
 
+  const openImageModal = (index) => {
+    setModalImageIndex(index);
+    setShowImageModal(true);
+  };
+
+  const nextModalImage = () => {
+    setModalImageIndex((prev) => (prev + 1) % images.length);
+  };
+
+  const prevModalImage = () => {
+    setModalImageIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
+
   const Author = () => {
     if (post.isAnonymous || !post.author) {
       return <span className="text-gray-500 font-medium">{post.isAnonymous ? 'Anonymous' : 'Unknown'}</span>;
@@ -240,51 +255,49 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
       <div className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold tracking-wide">{post.category}</span>
-          {(canDelete || full) && (
-            <div className="relative">
-              <button
-                onClick={() => setShowOptions(!showOptions)}
-                className="p-1 hover:bg-white/20 rounded-full transition-colors"
-              >
-                <FiMoreHorizontal />
-              </button>
-              <AnimatePresence>
-                {showOptions && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-[120px] z-10"
-                  >
-                    {canDelete && (
-                      <button
-                        onClick={handleDelete}
-                        className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2"
-                      >
-                        <FiTrash2 className="text-sm" />
-                        Delete
-                      </button>
-                    )}
+          <div className="relative">
+            <button
+              onClick={() => setShowOptions(!showOptions)}
+              className="p-1 hover:bg-white/20 rounded-full transition-colors"
+            >
+              <FiMoreHorizontal />
+            </button>
+            <AnimatePresence>
+              {showOptions && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-[120px] z-10"
+                >
+                  {canDelete && (
                     <button
-                      onClick={async () => {
-                        try {
-                          await forumAPI.reportTarget(post._id, 'post', 'Inappropriate');
-                          setShowOptions(false);
-                          toast.success('Reported to moderators');
-                        } catch (e) {
-                          toast.error('Failed to report');
-                        }
-                      }}
-                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      onClick={handleDelete}
+                      className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 flex items-center gap-2"
                     >
-                      <FiFlag className="text-sm" />
-                      Report
+                      <FiTrash2 className="text-sm" />
+                      Delete
                     </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
+                  )}
+                  <button
+                    onClick={async () => {
+                      try {
+                        await forumAPI.reportTarget(post._id, 'post', 'Inappropriate');
+                        setShowOptions(false);
+                        toast.success('Reported to moderators');
+                      } catch (e) {
+                        toast.error('Failed to report');
+                      }
+                    }}
+                    className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <FiFlag className="text-sm" />
+                    Report
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
@@ -317,10 +330,11 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                 key={currentImageIndex}
                 src={images[currentImageIndex].url}
                 alt={`Media ${currentImageIndex + 1}`}
-                className="w-full h-64 object-cover"
+                className="w-full h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3 }}
+                onClick={() => openImageModal(currentImageIndex)}
                 onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
               />
               {images.length > 1 && (
@@ -437,13 +451,12 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
             {summaryTotal > 0 ? (
               <button
                 onClick={openReactors}
-                className="flex items-center gap-3 px-4 py-2 rounded-full bg-gray-50 text-gray-700 hover:bg-gray-100 transition-all"
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-50 text-gray-700 hover:bg-gray-100 transition-all"
               >
-                <span className="flex items-center gap-2 flex-wrap">
+                <span className="flex items-center gap-1">
                   {reactionSummaryList.map(([type, count]) => (
-                    <span key={type} className="flex items-center gap-1 text-sm">
-                      <span className="text-lg leading-none">{EMOJI_BY_KEY[type] || '👍'}</span>
-                      <span className="font-medium">{count}</span>
+                    <span key={type} className="text-lg leading-none">
+                      {EMOJI_BY_KEY[type] || '👍'}
                     </span>
                   ))}
                 </span>
@@ -559,6 +572,57 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Modal */}
+      {showImageModal && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50" onClick={() => setShowImageModal(false)}>
+          <div className="relative max-w-4xl max-h-full w-full h-full flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            <motion.img
+              key={modalImageIndex}
+              src={images[modalImageIndex]?.url}
+              alt={`Media ${modalImageIndex + 1}`}
+              className="max-w-full max-h-full object-contain rounded-lg"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
+              onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+            />
+            
+            {/* Close button */}
+            <button
+              onClick={() => setShowImageModal(false)}
+              className="absolute top-4 right-4 bg-black/50 text-white rounded-full p-2 hover:bg-black/70 transition-colors"
+            >
+              ✕
+            </button>
+
+            {/* Navigation arrows for multiple images */}
+            {images.length > 1 && (
+              <>
+                <button
+                  onClick={prevModalImage}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-3 hover:bg-black/70 transition-colors"
+                >
+                  <FiChevronLeft className="w-6 h-6" />
+                </button>
+                <button
+                  onClick={nextModalImage}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-3 hover:bg-black/70 transition-colors"
+                >
+                  <FiChevronRight className="w-6 h-6" />
+                </button>
+              </>
+            )}
+
+            {/* Image counter */}
+            {images.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
+                {modalImageIndex + 1} / {images.length}
+              </div>
+            )}
           </div>
         </div>
       )}
