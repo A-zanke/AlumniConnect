@@ -719,6 +719,9 @@ router.post("/bulk-block", protect, bulkBlockUsers);
 // Bulk report users
 router.post("/bulk-report", protect, bulkReportUsers);
 
+// Report user/message
+router.post("/report", protect, report);
+
 // Get messages between current user and another user (dynamic)
 router.get("/:userId", protect, getMessages);
 

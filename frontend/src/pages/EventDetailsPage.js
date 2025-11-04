@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { eventsAPI } from '../components/utils/api';
@@ -140,13 +142,37 @@ const EventDetailsPage = () => {
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this event?')) {
       try {
-        await eventsAPI.deleteEvent(id);
+        if (user?.role === 'admin') {
+          await axios.delete(`/api/admin/events/${id}`);
+        } else {
+          await eventsAPI.deleteEvent(id);
+        }
         toast.success('Event deleted successfully');
         navigate('/events');
       } catch (error) {
         console.error('Error deleting event:', error);
         toast.error('Failed to delete event');
       }
+    }
+  };
+
+  const approveAsAdmin = async () => {
+    try {
+      await axios.put(`/api/admin/events/${id}/approve`);
+      setEvent(prev => prev ? { ...prev, status: 'active', approved: true } : prev);
+      toast.success('Event approved');
+    } catch (e) {
+      toast.error('Approve failed');
+    }
+  };
+
+  const rejectAsAdmin = async () => {
+    try {
+      await axios.put(`/api/admin/events/${id}/reject`);
+      setEvent(prev => prev ? { ...prev, status: 'rejected', approved: false } : prev);
+      toast.success('Event rejected');
+    } catch (e) {
+      toast.error('Reject failed');
     }
   };
 
@@ -298,6 +324,24 @@ const EventDetailsPage = () => {
                   Already Registered
                   {registrationData.attended && <span className="ml-2">(Attended)</span>}
                 </div>
+              )}
+
+              {/* Admin Approve/Reject */}
+              {user?.role === 'admin' && (event?.status === 'pending' || !event?.approved) && (
+                <>
+                  <button
+                    onClick={approveAsAdmin}
+                    className="px-6 py-3 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors font-medium"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={rejectAsAdmin}
+                    className="px-6 py-3 border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-50 transition-colors font-medium"
+                  >
+                    Reject
+                  </button>
+                </>
               )}
 
               {/* Delete Button */}

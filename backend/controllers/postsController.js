@@ -130,7 +130,14 @@ exports.getAllPosts = async (req, res) => {
 // GET /api/posts/:id - Get single post with full details
 exports.getSinglePost = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id)
+    const { id } = req.params;
+    
+    // Validate ObjectId
+    if (!id || id === 'undefined' || !id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+    
+    const post = await Post.findById(id)
       .populate('userId', 'name username avatarUrl role department')
       .populate('comments.userId', 'name username avatarUrl role department')
       .populate('reactions.userId', 'name username avatarUrl')

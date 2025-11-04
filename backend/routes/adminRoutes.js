@@ -36,6 +36,9 @@ const {
   deletePostReport,
   getPostAnalytics,
   bulkDeletePosts,
+  listMessageReports,
+  resolveMessageReport,
+  deleteMessageReport,
 } = require("../controllers/adminController");
 
 // Admin-only routes
@@ -74,6 +77,12 @@ router.delete("/posts/:id", deletePost);
 router.get("/post-reports", listPostReports);
 router.put("/post-reports/:id/resolve", resolvePostReport);
 router.delete("/post-reports/:id", deletePostReport);
+
+// Message Reports
+router.get("/message-reports", listMessageReports);
+router.get("/reports/messages", listMessageReports);
+router.put("/message-reports/:id/resolve", resolveMessageReport);
+router.delete("/message-reports/:id", deleteMessageReport);
 
 // Post Analytics
 router.get("/posts/:id/analytics", getPostAnalytics);

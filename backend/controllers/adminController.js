@@ -5,6 +5,7 @@ const ForumReport = require("../models/ForumReport");
 const Testimonial = require("../models/Testimonial");
 const Post = require("../models/Post");
 const PostReport = require("../models/PostReport");
+const MessageReport = require("../models/MessageReport");
 const { Parser } = require("json2csv");
 const {
   approveEvent: coreApproveEvent,
@@ -894,6 +895,74 @@ const getEventByIdAdmin = async (req, res) => {
 };
 
 // ===================== Export all functions =====================
+// ===================== Message Reports Management =====================
+const listMessageReports = async (req, res) => {
+  try {
+    const { resolved } = req.query;
+    const filter = {};
+    
+    if (resolved !== undefined) {
+      filter.resolved = resolved === 'true';
+    }
+
+    const reports = await MessageReport.find(filter)
+      .populate('reporter', 'name email role')
+      .populate('reportedUser', 'name email role')
+      .populate('targetId')
+      .sort({ createdAt: -1 });
+
+    res.json({ reports });
+  } catch (error) {
+    console.error('Error fetching message reports:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const resolveMessageReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, moderatorNote } = req.body;
+
+    const report = await MessageReport.findByIdAndUpdate(
+      id,
+      {
+        resolved: true,
+        action: action || 'dismissed',
+        moderatorNote: moderatorNote || '',
+        resolvedBy: req.user._id,
+        resolvedAt: new Date()
+      },
+      { new: true }
+    ).populate('reporter', 'name email')
+     .populate('reportedUser', 'name email');
+
+    if (!report) {
+      return res.status(404).json({ message: 'Message report not found' });
+    }
+
+    res.json({ message: 'Message report resolved successfully', report });
+  } catch (error) {
+    console.error('Error resolving message report:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const deleteMessageReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const report = await MessageReport.findByIdAndDelete(id);
+    if (!report) {
+      return res.status(404).json({ message: 'Message report not found' });
+    }
+
+    res.json({ message: 'Message report deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting message report:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAnalytics,
   listUsers,
@@ -925,4 +994,7 @@ module.exports = {
   updateTestimonial,
   deleteTestimonial,
   getEventByIdAdmin,
+  listMessageReports,
+  resolveMessageReport,
+  deleteMessageReport,
 };

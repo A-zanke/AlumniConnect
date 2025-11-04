@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -16,10 +16,11 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import AdminShell from '../admin/AdminShell.jsx';
+import AdminShell, { AdminSettingsContext } from '../admin/AdminShell.jsx';
 import { DataPanel, StatBadge, TableShell } from '../admin/components/AdminPrimitives.jsx';
 
 const AdminDashboardPage = () => {
+  const { animateCharts } = useContext(AdminSettingsContext);
   const [stats, setStats] = useState({
     totalStudents: 0, totalTeachers: 0, totalAlumni: 0,
     studentByDepartment: {}, studentByYear: {},
@@ -52,14 +53,63 @@ const AdminDashboardPage = () => {
 
   useEffect(() => { fetchAll(); }, []);
 
-  const exportUsers = async (params = {}) => {
-    const qs = new URLSearchParams(params);
-    window.location.href = `/api/admin/export/users?${qs.toString()}`;
+  const exportUsers = async () => {
+    try {
+      const response = await axios.get('/api/admin/users');
+      const users = response.data || [];
+      
+      const csvContent = [
+        ['Name', 'Email', 'Role', 'Department', 'Created At'].join(','),
+        ...users.map(user => [
+          user.name || '',
+          user.email || '',
+          user.role || '',
+          user.department || '',
+          new Date(user.createdAt).toLocaleDateString()
+        ].join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `users_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to export users');
+    }
   };
 
-  const exportEvents = async (params = {}) => {
-    const qs = new URLSearchParams(params);
-    window.location.href = `/api/admin/export/events?${qs.toString()}`;
+  const exportEvents = async () => {
+    try {
+      const response = await axios.get('/api/admin/events');
+      const events = response.data || [];
+      
+      const csvContent = [
+        ['Title', 'Status', 'Organizer', 'Start Date', 'Location', 'Created At'].join(','),
+        ...events.map(event => [
+          event.title || '',
+          event.status || (event.approved ? 'active' : 'pending'),
+          event.organizer?.name || event.createdBy?.name || '',
+          event.startAt ? new Date(event.startAt).toLocaleDateString() : '',
+          event.location || '',
+          new Date(event.createdAt).toLocaleDateString()
+        ].join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `events_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to export events');
+    }
   };
 
   const approveEvent = async (id) => {
@@ -108,12 +158,12 @@ const AdminDashboardPage = () => {
   };
 
   const totals = useMemo(() => ([
-    { key: 'student', label: 'Students', value: stats.totalStudents || 0 },
-    { key: 'teacher', label: 'Teachers', value: stats.totalTeachers || 0 },
-    { key: 'alumni', label: 'Alumni', value: stats.totalAlumni || 0 },
-    { label: 'Events (Active)', value: stats.eventsActive || 0 },
-    { label: 'Events (Pending)', value: stats.eventsPending || 0 },
-    { label: 'Events (Rejected)', value: stats.eventsRejected || 0 }
+    { key: 'student', type: 'user', label: 'Students', value: stats.totalStudents || 0 },
+    { key: 'teacher', type: 'user', label: 'Teachers', value: stats.totalTeachers || 0 },
+    { key: 'alumni', type: 'user', label: 'Alumni', value: stats.totalAlumni || 0 },
+    { key: 'active', type: 'event', label: 'Events (Active)', value: stats.eventsActive || 0 },
+    { key: 'pending', type: 'event', label: 'Events (Pending)', value: stats.eventsPending || 0 },
+    { key: 'rejected', type: 'event', label: 'Events (Rejected)', value: stats.eventsRejected || 0 }
   ]), [stats]);
 
   if (loading) {
@@ -128,8 +178,13 @@ const AdminDashboardPage = () => {
 
   return (
     <AdminShell
-      title="Command Hub"
-      subtitle="Monitor campus-wide engagement, intervene fast, and celebrate the wins."
+      title="Dashboard"
+      subtitle="Campus insights at a glance"
+      metrics={{
+        totalUsers: (stats.totalStudents || 0) + (stats.totalTeachers || 0) + (stats.totalAlumni || 0),
+        activeEvents: stats.eventsActive || 0,
+        pendingReports: stats.reportsPending || 0
+      }}
       rightSlot={
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -152,8 +207,14 @@ const AdminDashboardPage = () => {
           <button
             key={t.label}
             type="button"
-            onClick={() => t.key && navigate(`/admin/users?role=${t.key}`)}
-            className={`text-left transition ${t.key ? 'hover:-translate-y-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500' : ''}`}
+            onClick={() => {
+              if (t.type === 'user') {
+                navigate(`/admin/users?role=${t.key}`);
+              } else if (t.type === 'event') {
+                navigate(`/admin/events?status=${t.key}`);
+              }
+            }}
+            className="text-left transition hover:-translate-y-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
           >
             <StatBadge
               label={t.label}
@@ -167,15 +228,72 @@ const AdminDashboardPage = () => {
       <div className="grid gap-5 lg:grid-cols-12">
         {/* 1. Users by Role */}
         <DataPanel title="Users by Role" description="Distribution across roles" className="lg:col-span-4 min-w-0">
-          <div className="h-64 w-full">
+          <div className="h-80 w-full">
             <ResponsiveContainer>
               <PieChart>
-                <Pie data={stats.usersByRole || []} dataKey="value" nameKey="name" innerRadius={40} outerRadius={88} paddingAngle={2} label={false}>
+                <Pie 
+                  data={stats.usersByRole || []} 
+                  dataKey="value" 
+                  nameKey="name" 
+                  innerRadius={50} 
+                  outerRadius={120} 
+                  paddingAngle={3} 
+                  label={({cx, cy, midAngle, innerRadius, outerRadius, name, percent}) => {
+                    const RADIAN = Math.PI / 180;
+                    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                    return (
+                      <text 
+                        x={x} 
+                        y={y} 
+                        fill="#ffffff" 
+                        textAnchor={x > cx ? 'start' : 'end'} 
+                        dominantBaseline="central"
+                        fontSize="12"
+                        fontWeight="600"
+                        style={{
+                          textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                          filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.8))'
+                        }}
+                      >
+                        {`${name}: ${(percent * 100).toFixed(0)}%`}
+                      </text>
+                    );
+                  }}
+                  labelLine={false}
+                  isAnimationActive={animateCharts}
+                  animationBegin={0}
+                  animationDuration={1500}
+                >
                   {(stats.usersByRole || []).map((_, index) => (
-                    <Cell key={`ur-${index}`} fill={["#6366f1", "#22d3ee", "#f472b6"][index % 3]} />
+                    <Cell 
+                      key={`ur-${index}`} 
+                      fill={["#3b82f6", "#10b981", "#f59e0b", "#ef4444"][index % 4]}
+                      stroke="#1e293b"
+                      strokeWidth={2}
+                      style={{ 
+                        filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))',
+                        cursor: 'pointer'
+                      }}
+                    />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: '#0f172a', borderRadius: 16, border: '1px solid rgba(99,102,241,0.3)', color: '#e2e8f0' }} />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: 'rgba(15, 23, 42, 0.98)', 
+                    borderRadius: 16, 
+                    border: '2px solid rgba(59, 130, 246, 0.8)', 
+                    color: '#ffffff',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    padding: '12px 16px'
+                  }}
+                  labelStyle={{ color: '#ffffff', fontWeight: '600' }}
+                  itemStyle={{ color: '#ffffff', fontWeight: '500' }}
+                  cursor={{ fill: 'rgba(255, 255, 255, 0.1)' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -183,16 +301,61 @@ const AdminDashboardPage = () => {
 
         {/* 2. Active vs Inactive */}
         <DataPanel title="Active vs Inactive" description="Last 7 days activity" className="lg:col-span-4 min-w-0">
-          <div className="h-64 w-full">
+          <div className="h-80 w-full">
             <ResponsiveContainer>
-              <BarChart data={stats.activeInactiveByRole || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.25)" />
-                <XAxis dataKey="role" stroke="rgba(148,163,184,0.7)" tickLine={false} />
-                <YAxis stroke="rgba(148,163,184,0.7)" tickLine={false} />
-                <Tooltip contentStyle={{ background: '#0f172a', borderRadius: 16, border: '1px solid rgba(16,185,129,0.3)', color: '#e2e8f0' }} />
-                <Legend wrapperStyle={{ color: '#cbd5f5' }} />
-                <Bar dataKey="active" stackId="a" fill="#22c55e" radius={[8,8,0,0]} />
-                <Bar dataKey="inactive" stackId="a" fill="#f59e0b" radius={[8,8,0,0]} />
+              <BarChart data={stats.activeInactiveByRole || []} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.3)" />
+                <XAxis 
+                  dataKey="role" 
+                  stroke="#94a3b8" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }}
+                />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tick={{ fill: '#94a3b8', fontSize: 12 }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: 'rgba(15, 23, 42, 0.95)', 
+                    borderRadius: 16, 
+                    border: '1px solid rgba(34, 197, 94, 0.5)', 
+                    color: '#f1f5f9',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)'
+                  }} 
+                />
+                <Legend wrapperStyle={{ color: '#cbd5e1', fontSize: '14px', fontWeight: '500' }} />
+                <Bar 
+                  dataKey="active" 
+                  stackId="a" 
+                  fill="url(#activeGradient)" 
+                  radius={[4,4,0,0]} 
+                  isAnimationActive={animateCharts}
+                  animationDuration={1200}
+                  animationBegin={200}
+                />
+                <Bar 
+                  dataKey="inactive" 
+                  stackId="a" 
+                  fill="url(#inactiveGradient)" 
+                  radius={[4,4,0,0]} 
+                  isAnimationActive={animateCharts}
+                  animationDuration={1200}
+                  animationBegin={400}
+                />
+                <defs>
+                  <linearGradient id="activeGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.9} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.6} />
+                  </linearGradient>
+                  <linearGradient id="inactiveGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.9} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -200,18 +363,44 @@ const AdminDashboardPage = () => {
 
         {/* 3. Forum Engagement */}
         <DataPanel className="lg:col-span-4 min-w-0" title="Forum Engagement" description="Topic velocity and participation">
-          <div className="h-64 w-full">
+          <div className="h-80 w-full">
             <ResponsiveContainer>
-              <BarChart data={stats.forumActivitySeries || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.25)" />
-                <XAxis dataKey="month" stroke="rgba(148,163,184,0.7)" tickLine={false} />
-                <YAxis stroke="rgba(148,163,184,0.7)" tickLine={false} />
-                <Tooltip contentStyle={{ background: '#0f172a', borderRadius: 16, border: '1px solid rgba(139,92,246,0.3)', color: '#e2e8f0' }} />
-                <Bar dataKey="posts" radius={[10, 10, 0, 0]} fill="url(#forumGradient)" />
+              <BarChart data={stats.forumActivitySeries || []} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.3)" />
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#94a3b8" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }}
+                />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tick={{ fill: '#94a3b8', fontSize: 12 }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: 'rgba(15, 23, 42, 0.95)', 
+                    borderRadius: 16, 
+                    border: '1px solid rgba(139, 92, 246, 0.5)', 
+                    color: '#f1f5f9',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)'
+                  }} 
+                />
+                <Bar 
+                  dataKey="posts" 
+                  radius={[8, 8, 0, 0]} 
+                  fill="url(#forumGradient)" 
+                  isAnimationActive={animateCharts}
+                  animationDuration={1500}
+                  animationBegin={300}
+                />
                 <defs>
                   <linearGradient id="forumGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.2} />
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.9} />
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.3} />
                   </linearGradient>
                 </defs>
               </BarChart>
@@ -221,17 +410,66 @@ const AdminDashboardPage = () => {
 
         {/* 4. Community Growth */}
         <DataPanel title="Community Growth" description="Onboarding trends across roles" className="lg:col-span-4 min-w-0">
-          <div className="h-64 w-full">
+          <div className="h-80 w-full">
             <ResponsiveContainer>
-              <LineChart data={stats.userGrowthSeries || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.25)" />
-                <XAxis dataKey="month" stroke="rgba(148,163,184,0.7)" tickLine={false} />
-                <YAxis stroke="rgba(148,163,184,0.7)" tickLine={false} />
-                <Tooltip contentStyle={{ background: '#0f172a', borderRadius: 16, border: '1px solid rgba(99,102,241,0.3)', color: '#e2e8f0' }} />
-                <Legend wrapperStyle={{ color: '#cbd5f5' }} />
-                <Line type="monotone" dataKey="students" stroke="#6366f1" strokeWidth={3} dot={false} activeDot={{ r: 8 }} />
-                <Line type="monotone" dataKey="teachers" stroke="#22d3ee" strokeWidth={3} dot={false} />
-                <Line type="monotone" dataKey="alumni" stroke="#f472b6" strokeWidth={3} dot={false} />
+              <LineChart data={stats.userGrowthSeries || []} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.3)" />
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#94a3b8" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }}
+                />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tick={{ fill: '#94a3b8', fontSize: 12 }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: 'rgba(15, 23, 42, 0.95)', 
+                    borderRadius: 16, 
+                    border: '1px solid rgba(59, 130, 246, 0.5)', 
+                    color: '#f1f5f9',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)'
+                  }} 
+                />
+                <Legend wrapperStyle={{ color: '#cbd5e1', fontSize: '14px', fontWeight: '500' }} />
+                <Line 
+                  type="monotone" 
+                  dataKey="students" 
+                  stroke="#3b82f6" 
+                  strokeWidth={4} 
+                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 6 }} 
+                  activeDot={{ r: 8, stroke: '#3b82f6', strokeWidth: 2, fill: '#1e40af' }} 
+                  isAnimationActive={animateCharts}
+                  animationDuration={2000}
+                  animationBegin={0}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="teachers" 
+                  stroke="#10b981" 
+                  strokeWidth={4} 
+                  dot={{ fill: '#10b981', strokeWidth: 2, r: 6 }} 
+                  activeDot={{ r: 8, stroke: '#10b981', strokeWidth: 2, fill: '#047857' }} 
+                  isAnimationActive={animateCharts}
+                  animationDuration={2000}
+                  animationBegin={200}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="alumni" 
+                  stroke="#f59e0b" 
+                  strokeWidth={4} 
+                  dot={{ fill: '#f59e0b', strokeWidth: 2, r: 6 }} 
+                  activeDot={{ r: 8, stroke: '#f59e0b', strokeWidth: 2, fill: '#d97706' }} 
+                  isAnimationActive={animateCharts}
+                  animationDuration={2000}
+                  animationBegin={400}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -246,7 +484,7 @@ const AdminDashboardPage = () => {
                 <XAxis dataKey="month" stroke="rgba(148,163,184,0.7)" tickLine={false} />
                 <YAxis stroke="rgba(148,163,184,0.7)" tickLine={false} />
                 <Tooltip contentStyle={{ background: '#0f172a', borderRadius: 16, border: '1px solid rgba(99,102,241,0.3)', color: '#e2e8f0' }} />
-                <Line type="monotone" dataKey="posts" stroke="#38bdf8" strokeWidth={3} dot={false} />
+                <Line type="monotone" dataKey="posts" stroke="#38bdf8" strokeWidth={3} dot={false} isAnimationActive={animateCharts} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -262,8 +500,8 @@ const AdminDashboardPage = () => {
                 <YAxis stroke="rgba(148,163,184,0.7)" tickLine={false} />
                 <Tooltip contentStyle={{ background: '#0f172a', borderRadius: 16, border: '1px solid rgba(248,113,113,0.3)', color: '#e2e8f0' }} />
                 <Legend wrapperStyle={{ color: '#cbd5f5' }} />
-                <Bar dataKey="pending" stackId="r" fill="#f59e0b" radius={[8,8,0,0]} />
-                <Bar dataKey="resolved" stackId="r" fill="#22c55e" radius={[8,8,0,0]} />
+                <Bar dataKey="pending" stackId="r" fill="#f59e0b" radius={[8,8,0,0]} isAnimationActive={animateCharts} />
+                <Bar dataKey="resolved" stackId="r" fill="#22c55e" radius={[8,8,0,0]} isAnimationActive={animateCharts} />
               </BarChart>
             </ResponsiveContainer>
           </div>

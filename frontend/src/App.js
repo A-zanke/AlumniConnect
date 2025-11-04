@@ -4,6 +4,7 @@ import {
   BrowserRouter as Router,
   Routes,
   Route,
+  Navigate,
   useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
@@ -30,12 +31,13 @@ import NotFoundPage from "./pages/NotFoundPage";
 import SearchPage from "./pages/SearchPage";
 import PostsPage from "./pages/PostPage.jsx";
 import AdminForumManager from "./admin/AdminForumManager.jsx";
+import AdminForumAnalytics from "./admin/AdminForumAnalytics.jsx";
 import AdminUserList from "./admin/AdminUserList.jsx";
 import AdminEventList from "./admin/AdminEventList.jsx";
 import AdminEventDetail from "./admin/AdminEventDetail.jsx";
 import AdminPostsManager from "./admin/AdminPostsManager.jsx";
+import AdminPostsAnalytics from "./admin/AdminPostsAnalytics.jsx";
 import AdminReportsManager from "./admin/AdminReportsManager.jsx";
-import AdminSettings from "./admin/AdminSettings.jsx";
 import { AvatarPreviewProvider } from "./components/ui/AvatarPreviewProvider";
 
 function RouteAwareLayout({ children }) {
@@ -63,7 +65,7 @@ function RouteAwareLayout({ children }) {
 
   if (isAdminRoute) {
     return (
-      <div className="flex min-h-screen flex-col bg-slate-950">
+      <div className="flex min-h-screen flex-col">
         <Navbar />
         <main className="flex-grow">{children}</main>
       </div>
@@ -188,6 +190,14 @@ function App() {
                   path="/admin/forum"
                   element={
                     <PrivateRoute roles={["admin"]}>
+                      <AdminForumAnalytics />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/forum/manage"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
                       <AdminForumManager />
                     </PrivateRoute>
                   }
@@ -220,7 +230,15 @@ function App() {
                   path="/admin/posts"
                   element={
                     <PrivateRoute roles={["admin"]}>
-                      <PostsPage />
+                      <AdminPostsAnalytics />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin/posts/manage"
+                  element={
+                    <PrivateRoute roles={["admin"]}>
+                      <AdminPostsManager />
                     </PrivateRoute>
                   }
                 />
@@ -236,7 +254,7 @@ function App() {
                   path="/admin/settings"
                   element={
                     <PrivateRoute roles={["admin"]}>
-                      <AdminSettings />
+                      <Navigate to="/profile?tab=settings" replace />
                     </PrivateRoute>
                   }
                 />

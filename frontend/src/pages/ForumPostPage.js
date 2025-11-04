@@ -34,6 +34,16 @@ const ForumPostPage = () => {
 
   useEffect(() => { load(); /* eslint-disable-next-line */}, [id]);
 
+  const handleAdminDelete = async () => {
+    if (!window.confirm('Delete this thread?')) return;
+    try {
+      await forumAPI.deletePost(id);
+      navigate('/forum');
+    } catch (e) {
+      // no-op
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="container mx-auto px-4 py-6">
@@ -49,6 +59,16 @@ const ForumPostPage = () => {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
+              {user?.role === 'admin' && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleAdminDelete}
+                    className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-500 transition"
+                  >
+                    Delete Thread
+                  </button>
+                </div>
+              )}
               <PostCard post={post} full onChanged={load} currentUser={user} />
 
               <motion.div

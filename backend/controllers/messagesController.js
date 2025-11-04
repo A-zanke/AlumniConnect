@@ -8,6 +8,7 @@ const User = require("../models/User");
 const Message = require("../models/Message");
 const Thread = require("../models/Thread");
 const Block = require("../models/Block");
+const MessageReport = require("../models/MessageReport");
 const NotificationService = require("../services/notificationService");
 
 // Helper functions
@@ -1867,6 +1868,65 @@ exports.getBlocks = async (req, res) => {
     console.error("Error fetching block list:", error);
     return res.status(500).json({
       message: "Error fetching block list",
+      success: false,
+    });
+  }
+};
+
+// Report user/message
+exports.report = async (req, res) => {
+  try {
+    const { userId, messageId, reason, description } = req.body;
+
+    if (!userId || !reason) {
+      return res.status(400).json({
+        message: "User ID and reason are required",
+        success: false,
+      });
+    }
+
+    // Check if user exists
+    const reportedUser = await User.findById(userId);
+    if (!reportedUser) {
+      return res.status(404).json({
+        message: "User not found",
+        success: false,
+      });
+    }
+
+    // Check if message exists (if messageId provided)
+    let message = null;
+    if (messageId) {
+      message = await Message.findById(messageId);
+      if (!message) {
+        return res.status(404).json({
+          message: "Message not found",
+          success: false,
+        });
+      }
+    }
+
+    // Create report
+    const report = await MessageReport.create({
+      targetType: messageId ? 'message' : 'user',
+      targetId: messageId || null,
+      reportedUser: userId,
+      reporter: req.user._id,
+      reason: reason,
+      description: description || '',
+      messageContent: message ? message.content : '',
+      conversationId: message ? message.threadId : null
+    });
+
+    return res.json({
+      message: "Report submitted successfully",
+      success: true,
+      reportId: report._id
+    });
+  } catch (error) {
+    console.error("Error submitting report:", error);
+    return res.status(500).json({
+      message: "Error submitting report",
       success: false,
     });
   }

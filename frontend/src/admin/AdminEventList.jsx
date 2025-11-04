@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { exportToCsv } from './utils/csv';
 import AdminShell from './AdminShell.jsx';
@@ -13,9 +13,10 @@ const FilterChip = ({ label, value, render }) => (
 );
 
 const AdminEventList = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(searchParams.get('status') || '');
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -68,7 +69,15 @@ const AdminEventList = () => {
           render={(value) => (
             <select
               value={value}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={(e) => {
+                const newStatus = e.target.value;
+                setStatus(newStatus);
+                if (newStatus) {
+                  setSearchParams({ status: newStatus });
+                } else {
+                  setSearchParams({});
+                }
+              }}
               className="rounded-xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none focus:border-indigo-400"
             >
               <option value="">All</option>

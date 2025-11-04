@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import Spinner from "../components/ui/Spinner";
 import FileInput from "../components/ui/FileInput";
@@ -91,13 +91,17 @@ const ProfilePage = () => {
   const { user: currentUser, updateProfile, logout } = useAuth();
   const { userId, username } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [user, setUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [skillInput, setSkillInput] = useState("");
-  const [activeSection, setActiveSection] = useState("overview");
+  const [activeSection, setActiveSection] = useState(() => {
+    const tab = searchParams.get('tab');
+    return tab === 'settings' ? 'settings' : 'overview';
+  });
   const [connections, setConnections] = useState([]);
   const [allConnections, setAllConnections] = useState([]); // For total unique connections
   const [posts, setPosts] = useState([]);
@@ -2114,7 +2118,10 @@ const SettingsSection = ({
   setAvatarFile,
   handleDeleteAvatar,
   handleSubmit,
-}) => (
+}) => {
+  const isAdmin = user?.role?.toLowerCase() === 'admin';
+  
+  return (
   <div className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
@@ -2257,7 +2264,9 @@ const SettingsSection = ({
         </div>
       )}
     </motion.div>
+
   </div>
-);
+  );
+};
 
 export default ProfilePage;

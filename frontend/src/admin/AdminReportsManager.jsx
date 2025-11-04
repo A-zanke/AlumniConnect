@@ -40,7 +40,34 @@ const AdminReportsManager = () => {
         reportTypeFilter === "comments"
       ) {
         const res = await axios.get("/api/admin/post-reports", { params });
-        postReports = res.data || [];
+        postReports = (Array.isArray(res.data) ? res.data : res.data?.reports) || [];
+      }
+      if (reportTypeFilter === "all" || reportTypeFilter === "messages") {
+        try {
+          const res = await axios.get("/api/admin/message-reports", { params });
+          const messageReports = (Array.isArray(res.data) ? res.data : res.data?.reports) || [];
+          // Ensure message reports have the correct targetType
+          const processedMessageReports = messageReports.map(report => ({
+            ...report,
+            targetType: report.targetType || 'message',
+            type: 'message'
+          }));
+          postReports = [...postReports, ...processedMessageReports];
+        } catch (err) {
+          // Try alternative endpoint for message reports
+          try {
+            const res = await axios.get("/api/admin/reports/messages", { params });
+            const messageReports = (Array.isArray(res.data) ? res.data : res.data?.reports) || [];
+            const processedMessageReports = messageReports.map(report => ({
+              ...report,
+              targetType: report.targetType || 'message',
+              type: 'message'
+            }));
+            postReports = [...postReports, ...processedMessageReports];
+          } catch (err2) {
+            console.log("Message reports not available:", err2.message);
+          }
+        }
       }
 
       let allReports = [...forumReports, ...postReports];
@@ -63,6 +90,10 @@ const AdminReportsManager = () => {
             ? "Forum"
             : r.targetType === "post"
             ? "Post"
+            : r.targetType === "message"
+            ? "Message"
+            : r.type === "message"
+            ? "Message"
             : "Comment";
         acc[type] = (acc[type] || 0) + 1;
         return acc;
@@ -93,22 +124,27 @@ const AdminReportsManager = () => {
     fetchReports();
   }, [fetchReports]);
 
-  const handleResolve = async (id, note = "", action = "Resolved") => {
+  const handleResolve = async (report, note = "", action = "Resolved") => {
     try {
-      await axios.put(`/api/admin/reports/${id}/resolve`, {
-        moderatorNote: note,
-        action,
-      });
+      const endpoint =
+        report.targetType === 'forumPost'
+          ? `/api/admin/reports/${report._id}/resolve`
+          : `/api/admin/post-reports/${report._id}/resolve`;
+      await axios.put(endpoint, { moderatorNote: note, action });
       await fetchReports();
     } catch (err) {
       alert("Failed to resolve report");
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (report) => {
     if (!window.confirm("Delete this report?")) return;
     try {
-      await axios.delete(`/api/admin/reports/${id}`);
+      const endpoint =
+        report.targetType === 'forumPost'
+          ? `/api/admin/reports/${report._id}`
+          : `/api/admin/post-reports/${report._id}`;
+      await axios.delete(endpoint);
       await fetchReports();
     } catch (err) {
       alert("Failed to delete report");
@@ -119,7 +155,7 @@ const AdminReportsManager = () => {
     if (!window.confirm("Delete the reported content?")) return;
     try {
       if (report.targetType === "forumPost") {
-        await axios.delete(`/api/admin/forum-posts/${report.targetId._id}`);
+        await axios.delete(`/api/admin/forums/${report.targetId._id}`);
       } else {
         await axios.delete(`/api/admin/posts/${report.targetId._id}`);
       }
@@ -129,27 +165,19 @@ const AdminReportsManager = () => {
     }
   };
 
-  const handleBanUser = async (userId) => {
-    if (!window.confirm("Ban this user?")) return;
-    try {
-      await axios.delete(`/api/admin/users/${userId}`);
-      await fetchReports();
-    } catch (err) {
-      alert("Failed to ban user");
-    }
-  };
-
   const handleBulkResolve = async () => {
     if (selectedReports.length === 0) return;
     const note = prompt("Enter resolution note for selected reports:");
     try {
       await Promise.all(
-        selectedReports.map((id) =>
-          axios.put(`/api/admin/reports/${id}/resolve`, {
-            moderatorNote: note || "",
-            action: "Resolved",
-          })
-        )
+        selectedReports.map((id) => {
+          const rep = reports.find((r) => r._id === id);
+          const endpoint =
+            rep?.targetType === 'forumPost'
+              ? `/api/admin/reports/${id}/resolve`
+              : `/api/admin/post-reports/${id}/resolve`;
+          return axios.put(endpoint, { moderatorNote: note || '', action: 'Resolved' });
+        })
       );
       setSelectedReports([]);
       await fetchReports();
@@ -162,12 +190,14 @@ const AdminReportsManager = () => {
     if (selectedReports.length === 0) return;
     try {
       await Promise.all(
-        selectedReports.map((id) =>
-          axios.put(`/api/admin/reports/${id}/resolve`, {
-            moderatorNote: "Dismissed",
-            action: "Dismissed",
-          })
-        )
+        selectedReports.map((id) => {
+          const rep = reports.find((r) => r._id === id);
+          const endpoint =
+            rep?.targetType === 'forumPost'
+              ? `/api/admin/reports/${id}/resolve`
+              : `/api/admin/post-reports/${id}/resolve`;
+          return axios.put(endpoint, { moderatorNote: 'Dismissed', action: 'Dismissed' });
+        })
       );
       setSelectedReports([]);
       await fetchReports();
@@ -285,6 +315,7 @@ const AdminReportsManager = () => {
                 <option value="forum">Forum Posts</option>
                 <option value="posts">Community Posts</option>
                 <option value="comments">Comments</option>
+                <option value="messages">Messages</option>
               </select>
               <div className="flex gap-2">
                 {["all", "pending", "resolved"].map((f) => (
@@ -396,7 +427,7 @@ const AdminReportsManager = () => {
                               )
                                 ? "Resolved"
                                 : "Dismissed";
-                              handleResolve(report._id, note || "", action);
+                              handleResolve(report, note || "", action);
                             }}
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold transition-all"
                           >
@@ -412,19 +443,7 @@ const AdminReportsManager = () => {
                           Delete Content
                         </button>
                         <button
-                          onClick={() =>
-                            handleBanUser(
-                              report.targetId?.userId?._id ||
-                                report.targetId?.author?._id
-                            )
-                          }
-                          className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold transition-all"
-                        >
-                          <FaUserSlash />
-                          Ban User
-                        </button>
-                        <button
-                          onClick={() => handleDelete(report._id)}
+                          onClick={() => handleDelete(report)}
                           className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-semibold transition-all"
                         >
                           <FaTrash />
