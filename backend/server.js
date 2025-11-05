@@ -5,13 +5,21 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
 const connectDB = require("./config/db");
+const { validateEnv } = require("./config/validateEnv");
 const { errorHandler } = require("./middleware/errorHandler");
+const { sanitizeInput, preventInjection, csrfProtection, requestSizeLimit } = require("./middleware/security");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const Notification = require("./models/Notification"); // Add at top if missing
+const mongoSanitize = require("express-mongo-sanitize");
+const xss = require("xss-clean");
+const hpp = require("hpp");
+const Notification = require("./models/Notification");
 
 // Load environment variables
 dotenv.config();
+
+// Validate environment variables
+validateEnv();
 
 connectDB();
 
@@ -40,17 +48,51 @@ app.use((req, res, next) => {
 });
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+
+// Security Middleware
+app.use(mongoSanitize()); // Prevent NoSQL injection
+app.use(xss()); // Prevent XSS attacks
+app.use(hpp()); // Prevent HTTP Parameter Pollution
+
 app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
     exposedHeaders: ["Content-Length", "Content-Type"],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
-app.use(helmet());
+
+// Enhanced Helmet configuration
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:", "http:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        mediaSrc: ["'self'"],
+        frameSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true
+    },
+    noSniff: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  })
+);
 
 // Whitelist auth/OTP/search + event writes + ALL admin routes
 const AUTH_OTP_PATHS = new Set([
@@ -67,7 +109,8 @@ const AUTH_OTP_PATHS = new Set([
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: process.env.NODE_ENV === "production" ? 500 : 1000,
+  message: "Too many requests from this IP, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.ip,
@@ -101,10 +144,36 @@ const globalLimiter = rateLimit({
 // Apply limiter before routes
 app.use(globalLimiter);
 
+// Specific rate limiters for sensitive endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: "Too many login attempts, please try again after 15 minutes.",
+  skipSuccessfulRequests: true,
+});
+
+const otpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: "Too many OTP requests, please try again after an hour.",
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: "Too many upload requests, please try again later.",
+});
+
 // Logging in development
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
+
+// Security middleware
+app.use(requestSizeLimit);
+app.use(sanitizeInput);
+app.use(preventInjection);
+app.use(csrfProtection);
 
 // Import routes
 const authRoutes = require("./routes/authRoutes");
@@ -144,6 +213,16 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/recommendations", recommendationsRoutes);
 
 // NOTE: Local '/uploads' static serving has been removed.
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV,
+  });
+});
 
 // Serve static assets in production
 if (process.env.NODE_ENV === "production") {
@@ -481,4 +560,49 @@ io.on("connection", (socket) => {
       if (postId) socket.leave(`post_${postId}`);
     } catch (e) {}
   });
+});
+
+// Graceful shutdown handling
+const gracefulShutdown = async (signal) => {
+  console.log(`\n${signal} received. Starting graceful shutdown...`);
+  
+  // Stop accepting new connections
+  http.close(() => {
+    console.log('HTTP server closed');
+  });
+
+  // Close database connection
+  try {
+    const mongoose = require('mongoose');
+    await mongoose.connection.close();
+    console.log('Database connection closed');
+  } catch (err) {
+    console.error('Error closing database:', err);
+  }
+
+  // Close Socket.IO connections
+  io.close(() => {
+    console.log('Socket.IO connections closed');
+  });
+
+  // Exit process
+  setTimeout(() => {
+    console.log('Forcing shutdown');
+    process.exit(0);
+  }, 10000); // Force exit after 10 seconds
+};
+
+// Listen for termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  gracefulShutdown('uncaughtException');
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

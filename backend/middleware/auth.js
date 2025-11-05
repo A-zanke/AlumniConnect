@@ -2,6 +2,9 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Alumni = require('../models/Alumni');
 
+// Token blacklist (in production, use Redis)
+const tokenBlacklist = new Set();
+
 // Protect routes - verify token and set req.user
 const protect = async (req, res, next) => {
   let token;
@@ -20,9 +23,19 @@ const protect = async (req, res, next) => {
     return res.status(401).json({ message: 'Not authorized, no token' });
   }
 
+  // Check if token is blacklisted
+  if (tokenBlacklist.has(token)) {
+    return res.status(401).json({ message: 'Token has been revoked' });
+  }
+
   try {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Check token expiration
+    if (decoded.exp && Date.now() >= decoded.exp * 1000) {
+      return res.status(401).json({ message: 'Token expired' });
+    }
 
     // Set req.user
     req.user = await User.findById(decoded.id).select('-password');
@@ -31,12 +44,17 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'Not authorized, user not found' });
     }
 
-    // Safe logging for debugging
-    console.log('Incoming Request:', req.originalUrl);
-    console.log('Route Object:', req.route ? req.route.path : 'Route info not available');
+    // Attach token to request for potential blacklisting
+    req.token = token;
 
     next();
   } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Token expired' });
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
     console.error('Authentication error:', error);
     res.status(401).json({ message: 'Not authorized, token failed' });
   }
@@ -102,4 +120,11 @@ const auth = (req, res, next) => {
     }
 };
 
-module.exports = { protect, admin, adminOnly, teacherOrAlumni, auth };
+// Function to blacklist token (call on logout)
+const blacklistToken = (token) => {
+  tokenBlacklist.add(token);
+  // Auto-remove after 30 days
+  setTimeout(() => tokenBlacklist.delete(token), 30 * 24 * 60 * 60 * 1000);
+};
+
+module.exports = { protect, admin, adminOnly, teacherOrAlumni, auth, blacklistToken };

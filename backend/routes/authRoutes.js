@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('../config/cloudinary');
+const rateLimit = require('express-rate-limit');
 const { 
   registerUser, 
   loginUser, 
@@ -23,6 +24,20 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// Rate limiters for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: "Too many attempts, please try again after 15 minutes.",
+  skipSuccessfulRequests: true,
+});
+
+const otpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: "Too many OTP requests, please try again after an hour.",
+});
 
 // Configure Cloudinary storage for avatar uploads
 const storage = new CloudinaryStorage({
@@ -50,14 +65,14 @@ const upload = multer({
   }
 });
 
-// Public routes
-router.post('/register', registerUser);
-router.post('/login', loginUser);
-router.post('/send-otp', sendOtp);
-router.post('/verify-otp', verifyOtp);
-router.post('/forgot/send-otp', sendResetOtp);
-router.post('/forgot/verify-otp', verifyResetOtp);
-router.post('/forgot/reset', resetPassword);
+// Public routes with rate limiting
+router.post('/register', authLimiter, registerUser);
+router.post('/login', authLimiter, loginUser);
+router.post('/send-otp', otpLimiter, sendOtp);
+router.post('/verify-otp', authLimiter, verifyOtp);
+router.post('/forgot/send-otp', otpLimiter, sendResetOtp);
+router.post('/forgot/verify-otp', authLimiter, verifyResetOtp);
+router.post('/forgot/reset', authLimiter, resetPassword);
 router.get('/check-username', checkUsername);
 
 // Protected routes
@@ -66,7 +81,7 @@ router.get('/profile', protect, getUserProfile);
 router.put('/profile', protect, upload.single('avatar'), updateUserProfile);
 
 // Google OAuth callback endpoint
-router.post('/google/callback', async (req, res) => {
+router.post('/google/callback', authLimiter, async (req, res) => {
   try {
     const { credential } = req.body;
     
@@ -123,10 +138,11 @@ router.post('/google/callback', async (req, res) => {
       { expiresIn: '30d' }
     );
 
-    // Set token in cookie
+    // Set token in cookie with security flags
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
       maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     });
 
