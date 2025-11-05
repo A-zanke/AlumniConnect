@@ -498,6 +498,31 @@ exports.sendMessage = async (req, res) => {
       deliveredAt: new Date(),
     };
     
+    // Handle encrypted messages
+    if (req.body.encrypted === 'true' || req.body.encrypted === true) {
+      messageData.encrypted = true;
+      
+      // Parse encryption data if sent as string
+      let encryptionData = req.body.encryptionData;
+      if (typeof encryptionData === 'string') {
+        try {
+          encryptionData = JSON.parse(encryptionData);
+        } catch (e) {
+          console.error('Error parsing encryptionData:', e);
+        }
+      }
+      
+      if (encryptionData) {
+        messageData.encryptionData = {
+          version: encryptionData.version || 'v1',
+          encryptedContent: encryptionData.encryptedContent,
+          encryptedKey: encryptionData.encryptedKey,
+          iv: encryptionData.iv,
+          isGroup: encryptionData.isGroup || false,
+        };
+      }
+    }
+    
     // Only add forward-related fields if actually forwarded
     if (isForwarded && forwardedFrom) {
       messageData.isForwarded = true;

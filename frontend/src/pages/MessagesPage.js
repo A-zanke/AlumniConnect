@@ -70,6 +70,8 @@ import { HiOutlineEmojiHappy } from "react-icons/hi";
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 import MediaDownloadOverlay from "../components/ui/MediaDownloadOverlay";
+import { useEncryption } from "../hooks/useEncryption";
+import E2EEDebugPanel from "../components/E2EEDebugPanel";
 
 const MessagesPage = () => {
   const { user } = useAuth();
@@ -84,6 +86,9 @@ const MessagesPage = () => {
   const messageContainerRef = useRef(null);
   const seenIdsRef = useRef(new Set());
   const [error, setError] = useState(null);
+  
+  // E2EE Encryption hook
+  const { isReady: encryptionReady, encryptMessageForRecipient, decryptReceivedMessage, keys } = useEncryption(user);
   // Attachment selection (WhatsApp-like)
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -401,7 +406,7 @@ const MessagesPage = () => {
       // Message events
       s.on(
         "message:new",
-        ({
+        async ({
           conversationId,
           messageId,
           senderId,
@@ -410,6 +415,8 @@ const MessagesPage = () => {
           createdAt,
           isForwarded,
           forwardedFrom,
+          encrypted,
+          encryptionData,
         }) => {
           // Deduplicate message events by messageId
           if (messageId && seenIdsRef.current.has(String(messageId))) return;
@@ -420,6 +427,25 @@ const MessagesPage = () => {
             currentSelected && String(senderId) === String(currentSelected._id);
           const tabFocused = document.visibilityState === "visible";
 
+          // Decrypt message if encrypted
+          let messageContent = body;
+          if (encrypted && encryptionData) {
+            console.log('🔓 Decrypting incoming message...');
+            try {
+              messageContent = await decryptReceivedMessage({
+                encrypted,
+                encryptionData,
+                content: body,
+              });
+              console.log('✅ Incoming message decrypted:', messageContent);
+            } catch (error) {
+              console.error('❌ Failed to decrypt incoming message:', error);
+              messageContent = '[Unable to decrypt message]';
+            }
+          } else {
+            console.log('📨 Received unencrypted message:', body);
+          }
+
           if (isCurrent && tabFocused) {
             setMessages((prev) => [
               ...prev,
@@ -427,12 +453,14 @@ const MessagesPage = () => {
                 id: messageId,
                 senderId,
                 recipientId: user._id,
-                content: body,
+                content: messageContent,
                 attachments: Array.isArray(attachments) ? attachments : [],
                 timestamp: createdAt,
                 status: "delivered",
                 isForwarded,
                 forwardedFrom,
+                encrypted,
+                _originalEncrypted: encrypted,
               },
             ]);
             if (s && conversationId)
@@ -678,7 +706,43 @@ const MessagesPage = () => {
         ...m,
         status: m.status || "sent",
       }));
-      setMessages(normalized);
+      
+      // Decrypt messages if they're encrypted
+      console.log('📥 Processing messages:', normalized.length, 'messages');
+      console.log('📋 Sample message structure:', normalized[0]);
+      const decryptedMessages = await Promise.all(
+        normalized.map(async (msg) => {
+          console.log('🔍 Checking message:', { 
+            id: msg.id, 
+            encrypted: msg.encrypted, 
+            hasEncryptionData: !!msg.encryptionData,
+            content: msg.content?.substring(0, 20) 
+          });
+          if (msg.encrypted && msg.encryptionData) {
+            console.log('🔓 Decrypting message:', msg.id);
+            try {
+              const decryptedContent = await decryptReceivedMessage(msg);
+              console.log('✅ Decrypted:', decryptedContent);
+              return {
+                ...msg,
+                content: decryptedContent,
+                _originalEncrypted: true,
+              };
+            } catch (error) {
+              console.error('❌ Failed to decrypt message:', error);
+              return {
+                ...msg,
+                content: '[Unable to decrypt message]',
+                _decryptionFailed: true,
+              };
+            }
+          }
+          return msg;
+        })
+      );
+      console.log('📝 Final messages:', decryptedMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 20) })));
+      
+      setMessages(decryptedMessages);
 
       try {
         const token = localStorage.getItem("token");
@@ -745,9 +809,25 @@ const MessagesPage = () => {
     try {
       // WhatsApp-style: Send text message first if there's text with media
       if (textContent && hasAnyMedia) {
-        const textFormData = new FormData();
-        textFormData.append("content", textContent);
         const clientKey = generateClientKey();
+        
+        // Encrypt message before sending
+        const encryptedData = await encryptMessageForRecipient(textContent, selectedUser._id);
+        
+        // Debug logging
+        if (!encryptedData.encrypted) {
+          console.warn('⚠️ Message sent unencrypted - recipient may need to log in once to enable E2EE');
+        }
+        
+        const textFormData = new FormData();
+        // Send encrypted content if available, otherwise send plain text
+        if (encryptedData.encrypted && encryptedData.encryptionData?.encryptedContent) {
+          textFormData.append("content", encryptedData.encryptionData.encryptedContent);
+          textFormData.append("encrypted", "true");
+          textFormData.append("encryptionData", JSON.stringify(encryptedData.encryptionData));
+        } else {
+          textFormData.append("content", textContent);
+        }
         textFormData.append("clientKey", clientKey);
         
         if (savedReplyTo?.id) {
@@ -759,10 +839,11 @@ const MessagesPage = () => {
           id: clientKey,
           senderId: user._id,
           recipientId: selectedUser._id,
-          content: textContent,
+          content: textContent, // Keep original for optimistic UI
           attachments: [],
           timestamp: new Date().toISOString(),
           status: "sending",
+          encrypted: encryptedData.encrypted,
         };
         setMessages((prev) => [...prev, optimisticText]);
         
@@ -831,36 +912,58 @@ const MessagesPage = () => {
       // Handle text-only message
       if (textContent && !hasAnyMedia) {
         const clientKey = generateClientKey();
+        
+        // Encrypt message before sending
+        const encryptedData = await encryptMessageForRecipient(textContent, selectedUser._id);
+        
+        // Debug: Check encryption result
+        if (!encryptedData.encrypted) {
+          console.warn('⚠️ Message sent unencrypted:', {
+            encryptionReady,
+            hasKeys: !!keys?.publicKey && !!keys?.privateKey,
+            recipientId: selectedUser._id
+          });
+        } else {
+          console.log('✅ Message encrypted successfully');
+        }
+        
         const optimistic = {
           id: clientKey,
           senderId: user._id,
           recipientId: selectedUser._id,
-          content: textContent,
+          content: textContent, // Keep original for optimistic UI
           attachments: [],
           timestamp: new Date().toISOString(),
           status: "sent",
           replyTo: savedReplyTo,
+          encrypted: encryptedData.encrypted,
         };
         setMessages((prev) => [...prev, optimistic]);
         
         if (socket) {
           const socketAttachments = [];
           if (savedReplyTo?.id) socketAttachments.push(`reply:${savedReplyTo.id}`);
-          socket.emit("chat:send", {
+          
+          // Send encrypted content if available
+          const socketPayload = {
             to: selectedUser._id,
-            content: textContent,
             clientKey,
             attachments: socketAttachments,
-          });
+          };
+          
+          if (encryptedData.encrypted && encryptedData.encryptionData?.encryptedContent) {
+            socketPayload.content = encryptedData.encryptionData.encryptedContent;
+            socketPayload.encrypted = true;
+            socketPayload.encryptionData = encryptedData.encryptionData;
+          } else {
+            socketPayload.content = textContent;
+          }
+          
+          socket.emit("chat:send", socketPayload);
         }
       }
       
       setTimeout(scrollToBottom, 50);
-      
-      // Refresh messages after all uploads
-      setTimeout(() => {
-        fetchMessagesData();
-      }, 1000);
       
     } catch (error) {
       console.error("Error sending message:", error);
@@ -1083,7 +1186,11 @@ const MessagesPage = () => {
       ];
       
       const reasonList = reasons.map((r, i) => `${i + 1}. ${r.label}`).join('\n');
-      const selection = prompt(`Report ${targetUser.name}?\n\nSelect a reason (enter number 1-${reasons.length}):\n\n${reasonList}`);
+      const selection = prompt(`Report ${targetUser.name}?
+
+Select a reason (enter number 1-${reasons.length}):
+
+${reasonList}`);
       
       if (!selection || !selection.trim()) {
         toast.error("Please select a reason for reporting");
@@ -1222,7 +1329,11 @@ const MessagesPage = () => {
       ];
       
       const reasonList = reasons.map((r, i) => `${i + 1}. ${r.label}`).join('\n');
-      const selection = prompt(`Report ${ids.length} selected users?\n\nSelect a reason (enter number 1-${reasons.length}):\n\n${reasonList}`);
+      const selection = prompt(`Report ${ids.length} selected users?
+
+Select a reason (enter number 1-${reasons.length}):
+
+${reasonList}`);
       
       if (!selection || !selection.trim()) {
         toast.error("Please select a reason for reporting");
@@ -1674,8 +1785,6 @@ const MessagesPage = () => {
                         userToSelect.avatarUrl = connection.user.avatarUrl;
                       }
                       
-                      console.log("Selecting user:", userToSelect);
-                      
                       if (userToSelect._id) {
                         setSelectedUser(userToSelect);
                         setShowSidebar(false);
@@ -1866,6 +1975,20 @@ const MessagesPage = () => {
                       `last seen ${formatLastSeen(selectedUser.lastSeen)}`
                     )}
                   </p>
+                  {/* E2EE Indicator */}
+                  <div className="flex items-center gap-1 text-xs mt-0.5">
+                    {encryptionReady ? (
+                      <>
+                        <FiShield size={12} className="text-green-600" />
+                        <span className="text-green-600">End-to-end encrypted</span>
+                      </>
+                    ) : (
+                      <>
+                        <FiShield size={12} className="text-gray-400" />
+                        <span className="text-gray-500">Encryption initializing...</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -3443,6 +3566,15 @@ const MessagesPage = () => {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Debug Panel - Completely hidden, only show with ?debug=1 in URL */}
+      {new URLSearchParams(window.location.search).get('debug') === '1' && (
+        <E2EEDebugPanel 
+          encryptionReady={encryptionReady}
+          keys={keys}
+          user={user}
+        />
       )}
     </div>
   );

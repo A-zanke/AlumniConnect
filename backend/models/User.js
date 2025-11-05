@@ -48,7 +48,10 @@ const userSchema = new mongoose.Schema({
   
   // Presence tracking
   isOnline: { type: Boolean, default: false },
-  lastSeen: { type: Date, default: Date.now }
+  lastSeen: { type: Date, default: Date.now },
+  
+  // End-to-End Encryption
+  publicKey: { type: String }, // RSA public key for E2EE
 }, { timestamps: true });
 
 // Match user entered password to hashed password in database

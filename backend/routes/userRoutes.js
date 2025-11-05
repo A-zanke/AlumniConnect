@@ -22,6 +22,25 @@ router.get('/username/:username', getUserByUsername);
 router.get('/suggested/connections', protect, getSuggestedConnections);
 router.get('/mutual/connections', protect, getMyMutualConnections);
 
+// E2EE - Upload/Update public key (MUST be before /:userId route)
+router.put('/encryption/public-key', protect, async (req, res) => {
+  try {
+    const { publicKey } = req.body;
+    
+    if (!publicKey || typeof publicKey !== 'string') {
+      return res.status(400).json({ message: 'Invalid public key' });
+    }
+    
+    const User = require('../models/User');
+    await User.findByIdAndUpdate(req.user._id, { publicKey });
+    
+    res.json({ message: 'Public key updated successfully' });
+  } catch (error) {
+    console.error('Error updating public key:', error);
+    res.status(500).json({ message: 'Error updating public key' });
+  }
+});
+
 // Get user profile by ID
 router.get('/:userId', protect, async (req, res) => {
   try {
@@ -74,6 +93,23 @@ router.get('/:userId', protect, async (req, res) => {
   }
 });
 
+// E2EE - Get user's public key (MUST be before /:userId/connections route)
+router.get('/:userId/public-key', protect, async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const user = await User.findById(req.params.userId).select('publicKey');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.json({ publicKey: user.publicKey || null });
+  } catch (error) {
+    console.error('Error fetching public key:', error);
+    res.status(500).json({ message: 'Error fetching public key' });
+  }
+});
+
 // Get user connections
 router.get('/:userId/connections', protect, async (req, res) => {
   try {
@@ -108,6 +144,5 @@ router.post('/chatbot', chatbotController.chatbotReply);
 
 // Remove user avatar
 router.delete('/remove-avatar', protect, removeUserAvatar);
-
 
 module.exports = router;
