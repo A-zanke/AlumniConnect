@@ -362,8 +362,112 @@ const NetworkPage = () => {
         </div>
       </div>
 
-      {/* Network Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      {/* Mobile Quick Access Blocks - Only visible on mobile */}
+      <div className="md:hidden mb-8">
+        <div className="grid grid-cols-2 gap-4">
+          {/* Following Block */}
+          <motion.div
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setActiveTab("following")}
+            className={`bg-gradient-to-br ${
+              activeTab === "following"
+                ? "from-blue-500 to-blue-600 text-white"
+                : "from-white to-gray-50 text-gray-800"
+            } rounded-2xl shadow-lg p-6 cursor-pointer border-2 ${
+              activeTab === "following" ? "border-blue-300" : "border-gray-200"
+            } transition-all`}
+          >
+            <div className="flex flex-col items-center">
+              <FaUserFriends className="text-3xl mb-3" />
+              <p className="text-xs font-semibold uppercase tracking-wide mb-1">
+                Following
+              </p>
+              <h3 className="text-2xl font-bold">
+                {stats.followingCount || stats.totalConnections}
+              </h3>
+            </div>
+          </motion.div>
+
+          {/* Mutual Connections Block */}
+          <motion.div
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setActiveTab("mutual")}
+            className={`bg-gradient-to-br ${
+              activeTab === "mutual"
+                ? "from-green-500 to-green-600 text-white"
+                : "from-white to-gray-50 text-gray-800"
+            } rounded-2xl shadow-lg p-6 cursor-pointer border-2 ${
+              activeTab === "mutual" ? "border-green-300" : "border-gray-200"
+            } transition-all`}
+          >
+            <div className="flex flex-col items-center">
+              <FaNetworkWired className="text-3xl mb-3" />
+              <p className="text-xs font-semibold uppercase tracking-wide mb-1">
+                Mutual
+              </p>
+              <h3 className="text-2xl font-bold">
+                {stats.mutualConnections}
+              </h3>
+            </div>
+          </motion.div>
+
+          {/* Requests Block */}
+          <motion.div
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setActiveTab("requests")}
+            className={`bg-gradient-to-br ${
+              activeTab === "requests"
+                ? "from-orange-500 to-orange-600 text-white"
+                : "from-white to-gray-50 text-gray-800"
+            } rounded-2xl shadow-lg p-6 cursor-pointer border-2 ${
+              activeTab === "requests" ? "border-orange-300" : "border-gray-200"
+            } transition-all relative`}
+          >
+            <div className="flex flex-col items-center">
+              <FaUserCheck className="text-3xl mb-3" />
+              <p className="text-xs font-semibold uppercase tracking-wide mb-1">
+                Requests
+              </p>
+              <h3 className="text-2xl font-bold">
+                {pendingRequests.length}
+              </h3>
+              {pendingRequests.length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold">
+                  {pendingRequests.length}
+                </span>
+              )}
+            </div>
+          </motion.div>
+
+          {/* AI Alumni Block - Only for Students */}
+          {String(user?.role || '').toLowerCase() === 'student' && (
+            <motion.div
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setActiveTab('ai')}
+              className={`bg-gradient-to-br ${
+                activeTab === 'ai'
+                  ? "from-purple-500 to-purple-600 text-white"
+                  : "from-white to-gray-50 text-gray-800"
+              } rounded-2xl shadow-lg p-6 cursor-pointer border-2 ${
+                activeTab === 'ai' ? "border-purple-300" : "border-gray-200"
+              } transition-all`}
+            >
+              <div className="flex flex-col items-center">
+                <span className="text-3xl mb-3">🧠</span>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-1">
+                  AI Alumni
+                </p>
+                <h3 className="text-2xl font-bold">
+                  {recommendations.filter(r => Math.round(r.matchScore || 60) >= matchFilter).length}
+                </h3>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop Network Stats - Hidden on mobile */}
+      <div className="hidden md:grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <motion.div
           whileHover={{ scale: 1.02 }}
           className="bg-white rounded-lg shadow-md p-6 cursor-pointer"
@@ -397,9 +501,9 @@ const NetworkPage = () => {
         </motion.div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="border-b border-gray-200 mb-8">
-        <nav className="-mb-px flex space-x-8 overflow-x-auto">
+      {/* Navigation Tabs - Hidden on mobile, visible on desktop */}
+      <div className="border-b border-gray-200 mb-8 hidden md:block">
+        <nav className="-mb-px flex space-x-8">
           <button
             onClick={() => setActiveTab("following")}
             className={`${
