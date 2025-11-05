@@ -131,6 +131,15 @@ const MessageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    
+    // E2EE encryption data
+    encryptionData: {
+      version: { type: String, default: 'v1' },
+      encryptedContent: { type: String }, // Base64 encrypted content
+      encryptedKey: { type: String }, // Base64 encrypted AES key
+      iv: { type: String }, // Base64 initialization vector
+      isGroup: { type: Boolean, default: false },
+    },
 
     // Message priority
     priority: {
@@ -338,6 +347,8 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
     deliveredAt: this.deliveredAt,
     status: this.isRead ? "seen" : this.deliveredAt ? "delivered" : "sent",
     metadata: this.metadata,
+    encrypted: this.encrypted,
+    encryptionData: this.encrypted ? this.encryptionData : null,
   };
 };
 

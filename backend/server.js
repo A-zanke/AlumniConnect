@@ -259,7 +259,7 @@ io.on("connection", (socket) => {
   const handleSend = async (payload) => {
     try {
       const from = socket.userId;
-      const { to, content, attachments, clientKey } = payload || {};
+      const { to, content, attachments, clientKey, encrypted, encryptionData } = payload || {};
       if (!to || (!content && !attachments)) return;
       const me = await User.findById(from).select("connections");
       if (!me) return;
@@ -287,6 +287,18 @@ io.on("connection", (socket) => {
       };
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
+      }
+      
+      // Handle encrypted messages
+      if (encrypted && encryptionData) {
+        messageData.encrypted = true;
+        messageData.encryptionData = {
+          version: encryptionData.version || 'v1',
+          encryptedContent: encryptionData.encryptedContent,
+          encryptedKey: encryptionData.encryptedKey,
+          iv: encryptionData.iv,
+          isGroup: encryptionData.isGroup || false,
+        };
       }
       // Ensure a Thread exists without trying to $set participants in an update (avoids NotSingleValueField)
       let thread = await Thread.findOne({
@@ -319,6 +331,8 @@ io.on("connection", (socket) => {
         body: msg.content,
         attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
         createdAt: msg.createdAt,
+        encrypted: msg.encrypted || false,
+        encryptionData: msg.encrypted ? msg.encryptionData : null,
       };
       // Acknowledge to sender: sent (include clientKey if present)
       socket.emit("message:ack", {
