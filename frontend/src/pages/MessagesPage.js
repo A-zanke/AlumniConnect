@@ -155,7 +155,7 @@ const MessagesPage = () => {
   }); // url -> boolean (for receiver)
   const [downloadProgress, setDownloadProgress] = useState({}); // url -> 0..100
 
-  const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
+  const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
 
   // Media URL helpers for rendering and text auto-preview
@@ -376,11 +376,7 @@ const MessagesPage = () => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
 
-  useEffect(() => {
-    if (selectedUser) {
-      fetchMessages();
-    }
-  }, [selectedUser, fetchMessages]);
+  // Removed duplicate effect - fetchMessagesData is already called in a separate useEffect
 
   // Socket.IO connection
   useEffect(() => {
@@ -662,11 +658,22 @@ const MessagesPage = () => {
 
   // Fetch messages for selected user
   const fetchMessagesData = useCallback(async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !selectedUser._id) {
+      console.warn("Cannot fetch messages: selectedUser or selectedUser._id is missing");
+      return;
+    }
+
+    // Validate that _id is a valid MongoDB ObjectId format (24 hex characters)
+    const userId = String(selectedUser._id);
+    if (!/^[0-9a-fA-F]{24}$/.test(userId)) {
+      console.error("Invalid user ID format:", userId);
+      toast.error("Invalid user ID. Please select a valid user.");
+      return;
+    }
 
     try {
       setLoading(true);
-      const data = await fetchMessages(selectedUser._id);
+      const data = await fetchMessages(userId);
       const normalized = (Array.isArray(data) ? data : []).map((m) => ({
         ...m,
         status: m.status || "sent",
@@ -676,7 +683,7 @@ const MessagesPage = () => {
       try {
         const token = localStorage.getItem("token");
         const resp = await axios.get(
-          `${baseURL}/api/messages/media/${selectedUser._id}`,
+          `${baseURL}/api/messages/media/${userId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setSharedMedia(Array.isArray(resp?.data?.media) ? resp.data.media : []);
@@ -685,8 +692,19 @@ const MessagesPage = () => {
 
       setError(null);
     } catch (err) {
-      setError("Failed to fetch messages");
       console.error("Error fetching messages:", err);
+      
+      if (err.response?.status === 400) {
+        setError("Invalid user selection");
+        toast.error("Invalid user ID. Please try selecting the user again.");
+      } else if (err.response?.status === 403) {
+        setError("You can only message connected users");
+        toast.error("You can only message users you're connected with. Send a connection request first.");
+        setMessages([]);
+      } else {
+        setError("Failed to fetch messages");
+        toast.error("Failed to load messages. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -1636,14 +1654,41 @@ const MessagesPage = () => {
                     if (chatSelectionMode) {
                       toggleChatSelection(connection._id);
                     } else {
-                      setSelectedUser(connection.user);
-                      setShowSidebar(false);
-                      // Optimistically clear unread count for this conversation
-                      if (connection.threadId) {
-                        setUnreadByConversationId((prev) => ({
-                          ...prev,
-                          [connection.threadId]: 0,
-                        }));
+                      // Ensure we have a valid user object with _id before setting
+                      const userToSelect = { ...(connection.user || {}) };
+                      
+                      // Ensure _id is set
+                      if (!userToSelect._id && connection._id) {
+                        // Fallback: use connection._id if user._id is missing
+                        userToSelect._id = connection._id;
+                      }
+                      
+                      // Ensure other required fields
+                      if (!userToSelect.name && connection.user?.name) {
+                        userToSelect.name = connection.user.name;
+                      }
+                      if (!userToSelect.username && connection.user?.username) {
+                        userToSelect.username = connection.user.username;
+                      }
+                      if (!userToSelect.avatarUrl && connection.user?.avatarUrl) {
+                        userToSelect.avatarUrl = connection.user.avatarUrl;
+                      }
+                      
+                      console.log("Selecting user:", userToSelect);
+                      
+                      if (userToSelect._id) {
+                        setSelectedUser(userToSelect);
+                        setShowSidebar(false);
+                        // Optimistically clear unread count for this conversation
+                        if (connection.threadId) {
+                          setUnreadByConversationId((prev) => ({
+                            ...prev,
+                            [connection.threadId]: 0,
+                          }));
+                        }
+                      } else {
+                        console.error("Cannot select user: missing _id", connection);
+                        toast.error("Unable to select this conversation. Please try again.");
                       }
                     }
                   }}

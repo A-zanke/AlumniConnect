@@ -86,7 +86,8 @@ const SearchPage = () => {
   const handleSearch = async () => {
     setLoading(true);
     try {
-      const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
+      const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
       const response = await axios.get(
         `${baseURL}/api/search/users?query=${encodeURIComponent(query)}&excludeId=${currentUserId}`,
         { withCredentials: true }

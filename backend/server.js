@@ -20,9 +20,12 @@ const app = express();
 const http = require("http").createServer(app);
 const { Server } = require("socket.io");
 const allowedOrigins = [
-  "http://10.183.168.134:3000",
-  "http://localhost:3000",
   process.env.FRONTEND_ORIGIN,
+  ...(process.env.FRONTEND_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+  "http://localhost:3000",
 ].filter(Boolean);
 
 const io = new Server(http, {

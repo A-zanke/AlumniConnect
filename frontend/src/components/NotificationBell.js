@@ -47,7 +47,7 @@ const NotificationBell = ({ extraCount = 0 }) => {
   useEffect(() => {
     if (!user) return;
 
-    const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
+    const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
     const socket = io(baseURL, {
       auth: { token: localStorage.getItem("token") },
       withCredentials: true,

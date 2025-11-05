@@ -179,7 +179,7 @@ const registerUser = async (req, res) => {
     // For alumni, send welcome email
     if (roleLower === "alumni") {
       try {
-        const loginUrl = process.env.FRONTEND_URL || 'http://10.183.168.134:3000/login';
+        const loginUrl = process.env.FRONTEND_URL || 'http://localhost:3000/login';
         await sendWelcomeEmail({ to: email, password: finalPassword, loginUrl });
       } catch (emailError) {
         console.error("Welcome email send failed:", emailError?.message || emailError);

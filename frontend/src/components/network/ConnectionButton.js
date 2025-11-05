@@ -26,8 +26,9 @@ const ConnectionButton = ({
       
       // Set up socket connection if not already established
       if (!window.socket) {
-        window.socket = io(process.env.REACT_APP_API_URL || 'http://10.183.168.134:5000', { 
-          withCredentials: true 
+        const socketUrl = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        window.socket = io(socketUrl, {
+          withCredentials: true
         });
       }
       

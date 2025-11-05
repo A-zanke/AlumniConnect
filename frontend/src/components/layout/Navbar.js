@@ -78,7 +78,7 @@ const Navbar = () => {
     refreshUnread();
 
     // Setup socket for real-time total updates
-    const baseURL = process.env.REACT_APP_API_URL || "http://10.183.168.134:5000";
+    const baseURL = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_API_URL || "http://localhost:5000";
     const s = io(baseURL, {
       auth: { token: localStorage.getItem("token") },
       withCredentials: true,

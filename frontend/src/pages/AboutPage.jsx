@@ -1,6 +1,13 @@
 import { motion, useInView } from "framer-motion";
 import { useRef, useState } from "react";
 
+// Import profile images
+import ashishImg from '../assets/images/Ashish zanke.png';
+import prajeshImg from '../assets/images/Prajesh kadam.png';
+import kunalImg from '../assets/images/Kunal mahajan.png';
+import sachinImg from '../assets/images/Sachin gunjakar.png';
+import dummyImg from '../assets/images/Alumni1.png';
+
 // Embedded Styles
 const styles = `
   @keyframes float {
@@ -148,7 +155,7 @@ const staggerContainer = {
 };
 
 // Developer Card Component
-const DeveloperCard = ({ name, role, bio, skills, social }) => {
+const DeveloperCard = ({ name, role, bio, skills, social, image }) => {
   const [isFlipped, setIsFlipped] = useState(false);
 
   const cardStyle = {
@@ -218,15 +225,22 @@ const DeveloperCard = ({ name, role, bio, skills, social }) => {
                   width: '100%',
                   height: '100%',
                   borderRadius: '50%',
-                  background: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '28px',
-                  fontWeight: 'bold',
-                  color: '#6366f1'
+                  overflow: 'hidden',
+                  background: 'white'
                 }}>
-                  {name.split(" ").map(n => n[0]).join("")}
+                  <img 
+                    src={image} 
+                    alt={name}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.parentElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 28px; font-weight: bold; color: #6366f1;">${name.split(" ").map(n => n[0]).join("")}</div>`;
+                    }}
+                  />
                 </div>
               </div>
               <div style={{
@@ -335,7 +349,7 @@ const DeveloperCard = ({ name, role, bio, skills, social }) => {
 };
 
 // Faculty Card Component
-const FacultyCard = ({ name, title, department, credentials, badge }) => {
+const FacultyCard = ({ name, title, department, credentials, badge, image }) => {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
 
@@ -373,21 +387,40 @@ const FacultyCard = ({ name, title, department, credentials, badge }) => {
                 position: 'relative',
                 overflow: 'hidden'
               }}>
-                <div style={{
-                  width: '160px',
-                  height: '160px',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #6366f1, #a855f7, #ec4899)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 20px 40px rgba(99, 102, 241, 0.4)',
-                  fontSize: '48px',
-                  fontWeight: 'bold',
-                  color: 'white'
-                }}>
-                  {name.split(" ").map(n => n[0]).join("")}
-                </div>
+                {image ? (
+                  <img 
+                    src={image} 
+                    alt={name}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      const fallback = document.createElement('div');
+                      fallback.style.cssText = 'width: 160px; height: 160px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899); display: flex; align-items: center; justify-content: center; box-shadow: 0 20px 40px rgba(99, 102, 241, 0.4); font-size: 48px; font-weight: bold; color: white;';
+                      fallback.textContent = name.split(" ").map(n => n[0]).join("");
+                      e.target.parentElement.appendChild(fallback);
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    width: '160px',
+                    height: '160px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #6366f1, #a855f7, #ec4899)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 20px 40px rgba(99, 102, 241, 0.4)',
+                    fontSize: '48px',
+                    fontWeight: 'bold',
+                    color: 'white'
+                  }}>
+                    {name.split(" ").map(n => n[0]).join("")}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -475,28 +508,32 @@ export default function About() {
       role: "Project Lead & Full Stack Developer",
       bio: "Leading the AlumniConnect initiative with a vision to bridge the gap between students and alumni through innovative technology solutions.",
       skills: ["React", "Node.js", "System Design", "Team Leadership"],
-      social: { github: "#", linkedin: "#" }
+      social: { github: "#", linkedin: "https://www.linkedin.com/in/ashish-zanke-3741b627a" },
+      image: ashishImg
     },
     {
       name: "Kunal Mahajan",
       role: "Frontend Developer",
       bio: "Crafting beautiful and intuitive user experiences that make networking seamless and engaging for our community.",
       skills: ["React", "TypeScript", "UI/UX", "Framer Motion"],
-      social: { github: "#", linkedin: "#" }
+      social: { github: "https://github.com/KunalMahajan25", linkedin: "https://www.linkedin.com/in/kunal-mahajan-1b962434b" },
+      image: kunalImg
     },
     {
       name: "Prajesh Kadam",
       role: "Backend Developer",
       bio: "Building robust and scalable backend systems that power real-time communication and data management for thousands of users.",
       skills: ["Node.js", "PostgreSQL", "APIs", "WebSockets"],
-      social: { github: "#", linkedin: "#" }
+      social: { github: "https://github.com/prajesh125", linkedin: "https://www.linkedin.com/in/prajesh-kadam-a72041258" },
+      image: prajeshImg
     },
     {
       name: "Sachin Gunjkar",
       role: "Full Stack Developer",
       bio: "Implementing AI-powered features and ensuring seamless integration between all platform components for optimal performance.",
       skills: ["Python", "React", "AI/ML", "Cloud Services"],
-      social: { github: "#", linkedin: "#" }
+      social: { github: "#", linkedin: "#" },
+      image: sachinImg
     }
   ];
 
@@ -511,7 +548,8 @@ export default function About() {
         "20+ years of experience in academia and industry",
         "Published 50+ research papers in top-tier journals",
         "Mentor to 100+ successful alumni working in Fortune 500 companies"
-      ]
+      ],
+      image: dummyImg
     },
     {
       name: "Dr. Kavita Bhosale",
@@ -523,7 +561,8 @@ export default function About() {
         "15+ years of teaching experience",
         "Expert in AI, Machine Learning, and Data Science",
         "Guiding students in research and career development"
-      ]
+      ],
+      image: dummyImg
     }
   ];
 
@@ -638,44 +677,6 @@ export default function About() {
                 distinguished alumni, and dedicated faculty. Here, knowledge flows freely, mentorship thrives, and
                 opportunities are created through meaningful connections.
               </motion.p>
-
-              {/* Stats */}
-              <motion.div
-                variants={fadeInUp}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: window.innerWidth < 768 ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
-                  gap: '24px',
-                  marginTop: '48px'
-                }}
-              >
-                {[
-                  { Icon: UsersIcon, value: "10K+", label: "Active Users" },
-                  { Icon: GraduationCapIcon, value: "5K+", label: "Alumni Network" },
-                  { Icon: TargetIcon, value: "500+", label: "Mentorship Sessions" },
-                  { Icon: BookOpenIcon, value: "100+", label: "Events Hosted" }
-                ].map((stat, idx) => (
-                  <div
-                    key={idx}
-                    className="hover-lift"
-                    style={{
-                      padding: '24px',
-                      borderRadius: '12px',
-                      background: 'white',
-                      border: '1px solid #e5e7eb',
-                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-                    }}
-                  >
-                    <div style={{ width: '32px', height: '32px', color: '#6366f1', margin: '0 auto 12px' }}>
-                      <stat.Icon />
-                    </div>
-                    <div className="text-gradient" style={{ fontSize: '30px', fontWeight: 'bold' }}>
-                      {stat.value}
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#6b7280', marginTop: '4px' }}>{stat.label}</div>
-                  </div>
-                ))}
-              </motion.div>
             </div>
           </motion.div>
         </section>

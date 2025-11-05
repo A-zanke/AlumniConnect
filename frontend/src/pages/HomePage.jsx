@@ -21,9 +21,9 @@ import dummyImg from '../assets/images/Alumni1.png'
 // Import your assets
 import campusvdo from '../assets/generated-video.mp4';
 import campusvdo2 from '../assets/video (1).mp4';
-import ashishImg from '../assets/images/Ashish zanke.jpg';
+import ashishImg from '../assets/images/Ashish zanke.png';
 import prajeshImg from '../assets/images/Prajesh kadam.png';
-import kunalImg from '../assets/images/Kunal mahajan.jpg';
+import kunalImg from '../assets/images/Kunal mahajan.png';
 import sachinImg from '../assets/images/Sachin gunjakar.png';
 // import deanImg from '../assets/images/Dean.jpg';
 // import hodImg from '../assets/images/Hod.jpg';

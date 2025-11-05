@@ -275,9 +275,13 @@ exports.getMessages = async (req, res) => {
     const me = req.user._id;
     const other = req.params.userId;
 
-    if (!other) return res.status(400).json({ message: "Missing userId" });
+    if (!other) {
+      console.error("getMessages: Missing userId parameter");
+      return res.status(400).json({ message: "Missing userId parameter" });
+    }
     if (!mongoose.Types.ObjectId.isValid(other)) {
-      return res.status(400).json({ message: "Invalid user ID" });
+      console.error("getMessages: Invalid user ID format:", other);
+      return res.status(400).json({ message: "Invalid user ID format. Expected a 24-character hex string." });
     }
 
     const [connected] = await Promise.all([

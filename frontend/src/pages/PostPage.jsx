@@ -16,7 +16,7 @@ import {
 import { toast } from 'react-toastify';
 import io from 'socket.io-client';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://10.183.168.134:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // LinkedIn-style Professional Reactions
 const REACTIONS = [

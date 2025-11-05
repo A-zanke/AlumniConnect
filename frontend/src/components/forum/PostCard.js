@@ -405,7 +405,7 @@ const PostCard = ({ post, onChanged, full = false, currentUser }) => {
         )}
 
         {/* Poll */}
-        {post.poll && (
+        {post.poll && post.poll.options && post.poll.options.length > 0 && (
           <div className="mb-4">
             <Poll post={post} onVoted={onChanged} />
           </div>
