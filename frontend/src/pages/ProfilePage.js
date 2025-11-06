@@ -1956,7 +1956,8 @@ const ConnectionsSection = ({
   navigate,
 }) => {
   // Get current user's connection IDs for checking
-  const myConnectionIds = currentUser?.connections?.map(c => c._id || c) || [];
+  const myConnectionIds = currentUser?.connections?.map((c) => c?._id || c).filter(Boolean) || [];
+  const connectionList = (allConnections ?? connections ?? []).filter(Boolean);
   
   return (
   <div className="space-y-6">
@@ -1965,7 +1966,7 @@ const ConnectionsSection = ({
       <div className="flex items-center gap-4">
         <div className="text-center">
           <div className="text-2xl font-bold text-indigo-600">
-            {allConnections ? allConnections.length : connections.length}
+            {connectionList.length}
           </div>
           <div className="text-sm text-slate-500">Total Connections</div>
         </div>
@@ -1978,15 +1979,18 @@ const ConnectionsSection = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
     >
-      {allConnections && allConnections.length > 0 ? (
+      {connectionList.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {allConnections.map((connection, index) => {
+          {connectionList.map((connection, index) => {
+            if (!connection) return null;
             const profileUrl = connection.username
               ? `/profile/${connection.username}`
-              : `/profile/id/${connection._id}`;
+              : connection._id
+              ? `/profile/id/${connection._id}`
+              : '#';
             return (
               <motion.div
-                key={connection._id}
+                key={connection._id || `connection-${index}`}
                 className="bg-white/80 rounded-xl p-4 border border-slate-200 hover:shadow-lg transition-all duration-300"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2003,7 +2007,7 @@ const ConnectionsSection = ({
                         <img
                           className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition cursor-zoom-in"
                           src={avatarSrc}
-                          alt={connection.name}
+                          alt={connection.name || 'Connection'}
                           data-avatar-src={avatarSrc}
                           onError={(e) => {
                             e.target.onerror = null;
@@ -2019,10 +2023,10 @@ const ConnectionsSection = ({
                       href={profileUrl}
                       className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block"
                     >
-                      {connection.name}
+                      {connection.name || connection.username || 'Connection'}
                     </a>
                     <p className="text-sm text-slate-500 capitalize">
-                      {connection.role}
+                      {connection.role || 'user'}
                     </p>
                   </div>
                 </div>

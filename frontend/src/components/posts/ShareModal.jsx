@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiX, FiUser, FiSend } from 'react-icons/fi';
-import axios from 'axios';
 import { toast } from 'react-toastify';
+import { connectionAPI, postsAPI } from '../utils/api';
 
 const ShareModal = ({ show, onClose, post, onShared }) => {
   const [connections, setConnections] = useState([]);
@@ -19,12 +19,17 @@ const ShareModal = ({ show, onClose, post, onShared }) => {
   const fetchConnections = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/connections', {
+      const response = await connectionAPI.getConnections({
         headers: {
           'Cache-Control': 'no-cache'
         }
       });
-      const connectionsData = Array.isArray(response.data) ? response.data : [];
+      const payload = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response?.data?.data)
+        ? response.data.data
+        : [];
+      const connectionsData = payload.filter(Boolean);
       setConnections(connectionsData);
     } catch (error) {
       console.error('Failed to load connections:', error);
@@ -48,9 +53,9 @@ const ShareModal = ({ show, onClose, post, onShared }) => {
 
     try {
       setLoading(true);
-      await axios.post(`/api/posts/${post?._id}/share`, {
+      await postsAPI.sharePost(post?._id, {
         connectionIds: selectedConnections,
-        message
+        message,
       });
       toast.success('Post shared successfully!');
       onShared?.();
@@ -174,18 +179,23 @@ const ShareModal = ({ show, onClose, post, onShared }) => {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-end gap-3 border-t border-gray-200 bg-white px-6 py-4">
             <button
               onClick={handleClose}
-              className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleShare}
               disabled={loading || selectedConnections.length === 0}
-              className="px-5 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold shadow-sm hover:from-blue-700 hover:to-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`inline-flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-semibold shadow-sm transition-all ${
+                loading || selectedConnections.length === 0
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 hover:shadow-md'
+              }`}
             >
+              <FiSend className="w-4 h-4" />
               {loading ? 'Sharing...' : `Share${selectedConnections.length ? ` (${selectedConnections.length})` : ''}`}
             </button>
           </div>

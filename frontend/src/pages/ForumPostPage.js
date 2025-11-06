@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { FiArrowLeft } from 'react-icons/fi';
 import { forumAPI } from '../components/utils/forumApi';
 import PostCard from '../components/forum/PostCard';
 import CommentThread from '../components/forum/CommentThread';
@@ -47,6 +48,20 @@ const ForumPostPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="container mx-auto px-4 py-6">
+        <button
+          onClick={() => {
+            if (window.history.length > 1) {
+              navigate(-1);
+            } else {
+              navigate('/forum');
+            }
+          }}
+          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+        >
+          <FiArrowLeft className="h-4 w-4" />
+          Back to Forum
+        </button>
+
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="bg-white rounded-2xl shadow-lg p-8 text-center">

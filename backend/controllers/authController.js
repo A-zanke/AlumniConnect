@@ -119,7 +119,7 @@ const registerUser = async (req, res) => {
       finalEmailVerified = graduationYear < 2025;
     }
 
-    // Create user in User collection
+    // Create user in User collection only (single collection architecture)
     const user = await User.create({
       username: finalUsername,
       password: finalPassword,
@@ -132,86 +132,7 @@ const registerUser = async (req, res) => {
       emailVerified: finalEmailVerified,
     });
 
-    // Also create in respective role collection (best-effort; do not fail registration on error)
-    try {
-      if (roleLower === "student") {
-        const Student = require("../models/Student");
-        const Department = require("../models/Department");
-        let departmentId;
-        if (department) {
-          let dep =
-            (await Department.findOne({ code: department })) ||
-            (await Department.findOne({ name: department }));
-          if (!dep) {
-            // Create department if missing; store provided string as both code and name for simplicity
-            dep = await Department.create({
-              code: String(department),
-              name: String(department),
-            });
-          }
-          departmentId = dep._id;
-        }
-        await Student.create({
-          _id: user._id,
-          name,
-          username: finalUsername,
-          email,
-          password: user.password,
-          department: departmentId,
-          year,
-          graduationYear,
-          emailVerified: finalEmailVerified,
-        });
-      } else if (roleLower === "alumni") {
-        const Alumni = require("../models/Alumni");
-        await Alumni.create({
-          _id: user._id,
-          name,
-          username: finalUsername,
-          email,
-          password: user.password,
-          graduationYear,
-          emailVerified: finalEmailVerified,
-        });
-      } else if (roleLower === "teacher") {
-        const Teacher = require("../models/Teacher");
-        const Department = require("../models/Department");
-        let departmentId;
-        if (department) {
-          let dep =
-            (await Department.findOne({ code: department })) ||
-            (await Department.findOne({ name: department }));
-          if (!dep) {
-            dep = await Department.create({
-              code: String(department),
-              name: String(department),
-            });
-          }
-          departmentId = dep._id;
-        }
-        await Teacher.create({
-          _id: user._id,
-          name,
-          username: finalUsername,
-          email,
-          password: user.password,
-          department: departmentId,
-          emailVerified: finalEmailVerified,
-        });
-      } else if (roleLower === "admin") {
-        const Admin = require("../models/Admin");
-        await Admin.create({
-          _id: user._id,
-          name,
-          username: finalUsername,
-          email,
-          password: user.password,
-          emailVerified: finalEmailVerified,
-        });
-      }
-    } catch (e) {
-      console.error("Role profile creation failed:", e?.message || e);
-    }
+    console.log(`✅ User created in main collection with role: ${roleLower}`);
 
     // For alumni, send welcome email
     if (roleLower === "alumni") {
@@ -570,17 +491,17 @@ const getUserProfile = async (req, res) => {
 // @access Private
 const updateUserProfile = async (req, res) => {
   try {
-    const User = require("../models/User");
-    const Student = require("../models/Student");
-    const Alumni = require("../models/Alumni");
-
     const user = await User.findById(req.user._id);
 
     if (user) {
-      // Update basic user fields
+      // Update all user fields in the single User collection
       user.name = req.body.name || user.name;
       user.email = req.body.email || user.email;
       user.bio = req.body.bio ?? user.bio;
+      user.avatarUrl = req.body.avatarUrl ?? user.avatarUrl;
+      user.location = req.body.location ?? user.location;
+      user.college = req.body.college ?? user.college;
+      user.specialization = req.body.specialization ?? user.specialization;
 
       // For alumni, department and graduationYear are set during registration and cannot be edited
       if (user.role !== "alumni") {
@@ -627,58 +548,7 @@ const updateUserProfile = async (req, res) => {
 
       const updatedUser = await user.save();
 
-      // Update role-specific fields
-      if (user.role === "student") {
-        const studentData = await Student.findOne({ email: user.email });
-        if (studentData) {
-          if (req.body.department) {
-            const Department = require("../models/Department");
-            let dep =
-              (await Department.findOne({ code: req.body.department })) ||
-              (await Department.findOne({ name: req.body.department }));
-            if (!dep) {
-              dep = await Department.create({
-                code: String(req.body.department),
-                name: String(req.body.department),
-              });
-            }
-            studentData.department = dep._id;
-          }
-          if (req.body.year) studentData.year = req.body.year;
-          if (req.body.graduationYear)
-            studentData.graduationYear = req.body.graduationYear;
-          if (req.body.skills) studentData.skills = req.body.skills;
-          if (req.body.bio) studentData.bio = req.body.bio;
-          if (req.body.careerInterests)
-            studentData.careerInterests = req.body.careerInterests;
-          if (req.body.activities) studentData.activities = req.body.activities;
-          if (req.body.socials)
-            studentData.socials = {
-              ...studentData.socials,
-              ...req.body.socials,
-            };
-          if (req.body.mentorshipOpen !== undefined)
-            studentData.mentorshipOpen = req.body.mentorshipOpen;
-          await studentData.save();
-        }
-      } else if (user.role === "alumni") {
-        const alumniData = await Alumni.findOne({ email: user.email });
-        if (alumniData) {
-          // Keep Alumni collection in sync for legacy consumers; core fields already on User
-          if (req.body.bio) alumniData.bio = req.body.bio;
-          if (req.body.company) alumniData.company = req.body.company;
-          if (req.body.position) alumniData.position = req.body.position;
-          if (req.body.industry) alumniData.industry = req.body.industry;
-          if (req.body.graduationYear)
-            alumniData.graduationYear = req.body.graduationYear;
-          if (req.body.degree) alumniData.degree = req.body.degree;
-          if (req.body.skills) alumniData.skills = req.body.skills;
-          if (req.body.linkedin) alumniData.linkedin = req.body.linkedin;
-          if (req.body.github) alumniData.github = req.body.github;
-          if (req.body.website) alumniData.website = req.body.website;
-          await alumniData.save();
-        }
-      }
+      console.log(`✅ User profile updated in main collection for role: ${user.role}`);
 
       res.json({
         _id: updatedUser._id,

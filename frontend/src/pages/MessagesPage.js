@@ -425,6 +425,7 @@ const MessagesPage = () => {
           forwardedFrom,
           encrypted,
           encryptionData,
+          fallbackContent,
         }) => {
           // Deduplicate message events by messageId
           if (messageId && seenIdsRef.current.has(String(messageId))) return;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiX, FiUser, FiSend } from 'react-icons/fi';
 import { forumAPI } from '../utils/forumApi';
@@ -57,13 +58,15 @@ const ShareModal = ({ post, onClose, onShared }) => {
 
   const sharingNotAllowed = (userRole) => String(userRole || '').toLowerCase() !== 'student';
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 flex items-center justify.center p-4 z-50"
+        className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[200]"
         onClick={onClose}
       >
         <motion.div
@@ -188,7 +191,8 @@ const ShareModal = ({ post, onClose, onShared }) => {
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 
