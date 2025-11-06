@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
+import { storePrivateKey } from '../services/encryptionService';
 
 // Configure axios defaults
 axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -44,6 +45,13 @@ export const AuthProvider = ({ children }) => {
       if (res.data && res.data.token) {
         localStorage.setItem('token', res.data.token);
         axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+        
+        // Store private key if provided (first-time registration)
+        if (res.data.encryptionKeys && res.data.encryptionKeys.privateKey) {
+          storePrivateKey(res.data._id, res.data.encryptionKeys.privateKey);
+          console.log('🔐 Private key stored for new user');
+        }
+        
         setUser(res.data);
         return { success: true };
       } else {
@@ -131,6 +139,13 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.post('/api/auth/login', { username, password });
       localStorage.setItem('token', res.data.token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+      
+      // Store private key if provided (for existing users who just got keys generated)
+      if (res.data.encryptionKeys && res.data.encryptionKeys.privateKey) {
+        storePrivateKey(res.data._id, res.data.encryptionKeys.privateKey);
+        console.log('🔐 Private key stored for existing user');
+      }
+      
       setUser(res.data);
       return { success: true };
     } catch (err) {

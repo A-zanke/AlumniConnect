@@ -4,6 +4,7 @@ const User = require("../models/User");
 const Otp = require("../models/Otp");
 const bcrypt = require("bcryptjs");
 const { sendOtpEmail, sendWelcomeEmail } = require("../services/emailService");
+const { generateRSAKeyPair, pemToCompact } = require("../services/encryptionService");
 
 // Generate JWT
 const generateToken = (id) => {
@@ -11,6 +12,42 @@ const generateToken = (id) => {
     expiresIn: "30d",
   });
 };
+
+// Ensure user has encryption keys
+async function ensureEncryptionKeys(userId, options = {}) {
+  const forceRegenerate = options.forceRegenerate === true;
+  try {
+    const user = await User.findById(userId).select('publicKey');
+
+    if (!user) {
+      console.warn(`⚠️ Cannot generate encryption keys - user ${userId} not found`);
+      return null;
+    }
+
+    // If user already has a public key and regeneration not requested, skip
+    if (!forceRegenerate && user.publicKey) {
+      return null;
+    }
+
+    console.log(`${forceRegenerate ? '♻️ Regenerating' : '🔐 Generating'} encryption keys for user: ${userId}`);
+
+    // Generate new RSA key pair using node-forge
+    const { publicKey, privateKey } = generateRSAKeyPair();
+    
+    // Store only public key in database (compact format to save space)
+    const compactPublicKey = pemToCompact(publicKey);
+    await User.findByIdAndUpdate(userId, { publicKey: compactPublicKey });
+    
+    console.log(`✅ Encryption keys ${forceRegenerate ? 'regenerated' : 'generated'} for user: ${userId}`);
+    
+    // Return private key to be sent to client (only once, never stored on server)
+    return { publicKey: compactPublicKey, privateKey };
+  } catch (error) {
+    console.error(`❌ Error generating encryption keys for user ${userId}:`, error.message);
+    // Don't fail the registration/login if key generation fails
+    return null;
+  }
+}
 
 // @desc   Register a new user
 // @route  POST /api/auth/register
@@ -188,6 +225,9 @@ const registerUser = async (req, res) => {
     }
 
     if (user) {
+      // Generate encryption keys for the new user
+      const keys = await ensureEncryptionKeys(user._id);
+      
       // Set JWT as cookie
       const token = generateToken(user._id);
       res.cookie("jwt", token, {
@@ -197,7 +237,7 @@ const registerUser = async (req, res) => {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
-      res.status(201).json({
+      const response = {
         _id: user._id,
         name: user.name,
         email: user.email,
@@ -208,7 +248,17 @@ const registerUser = async (req, res) => {
         year: user.year,
         graduationYear: user.graduationYear,
         token,
-      });
+      };
+      
+      // Include private key in response (only sent once during registration)
+      if (keys && keys.privateKey) {
+        response.encryptionKeys = {
+          publicKey: keys.publicKey,
+          privateKey: keys.privateKey
+        };
+      }
+      
+      res.status(201).json(response);
     } else {
       res.status(400).json({ message: "Invalid user data" });
     }
@@ -244,6 +294,9 @@ const loginUser = async (req, res) => {
 
     // Check user and password
     if (user && (await user.matchPassword(password))) {
+      // Ensure user has encryption keys and get them if newly generated
+      const keys = await ensureEncryptionKeys(user._id);
+      
       // Set JWT as cookie
       const token = generateToken(user._id);
       res.cookie("jwt", token, {
@@ -253,7 +306,7 @@ const loginUser = async (req, res) => {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
-      res.json({
+      const response = {
         _id: user._id,
         name: user.name,
         email: user.email,
@@ -264,7 +317,17 @@ const loginUser = async (req, res) => {
         year: user.year,
         graduationYear: user.graduationYear,
         token,
-      });
+      };
+      
+      // Include private key in response if newly generated
+      if (keys && keys.privateKey) {
+        response.encryptionKeys = {
+          publicKey: keys.publicKey,
+          privateKey: keys.privateKey
+        };
+      }
+
+      res.json(response);
     } else {
       res.status(401).json({ message: "Invalid credentials" });
     }
@@ -480,7 +543,19 @@ const getUserProfile = async (req, res) => {
     const user = await User.findById(req.user._id).select("-password");
 
     if (user) {
-      res.json(user);
+      const response = user.toObject();
+      
+      const forceRegenerate = String(req.query?.regenerateKeys || '').toLowerCase() === 'true';
+      // Ensure user has encryption keys and include private key if newly generated/regenerated
+      const keys = await ensureEncryptionKeys(user._id, { forceRegenerate });
+      if (keys && keys.privateKey) {
+        response.encryptionKeys = {
+          publicKey: keys.publicKey,
+          privateKey: keys.privateKey
+        };
+      }
+      
+      res.json(response);
     } else {
       res.status(404).json({ message: "User not found" });
     }

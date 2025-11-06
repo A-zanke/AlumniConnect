@@ -27,10 +27,13 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Rate limiters for auth endpoints
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: "Too many attempts, please try again after 15 minutes.",
-  skipSuccessfulRequests: true,
+  // Relaxed limiter: allow more attempts in a shorter window
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 20, // up to 20 attempts per IP per 5 minutes
+  message: "Too many attempts, please try again after a few minutes.",
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // successful logins do not count towards the limit
 });
 
 const otpLimiter = rateLimit({

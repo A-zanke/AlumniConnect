@@ -251,6 +251,7 @@ const User = require("./models/User");
 const Message = require("./models/Message");
 const Thread = require("./models/Thread");
 const Block = require("./models/Block");
+const { encryptMessage, compactToPem } = require("./services/encryptionService");
 
 const unreadTotalDebounce = new Map();
 
@@ -338,7 +339,7 @@ io.on("connection", (socket) => {
   const handleSend = async (payload) => {
     try {
       const from = socket.userId;
-      const { to, content, attachments, clientKey, encrypted, encryptionData } = payload || {};
+      const { to, content, attachments, clientKey } = payload || {};
       if (!to || (!content && !attachments)) return;
       const me = await User.findById(from).select("connections");
       if (!me) return;
@@ -358,26 +359,98 @@ io.on("connection", (socket) => {
       }
       if (ab || ba) return;
       const participants = [String(from), String(to)].sort();
+      
+      // Server-side encryption
+      let encryptedData = null;
+      let senderEncryptionData = null;
+      const originalContent = content || "";
+      let plainContent = originalContent;
+      
+      if (plainContent.trim()) {
+        try {
+          // Get recipient & sender public keys
+          const [recipient, sender] = await Promise.all([
+            User.findById(to).select('publicKey'),
+            User.findById(from).select('publicKey'),
+          ]);
+          
+          if (recipient && recipient.publicKey) {
+            // Convert compact key back to PEM format
+            const recipientPublicKey = compactToPem(recipient.publicKey, 'public');
+            
+            // Encrypt the message with recipient's public key
+            const encrypted = encryptMessage(plainContent, recipientPublicKey);
+            
+            // Validate encryption data completeness
+            if (encrypted && encrypted.encryptedMessage && encrypted.encryptedAESKey && encrypted.iv) {
+              encryptedData = {
+                encryptedMessage: encrypted.encryptedMessage,
+                encryptedAESKey: encrypted.encryptedAESKey,
+                iv: encrypted.iv,
+                version: encrypted.version || 'v1'
+              };
+              
+              // Clear plain content only if encryption succeeded
+              plainContent = '';
+              console.log('🔒 Socket message encrypted successfully for recipient');
+
+              if (sender && sender.publicKey) {
+                try {
+                  const senderPublicKey = compactToPem(sender.publicKey, 'public');
+                  const senderEncrypted = encryptMessage(originalContent, senderPublicKey);
+                  if (senderEncrypted && senderEncrypted.encryptedMessage && senderEncrypted.encryptedAESKey && senderEncrypted.iv) {
+                    senderEncryptionData = {
+                      encryptedMessage: senderEncrypted.encryptedMessage,
+                      encryptedAESKey: senderEncrypted.encryptedAESKey,
+                      iv: senderEncrypted.iv,
+                      version: senderEncrypted.version || 'v1',
+                    };
+                  } else {
+                    console.warn('⚠️ Socket: sender encryption produced incomplete data');
+                  }
+                } catch (senderErr) {
+                  console.warn('⚠️ Socket: Failed to encrypt sender copy:', senderErr.message);
+                }
+              } else {
+                console.warn('⚠️ Socket: Sender has no public key - cannot retain self-encrypted copy');
+              }
+            } else {
+              console.error('❌ Socket encryption returned incomplete data - sending as plaintext');
+              encryptedData = null;
+            }
+          } else {
+            console.warn('⚠️ Socket: Recipient has no public key - sending unencrypted');
+          }
+        } catch (encryptError) {
+          console.error('❌ Socket encryption failed:', encryptError.message);
+          encryptedData = null;
+        }
+      }
+      
       const messageData = {
         from,
         to,
-        content: content || "",
+        content: plainContent, // Plaintext cleared when encryption succeeds
         isRead: false,
       };
+      
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
       
-      // Handle encrypted messages
-      if (encrypted && encryptionData) {
+      // Add encryption data if message was encrypted AND clear content
+      if (encryptedData && encryptedData.encryptedMessage && encryptedData.encryptedAESKey && encryptedData.iv) {
         messageData.encrypted = true;
-        messageData.encryptionData = {
-          version: encryptionData.version || 'v1',
-          encryptedContent: encryptionData.encryptedContent,
-          encryptedKey: encryptionData.encryptedKey,
-          iv: encryptionData.iv,
-          isGroup: encryptionData.isGroup || false,
-        };
+        messageData.encryptionData = encryptedData;
+        if (senderEncryptionData) {
+          messageData.senderEncryptionData = senderEncryptionData;
+        }
+        // Plaintext already cleared from content – database stores only encrypted payload
+        console.log('✅ Socket: Message will be stored encrypted (plaintext cleared)');
+      } else {
+        messageData.encrypted = false;
+        messageData.encryptionData = null;
+        console.log('✅ Socket: Message will be stored as plaintext');
       }
       // Ensure a Thread exists without trying to $set participants in an update (avoids NotSingleValueField)
       let thread = await Thread.findOne({
@@ -407,11 +480,13 @@ io.on("connection", (socket) => {
         conversationId: String(thread._id),
         messageId: String(msg._id),
         senderId: String(from),
-        body: msg.content,
+        body: msg.encrypted ? null : originalContent,
+        fallbackContent: originalContent,
         attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
         createdAt: msg.createdAt,
         encrypted: msg.encrypted || false,
         encryptionData: msg.encrypted ? msg.encryptionData : null,
+        senderEncryptionData: msg.encrypted ? msg.senderEncryptionData || null : null,
       };
       // Acknowledge to sender: sent (include clientKey if present)
       socket.emit("message:ack", {
@@ -580,30 +655,50 @@ io.on("connection", (socket) => {
 const gracefulShutdown = async (signal) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
   
-  // Stop accepting new connections
-  http.close(() => {
-    console.log('HTTP server closed');
-  });
-
-  // Close database connection
-  try {
-    const mongoose = require('mongoose');
-    await mongoose.connection.close();
-    console.log('Database connection closed');
-  } catch (err) {
-    console.error('Error closing database:', err);
-  }
-
-  // Close Socket.IO connections
-  io.close(() => {
-    console.log('Socket.IO connections closed');
-  });
-
-  // Exit process
-  setTimeout(() => {
+  // Set shorter timeout for development
+  const shutdownTimeout = process.env.NODE_ENV === 'production' ? 10000 : 2000;
+  
+  const shutdownTimer = setTimeout(() => {
     console.log('Forcing shutdown');
     process.exit(0);
-  }, 10000); // Force exit after 10 seconds
+  }, shutdownTimeout);
+
+  try {
+    // Close all connections in parallel
+    await Promise.race([
+      // Close Socket.IO connections
+      new Promise((resolve) => {
+        io.close(() => {
+          console.log('Socket.IO connections closed');
+          resolve();
+        });
+      }),
+      
+      // Close HTTP server
+      new Promise((resolve) => {
+        http.close(() => {
+          console.log('HTTP server closed');
+          resolve();
+        });
+      }),
+      
+      // Close database connection
+      (async () => {
+        const mongoose = require('mongoose');
+        await mongoose.connection.close();
+        console.log('Database connection closed');
+      })(),
+    ]);
+
+    // Clear the shutdown timer and exit immediately
+    clearTimeout(shutdownTimer);
+    console.log('Graceful shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    console.error('Error during shutdown:', err);
+    clearTimeout(shutdownTimer);
+    process.exit(1);
+  }
 };
 
 // Listen for termination signals

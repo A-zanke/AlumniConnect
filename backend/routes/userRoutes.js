@@ -97,12 +97,22 @@ router.get('/:userId', protect, async (req, res) => {
 router.get('/:userId/public-key', protect, async (req, res) => {
   try {
     const User = require('../models/User');
+    console.log('Fetching public key for user:', req.params.userId);
+    
+    // Validate userId format
+    if (!req.params.userId || !req.params.userId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('Invalid user ID format:', req.params.userId);
+      return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+    
     const user = await User.findById(req.params.userId).select('publicKey');
     
     if (!user) {
+      console.log('User not found:', req.params.userId);
       return res.status(404).json({ message: 'User not found' });
     }
     
+    console.log('Public key found for user:', !!user.publicKey);
     res.json({ publicKey: user.publicKey || null });
   } catch (error) {
     console.error('Error fetching public key:', error);

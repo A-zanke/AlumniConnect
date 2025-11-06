@@ -10,6 +10,7 @@ const Thread = require("../models/Thread");
 const Block = require("../models/Block");
 const MessageReport = require("../models/MessageReport");
 const NotificationService = require("../services/notificationService");
+const { encryptMessage, compactToPem } = require("../services/encryptionService");
 
 // Helper functions
 async function isBlocked(userAId, userBId) {
@@ -127,6 +128,15 @@ function parseMessage(doc, viewerId) {
       };
     }
 
+    const viewerIdStr = viewerId ? String(viewerId) : null;
+    const senderIdStr = doc.from?._id ? String(doc.from._id) : doc.from ? String(doc.from) : null;
+    const viewerIsSender = viewerIdStr && senderIdStr && viewerIdStr === senderIdStr;
+    const encryptionPayload = doc.encrypted
+      ? viewerIsSender && doc.senderEncryptionData && doc.senderEncryptionData.encryptedMessage
+        ? doc.senderEncryptionData
+        : doc.encryptionData
+      : null;
+
     return {
       id: doc._id,
       messageId: doc.messageId,
@@ -147,6 +157,8 @@ function parseMessage(doc, viewerId) {
       forwardedFrom: doc.forwardedFrom || null,
       isSystem: !!(doc.metadata && doc.metadata.system === true),
       systemCode: doc.metadata && doc.metadata.systemCode ? doc.metadata.systemCode : undefined,
+      encrypted: doc.encrypted || false,
+      encryptionData: encryptionPayload,
     };
   } catch (e) {
     return null;
@@ -213,9 +225,13 @@ exports.getConversations = async (req, res) => {
           isRead: false,
         });
 
-        const snippet = msg.content?.trim()
+        const hasText = typeof msg.content === 'string' && msg.content.trim().length > 0;
+        const hasAttachments = Array.isArray(msg.attachments) && msg.attachments.length > 0;
+        const snippet = hasText
           ? msg.content.trim().slice(0, 80)
-          : Array.isArray(msg.attachments) && msg.attachments.length > 0
+          : msg.encrypted && msg.encryptionData
+          ? "🔒 Encrypted message"
+          : hasAttachments
           ? getAttachmentSnippet(msg.attachments[0])
           : "No messages yet";
 
@@ -467,8 +483,79 @@ exports.sendMessage = async (req, res) => {
       }
     }
 
-    // Validate at least one of content or attachments exists
-    if (!content.trim() && attachments.length === 0) {
+    // Handle encrypted messages first
+    let isEncrypted = false;
+    let encryptionDataObj = null;
+    let senderEncryptionDataObj = null;
+    
+    // Server-side encryption: Encrypt message before storing
+    if (content.trim()) {
+      try {
+        // Get recipient & sender public keys in parallel
+        const [recipient, sender] = await Promise.all([
+          User.findById(to).select('publicKey'),
+          User.findById(me).select('publicKey'),
+        ]);
+        
+        if (recipient && recipient.publicKey) {
+          // Convert compact key back to PEM format
+          const recipientPublicKey = compactToPem(recipient.publicKey, 'public');
+          
+          // Encrypt the message with recipient's public key
+          const encrypted = encryptMessage(content, recipientPublicKey);
+          
+          // Validate encryption data completeness
+          if (encrypted && encrypted.encryptedMessage && encrypted.encryptedAESKey && encrypted.iv) {
+            isEncrypted = true;
+            encryptionDataObj = {
+              encryptedMessage: encrypted.encryptedMessage,
+              encryptedAESKey: encrypted.encryptedAESKey,
+              iv: encrypted.iv,
+              version: encrypted.version || 'v1'
+            };
+
+            // Also keep a sender-encrypted copy so author can decrypt after refresh
+            if (sender && sender.publicKey) {
+              try {
+                const senderPublicKey = compactToPem(sender.publicKey, 'public');
+                const senderEncrypted = encryptMessage(content, senderPublicKey);
+                if (senderEncrypted && senderEncrypted.encryptedMessage && senderEncrypted.encryptedAESKey && senderEncrypted.iv) {
+                  senderEncryptionDataObj = {
+                    encryptedMessage: senderEncrypted.encryptedMessage,
+                    encryptedAESKey: senderEncrypted.encryptedAESKey,
+                    iv: senderEncrypted.iv,
+                    version: senderEncrypted.version || 'v1',
+                  };
+                } else {
+                  console.warn('⚠️ Sender encryption returned incomplete data - sender will rely on fallback until refresh');
+                }
+              } catch (senderErr) {
+                console.warn('⚠️ Failed to encrypt sender copy:', senderErr.message);
+              }
+            } else {
+              console.warn('⚠️ Sender has no public key - cannot store encrypted self-copy');
+            }
+            
+            console.log('🔒 Message encrypted successfully for recipient');
+          } else {
+            console.error('❌ Encryption returned incomplete data - storing as plaintext');
+            isEncrypted = false;
+            encryptionDataObj = null;
+          }
+        } else {
+          console.warn('⚠️ Recipient has no public key - message will be sent unencrypted');
+          console.warn('⚠️ Recipient needs to login once to generate encryption keys');
+        }
+      } catch (encryptError) {
+        console.error('❌ Encryption failed:', encryptError.message);
+        // Continue without encryption if it fails
+        isEncrypted = false;
+        encryptionDataObj = null;
+      }
+    }
+
+    // Validate at least one of content or attachments exists (encrypted messages are allowed)
+    if (!content.trim() && attachments.length === 0 && !isEncrypted) {
       return res.status(400).json({
         message: "Message must have content or attachments",
         success: false,
@@ -488,7 +575,7 @@ exports.sendMessage = async (req, res) => {
     const messageData = {
       from: me,
       to,
-      content,
+      content: content, // Always keep content for fallback
       attachments,
       messageType,
       clientKey,
@@ -498,29 +585,21 @@ exports.sendMessage = async (req, res) => {
       deliveredAt: new Date(),
     };
     
-    // Handle encrypted messages
-    if (req.body.encrypted === 'true' || req.body.encrypted === true) {
+    // Add encryption data if message is encrypted and complete
+    if (isEncrypted && encryptionDataObj && encryptionDataObj.encryptedMessage && encryptionDataObj.encryptedAESKey && encryptionDataObj.iv) {
       messageData.encrypted = true;
-      
-      // Parse encryption data if sent as string
-      let encryptionData = req.body.encryptionData;
-      if (typeof encryptionData === 'string') {
-        try {
-          encryptionData = JSON.parse(encryptionData);
-        } catch (e) {
-          console.error('Error parsing encryptionData:', e);
-        }
+      messageData.encryptionData = encryptionDataObj;
+      if (senderEncryptionDataObj) {
+        messageData.senderEncryptionData = senderEncryptionDataObj;
       }
-      
-      if (encryptionData) {
-        messageData.encryptionData = {
-          version: encryptionData.version || 'v1',
-          encryptedContent: encryptionData.encryptedContent,
-          encryptedKey: encryptionData.encryptedKey,
-          iv: encryptionData.iv,
-          isGroup: encryptionData.isGroup || false,
-        };
-      }
+      // Strip plaintext so database never stores readable content
+      messageData.content = '';
+      console.log('✅ Message will be stored encrypted (plaintext cleared)');
+    } else {
+      // Store as plaintext
+      messageData.encrypted = false;
+      messageData.encryptionData = null;
+      console.log('✅ Message will be stored as plaintext');
     }
     
     // Only add forward-related fields if actually forwarded
@@ -564,11 +643,15 @@ exports.sendMessage = async (req, res) => {
         conversationId: String(thread?._id || `${me}_${to}`),
         messageId: String(dto.id),
         senderId: String(me),
-        body: dto.content,
+        body: dto.encrypted ? null : dto.content,
+        fallbackContent: content,
         attachments: dto.attachments || [],
         createdAt: dto.timestamp,
         isForwarded: dto.isForwarded === true,
         forwardedFrom: populatedMessage?.forwardedFrom || null,
+        encrypted: dto.encrypted === true,
+        encryptionData: populatedMessage?.encryptionData || null,
+        senderEncryptionData: senderEncryptionDataObj || null,
       });
 
       // Send delivery confirmation to sender
@@ -632,7 +715,11 @@ exports.sendMessage = async (req, res) => {
     }
 
     return res.status(201).json({
-      message: dto,
+      message: {
+        ...dto,
+        fallbackContent: content,
+        senderEncryptionData: senderEncryptionDataObj || null,
+      },
       success: true,
     });
   } catch (error) {
@@ -1962,6 +2049,68 @@ exports.report = async (req, res) => {
     return res.status(500).json({
       message: "Error submitting report",
       success: false,
+    });
+  }
+};
+
+// Repair broken encrypted messages
+exports.repairBrokenMessages = async (req, res) => {
+  try {
+    console.log('🔧 Repairing broken encrypted messages...');
+    
+    // Find all messages marked as encrypted
+    const encryptedMessages = await Message.find({ encrypted: true });
+    console.log(`📊 Found ${encryptedMessages.length} encrypted messages`);
+    
+    if (encryptedMessages.length === 0) {
+      return res.json({
+        message: 'No encrypted messages to repair',
+        success: true,
+        fixed: 0,
+        total: 0
+      });
+    }
+    
+    let fixedCount = 0;
+    let alreadyOkCount = 0;
+    
+    for (const msg of encryptedMessages) {
+      const hasCompleteData = msg.encryptionData && 
+                             msg.encryptionData.encryptedMessage && 
+                             msg.encryptionData.encryptedAESKey && 
+                             msg.encryptionData.iv;
+      
+      if (!hasCompleteData) {
+        // Missing encryption data - mark as plaintext
+        await Message.findByIdAndUpdate(msg._id, {
+          $set: {
+            encrypted: false,
+            content: msg.content || '[Message encrypted with lost keys - please send again]',
+            encryptionData: null
+          }
+        });
+        fixedCount++;
+      } else {
+        alreadyOkCount++;
+      }
+    }
+    
+    console.log(`✅ Repaired ${fixedCount} messages`);
+    console.log(`✓ ${alreadyOkCount} messages already have complete encryption data`);
+    
+    return res.json({
+      message: 'Messages repaired successfully',
+      success: true,
+      fixed: fixedCount,
+      alreadyOk: alreadyOkCount,
+      total: encryptedMessages.length
+    });
+  } catch (error) {
+    console.error('❌ Error repairing messages:', error);
+    return res.status(500).json({
+      message: 'Error repairing messages',
+      success: false,
+      error: error.message
     });
   }
 };

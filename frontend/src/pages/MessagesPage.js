@@ -71,7 +71,7 @@ import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 import MediaDownloadOverlay from "../components/ui/MediaDownloadOverlay";
 import { useEncryption } from "../hooks/useEncryption";
-import E2EEDebugPanel from "../components/E2EEDebugPanel";
+
 
 const MessagesPage = () => {
   const { user } = useAuth();
@@ -88,7 +88,15 @@ const MessagesPage = () => {
   const [error, setError] = useState(null);
   
   // E2EE Encryption hook
-  const { isReady: encryptionReady, encryptMessageForRecipient, decryptReceivedMessage, keys } = useEncryption(user);
+  const { isReady: encryptionReady, decryptReceivedMessage, savePrivateKey, hasKey } = useEncryption(user);
+  
+  // Show warning if user doesn't have encryption keys
+  useEffect(() => {
+    if (user && !hasKey) {
+      console.warn('⚠️ User does not have encryption keys in localStorage');
+      console.log('🔑 User needs to logout and login again to get encryption keys');
+    }
+  }, [user, hasKey]);
   // Attachment selection (WhatsApp-like)
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -428,7 +436,7 @@ const MessagesPage = () => {
           const tabFocused = document.visibilityState === "visible";
 
           // Decrypt message if encrypted
-          let messageContent = body;
+          let messageContent = body ?? fallbackContent ?? '';
           if (encrypted && encryptionData) {
             console.log('🔓 Decrypting incoming message...');
             try {
@@ -436,6 +444,7 @@ const MessagesPage = () => {
                 encrypted,
                 encryptionData,
                 content: body,
+                fallbackContent,
               });
               console.log('✅ Incoming message decrypted:', messageContent);
             } catch (error) {
@@ -811,23 +820,8 @@ const MessagesPage = () => {
       if (textContent && hasAnyMedia) {
         const clientKey = generateClientKey();
         
-        // Encrypt message before sending
-        const encryptedData = await encryptMessageForRecipient(textContent, selectedUser._id);
-        
-        // Debug logging
-        if (!encryptedData.encrypted) {
-          console.warn('⚠️ Message sent unencrypted - recipient may need to log in once to enable E2EE');
-        }
-        
         const textFormData = new FormData();
-        // Send encrypted content if available, otherwise send plain text
-        if (encryptedData.encrypted && encryptedData.encryptionData?.encryptedContent) {
-          textFormData.append("content", encryptedData.encryptionData.encryptedContent);
-          textFormData.append("encrypted", "true");
-          textFormData.append("encryptionData", JSON.stringify(encryptedData.encryptionData));
-        } else {
-          textFormData.append("content", textContent);
-        }
+        textFormData.append("content", textContent); // Send plain text - server will encrypt
         textFormData.append("clientKey", clientKey);
         
         if (savedReplyTo?.id) {
@@ -839,11 +833,10 @@ const MessagesPage = () => {
           id: clientKey,
           senderId: user._id,
           recipientId: selectedUser._id,
-          content: textContent, // Keep original for optimistic UI
+          content: textContent,
           attachments: [],
           timestamp: new Date().toISOString(),
           status: "sending",
-          encrypted: encryptedData.encrypted,
         };
         setMessages((prev) => [...prev, optimisticText]);
         
@@ -913,30 +906,15 @@ const MessagesPage = () => {
       if (textContent && !hasAnyMedia) {
         const clientKey = generateClientKey();
         
-        // Encrypt message before sending
-        const encryptedData = await encryptMessageForRecipient(textContent, selectedUser._id);
-        
-        // Debug: Check encryption result
-        if (!encryptedData.encrypted) {
-          console.warn('⚠️ Message sent unencrypted:', {
-            encryptionReady,
-            hasKeys: !!keys?.publicKey && !!keys?.privateKey,
-            recipientId: selectedUser._id
-          });
-        } else {
-          console.log('✅ Message encrypted successfully');
-        }
-        
         const optimistic = {
           id: clientKey,
           senderId: user._id,
           recipientId: selectedUser._id,
-          content: textContent, // Keep original for optimistic UI
+          content: textContent,
           attachments: [],
           timestamp: new Date().toISOString(),
           status: "sent",
           replyTo: savedReplyTo,
-          encrypted: encryptedData.encrypted,
         };
         setMessages((prev) => [...prev, optimistic]);
         
@@ -944,22 +922,13 @@ const MessagesPage = () => {
           const socketAttachments = [];
           if (savedReplyTo?.id) socketAttachments.push(`reply:${savedReplyTo.id}`);
           
-          // Send encrypted content if available
-          const socketPayload = {
+          // Send plain text - server will encrypt
+          socket.emit("chat:send", {
             to: selectedUser._id,
+            content: textContent,
             clientKey,
             attachments: socketAttachments,
-          };
-          
-          if (encryptedData.encrypted && encryptedData.encryptionData?.encryptedContent) {
-            socketPayload.content = encryptedData.encryptionData.encryptedContent;
-            socketPayload.encrypted = true;
-            socketPayload.encryptionData = encryptedData.encryptionData;
-          } else {
-            socketPayload.content = textContent;
-          }
-          
-          socket.emit("chat:send", socketPayload);
+          });
         }
       }
       
@@ -1477,7 +1446,12 @@ ${reasonList}`);
     }
 
     const text = message.content || '';
-    if (!text) return null;
+    
+    // Don't return null for empty text - it might be a media-only message
+    // Only return null if there's truly no content AND no attachments
+    if (!text && (!message.attachments || message.attachments.length === 0)) {
+      return null;
+    }
     
     // Fallback: Check if message contains a forum link and render as clickable card
     const forumLinkMatch = text.match(/\/forum\/([a-f0-9]{24})/i);
@@ -3566,15 +3540,6 @@ ${reasonList}`);
             </div>
           </div>
         </div>
-      )}
-      
-      {/* Debug Panel - Completely hidden, only show with ?debug=1 in URL */}
-      {new URLSearchParams(window.location.search).get('debug') === '1' && (
-        <E2EEDebugPanel 
-          encryptionReady={encryptionReady}
-          keys={keys}
-          user={user}
-        />
       )}
     </div>
   );

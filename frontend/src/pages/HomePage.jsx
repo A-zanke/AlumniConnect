@@ -212,7 +212,7 @@ const HomePage = () => {
 
   // Animated text slogans
   const slogans = [
-    "Connect. Inspire. Grow.",
+    "Connect Inspire Grow!!!",
     "Building Tomorrow's Leaders Today.", 
     "Your Network is Your Net Worth.",
     "Excellence in Education & Beyond."
@@ -302,7 +302,7 @@ const HomePage = () => {
         <div className="relative z-10 flex items-center justify-center h-full">
           <div className="text-center max-w-5xl mx-auto px-4">
             <motion.h1
-              className="text-5xl md:text-7xl font-extrabold bg-gradient-to-r from-blue-100 via-teal-200 to-cyan-200 bg-clip-text text-transparent mb-8 leading-tight"
+              className="text-5xl md:text-7xl font-extrabold bg-gradient-to-r from-blue-50 via-teal-100 to-white bg-clip-text text-transparent mb-8 leading-tight"
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1, delay: 0.5 }}
@@ -326,7 +326,7 @@ const HomePage = () => {
                 MIT {''}
               </motion.span>
               <motion.span 
-                className="bg-gradient-to-r from-blue-100 via-teal-200 to-cyan-200 bg-clip-text text-transparent"
+                className="bg-gradient-to-r from-blue-50 via-teal-100 to-white bg-clip-text text-transparent"
                 animate={{
                   backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
                 }}
@@ -342,26 +342,9 @@ const HomePage = () => {
                Alumni Network
               </motion.span>
             </motion.h1>
-
-            <motion.div
-              className="text-xl md:text-2xl text-blue-100 mb-12 h-16 flex items-center justify-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1, delay: 1 }}
-            >
-              <AnimatePresence mode="wait">
-                <motion.span
-                  key={currentHeroSlide}
-                  initial={{ opacity: 0.3, y: 30, rotateX: 90 }}
-                  animate={{ opacity: 1, y: 0, rotateX: 0 }}
-                  exit={{ opacity: 0, y: -30, rotateX: -90 }}
-                  transition={{ duration: 0.2 }}
-                  className="font-light tracking-wide"
-                >
-                  {slogans[currentHeroSlide]}
-                </motion.span>
-              </AnimatePresence>
-            </motion.div>
+            < br />
+           
+              
 
             <motion.div
               className="flex flex-col sm:flex-row gap-6 justify-center mb-12"
@@ -371,7 +354,7 @@ const HomePage = () => {
             >
               <Link to="/network">
                 <motion.button
-                  className="bg-gradient-to-r from-blue-500 via-teal-500 to-cyan-500 text-white px-10 py-5 rounded-full font-bold text-xl shadow-2xl border border-white/20"
+                  className="bg-gradient-to-r from-blue-400 via-teal-500 to-cyan-800 text-white px-10 py-5 rounded-full font-bold text-xl shadow-2xl border border-white/20"
                   whileHover={{ 
                     scale: 1.05, 
                     boxShadow: "0 25px 50px rgba(59, 130, 246, 0.5)",

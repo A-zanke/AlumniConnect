@@ -131,14 +131,21 @@ const MessageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    
-    // E2EE encryption data
+
+    // E2EE encryption data (Hybrid RSA + AES)
     encryptionData: {
+      version: { type: String, default: 'v1' }, // Encryption version
+      encryptedMessage: { type: String }, // Base64 encrypted message content (AES encrypted)
+      encryptedAESKey: { type: String }, // Base64 encrypted AES key (RSA encrypted)
+      iv: { type: String }, // Base64 initialization vector for AES
+    },
+
+    // Sender-side encrypted copy so the author can decrypt after refresh
+    senderEncryptionData: {
       version: { type: String, default: 'v1' },
-      encryptedContent: { type: String }, // Base64 encrypted content
-      encryptedKey: { type: String }, // Base64 encrypted AES key
-      iv: { type: String }, // Base64 initialization vector
-      isGroup: { type: Boolean, default: false },
+      encryptedMessage: { type: String },
+      encryptedAESKey: { type: String },
+      iv: { type: String },
     },
 
     // Message priority
@@ -207,6 +214,22 @@ MessageSchema.pre("save", function (next) {
     else if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)) this.messageType = "video";
     else if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)) this.messageType = "audio";
     else if (/\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/.test(lower)) this.messageType = "document";
+  }
+
+  // Enforce encryption data integrity: if encrypted=true, encryptionData must be complete
+  if (this.encrypted === true) {
+    const ed = this.encryptionData || {};
+    const complete = !!(ed.encryptedMessage && ed.encryptedAESKey && ed.iv);
+    if (!complete) {
+      return next(new Error('Invalid encryptionData: missing fields while encrypted=true'));
+    }
+    const senderEd = this.senderEncryptionData || {};
+    const senderComplete = !!(senderEd.encryptedMessage && senderEd.encryptedAESKey && senderEd.iv);
+    if (!senderComplete) {
+      console.warn('⚠️ senderEncryptionData incomplete for encrypted message', this._id?.toString?.() || 'new message');
+    }
+    // For valid encrypted records, ensure content is cleared
+    this.content = '';
   }
 
   // Set auto-delete timer if specified
@@ -353,3 +376,5 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
 };
 
 module.exports = mongoose.model("Message", MessageSchema);
+
+

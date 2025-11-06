@@ -26,6 +26,7 @@ const {
   bulkDeleteChats,
   bulkBlockUsers,
   bulkReportUsers,
+  repairBrokenMessages,
 } = require("../controllers/messagesController");
 
 // NOTE: No local directories are created; all uploads go to Cloudinary.
@@ -769,5 +770,8 @@ router.get("/health", async (req, res) => {
     return res.status(500).json({ status: "error", message: "Health check failed", success: false });
   }
 });
+
+// Repair broken encrypted messages (admin/debug endpoint)
+router.post("/repair-broken-messages", protect, repairBrokenMessages);
 
 module.exports = router;

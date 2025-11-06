@@ -1,170 +1,192 @@
 import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import {
-  initializeEncryption,
-  encryptMessage,
+  storePrivateKey,
+  getPrivateKey,
   decryptMessage,
-  getStoredKeys,
-} from '../utils/encryption';
-
-const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  isEncrypted,
+  hasPrivateKey,
+  isValidEncryptionData,
+  validatePrivateKey,
+  clearPrivateKey
+} from '../services/encryptionService';
 
 /**
  * Custom hook for managing end-to-end encryption
+ * 
+ * NOTE: Encryption is now handled SERVER-SIDE
+ * This hook only handles:
+ * 1. Storing the private key received during registration
+ * 2. Decrypting messages when received
  */
 export function useEncryption(user) {
   const [isReady, setIsReady] = useState(false);
-  const [keys, setKeys] = useState({ publicKey: null, privateKey: null });
-  const [recipientPublicKeys, setRecipientPublicKeys] = useState({});
+  const [hasKey, setHasKey] = useState(false);
 
-  // Initialize encryption for current user
+  // Check if user has a private key
   useEffect(() => {
-    if (!user?._id) return;
+    let cancelled = false;
 
-    const initKeys = async () => {
+    const ensurePrivateKey = async () => {
+      if (!user?._id) {
+        if (!cancelled) {
+          setIsReady(false);
+          setHasKey(false);
+        }
+        return;
+      }
+
+      const keyExists = hasPrivateKey(user._id);
+      if (!cancelled) {
+        setHasKey(keyExists);
+        setIsReady(keyExists);
+      }
+
+      if (keyExists) {
+        // Validate the key format
+        const privateKey = getPrivateKey(user._id);
+        const validation = validatePrivateKey(privateKey);
+
+        if (!validation.valid) {
+          console.error('❌ Private key validation failed:', validation.error);
+          console.error('🧹 Clearing invalid private key from localStorage...');
+
+          clearPrivateKey(user._id);
+
+          if (!cancelled) {
+            setHasKey(false);
+            setIsReady(false);
+          }
+
+          console.error('⚠️ Invalid encryption key detected and cleared!');
+          console.error('🔑 Please LOGOUT and LOGIN again to get a fresh encryption key');
+        } else {
+          console.log('🔐 E2EE ready - private key is valid');
+        }
+        return;
+      }
+
+      console.warn('⚠️ No private key found - attempting to fetch from server');
+
       try {
-        console.log('🔐 Initializing E2EE for user:', user._id);
-        const result = await initializeEncryption(user._id);
-        
-        console.log('🔑 Keys loaded:', {
-          hasPublicKey: !!result.publicKey,
-          hasPrivateKey: !!result.privateKey,
-          newKeys: result.newKeys
-        });
-        
-        setKeys({
-          publicKey: result.publicKey,
-          privateKey: result.privateKey,
-        });
-
-        // If new keys were generated, upload public key to server
-        if (result.newKeys) {
-          console.log('📤 Uploading new public key to server...');
-          const token = localStorage.getItem('token');
-          await axios.put(
-            `${baseURL}/api/users/encryption/public-key`,
-            { publicKey: result.publicKey },
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-          console.log('✅ Public key uploaded successfully');
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.warn('⚠️ Cannot fetch private key - missing auth token');
+          return;
         }
 
-        setIsReady(true);
-        console.log('✅ E2EE ready!');
+        const axiosModule = await import('axios');
+        const axiosInstance = axiosModule.default || axiosModule;
+        const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        const response = await axiosInstance.get(`${baseURL}/api/auth/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { regenerateKeys: true },
+        });
+        const serverKey = response?.data?.encryptionKeys?.privateKey;
+        if (serverKey) {
+          storePrivateKey(user._id, serverKey);
+          if (!cancelled) {
+            setHasKey(true);
+            setIsReady(true);
+          }
+          console.log('✅ Private key fetched from server and stored locally');
+        } else {
+          console.warn('⚠️ Server did not return a private key even after regeneration request');
+        }
       } catch (error) {
-        console.error('❌ E2EE initialization failed:', error);
-        setIsReady(false);
+        console.warn('Failed to fetch private key from server:', error?.message || error);
       }
     };
 
-    initKeys();
+    ensurePrivateKey();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  // Fetch recipient's public key
-  const getRecipientPublicKey = useCallback(async (recipientId) => {
-    // Check cache first
-    if (recipientPublicKeys[recipientId]) {
-      return recipientPublicKeys[recipientId];
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${baseURL}/api/users/${recipientId}/public-key`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const publicKey = response.data.publicKey;
-      if (publicKey) {
-        // Cache the public key
-        setRecipientPublicKeys((prev) => ({
-          ...prev,
-          [recipientId]: publicKey,
-        }));
-      }
-
-      return publicKey;
-    } catch (error) {
-      console.error('Error fetching recipient public key:', error);
-      return null;
-    }
-  }, [recipientPublicKeys]);
-
-  // Encrypt a message for a recipient
-  const encryptMessageForRecipient = useCallback(async (content, recipientId) => {
-    if (!isReady) {
-      console.warn('⚠️ Encryption not ready - keys still loading');
-      return { content, encrypted: false };
-    }
+  /**
+   * Store private key (called after registration or when keys are received)
+   * @param {string} privateKeyPem - Private key in PEM format
+   */
+  const savePrivateKey = useCallback((privateKeyPem) => {
+    if (!user?._id) return;
     
-    if (!keys.publicKey || !keys.privateKey) {
-      console.warn('⚠️ Missing encryption keys:', {
-        hasPublicKey: !!keys.publicKey,
-        hasPrivateKey: !!keys.privateKey
-      });
-      return { content, encrypted: false };
-    }
+    storePrivateKey(user._id, privateKeyPem);
+    setHasKey(true);
+    setIsReady(true);
+    console.log('✅ Private key saved successfully');
+  }, [user]);
 
-    try {
-      const recipientPublicKey = await getRecipientPublicKey(recipientId);
-      
-      if (!recipientPublicKey) {
-        console.warn('⚠️ Recipient public key not available - recipient needs to log in first');
-        return { content, encrypted: false };
-      }
-
-      const encrypted = await encryptMessage(content, recipientPublicKey);
-      
-      return {
-        content: '', // Clear plain text content
-        encrypted: true,
-        encryptionData: encrypted,
-      };
-    } catch (error) {
-      console.error('❌ Encryption failed:', error);
-      return { content, encrypted: false };
-    }
-  }, [isReady, keys, getRecipientPublicKey]);
-
-  // Decrypt a received message
+  /**
+   * Decrypt a received message
+   * @param {Object} message - Message object with encryptionData
+   * @returns {string} Decrypted message or original content
+   */
   const decryptReceivedMessage = useCallback(async (message) => {
-    if (!message.encrypted || !message.encryptionData) {
-      console.log('Message not encrypted, returning content from field');
+    // If not encrypted, just return original content
+    if (!isEncrypted(message)) {
       return message.content || '';
     }
 
-    if (!isReady || !keys.privateKey) {
-      console.warn('⚠️ Decryption not ready - keys not loaded');
-      return '[Encrypted message - keys not loaded]';
+    // Choose the best encryption payload: sender copy when available
+    const encryptionPayload = isValidEncryptionData(message.encryptionData)
+      ? message.encryptionData
+      : isValidEncryptionData(message.senderEncryptionData)
+      ? message.senderEncryptionData
+      : null;
+
+    if (!encryptionPayload) {
+      console.warn('⚠️ Encrypted flag set but encryption data incomplete. Falling back to plaintext.');
+      return message.content || message.body || message.fallbackContent || '';
     }
 
-    try {
-      console.log('🔓 Attempting decryption with private key...');
-      console.log('Encryption data:', message.encryptionData);
-      
-      // Pass the encryptionData directly to decryptMessage
-      const decrypted = await decryptMessage(message.encryptionData, keys.privateKey);
-      console.log('✅ Decryption successful:', decrypted?.substring(0, 30));
-      return decrypted;
-    } catch (error) {
-      console.error('❌ Decryption error:', error);
-      return '[Unable to decrypt message]';
+    if (!user?._id) {
+      console.warn('⚠️ Cannot decrypt - no user ID');
+      return message.content || message.body || message.fallbackContent || '';
     }
-  }, [isReady, keys]);
+
+    // Get private key, auto-fetch from server if missing
+    let privateKey = getPrivateKey(user._id);
+
+    if (!privateKey) {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const axios = (await import('axios')).default;
+          const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+          const response = await axios.get(`${baseURL}/api/auth/profile`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const fromServer = response?.data?.encryptionKeys?.privateKey;
+          if (fromServer) {
+            privateKey = fromServer;
+            storePrivateKey(user._id, privateKey);
+            console.log('✅ Private key fetched and stored from server');
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch private key from server:', error?.message || error);
+      }
+    }
+
+    // If still no key, show plaintext instead of blocking UI with error banners
+    if (!privateKey) {
+      return message.content || message.body || message.fallbackContent || '';
+    }
+
+    // Attempt decryption (frontend service returns null on failure)
+    const decrypted = decryptMessage(encryptionPayload, privateKey);
+    if (decrypted === null) {
+      // Graceful fallback: return original content if present
+      return message.content || message.body || message.fallbackContent || '';
+    }
+    return decrypted;
+  }, [user]);
 
   return {
     isReady,
-    keys,
-    encryptMessageForRecipient,
-    decryptReceivedMessage,
-    getRecipientPublicKey,
+    hasKey,
+    savePrivateKey,
+    decryptReceivedMessage
   };
 }
