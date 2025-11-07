@@ -1,75 +1,126 @@
 import React from 'react';
+import { FaLinkedin, FaFacebook, FaInstagram, FaYoutube, FaTwitter } from 'react-icons/fa';
 
 const Footer = () => {
   return (
-    <footer className="bg-gray-900 text-white py-8">
+    <footer className="bg-gray-900 text-white py-12">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div>
-            <h3 className="text-lg font-semibold mb-4">About Us</h3>
-            <p className="text-gray-400">
-              MIT Alumni Connect is a platform for MIT alumni to stay connected, share experiences, and grow their professional network.
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* About Section */}
+          <div className="md:col-span-1">
+            <h3 className="text-xl font-bold mb-4 text-indigo-400">Maharashtra Institute of Technology</h3>
+            <p className="text-gray-300 text-sm mb-3">An Autonomous Institute</p>
+            <p className="text-gray-400 text-sm leading-relaxed">
+              AICTE Approved institution dedicated to excellence in technical education and fostering innovation.
             </p>
+            <div className="mt-4">
+              <a 
+                href="https://mit.asia" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-indigo-400 hover:text-indigo-300 transition-colors text-sm font-medium"
+              >
+                Visit MIT Website →
+              </a>
+            </div>
           </div>
+
+          {/* Contact Information */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
-            <ul className="space-y-2">
-              <li>
-                <button className="text-gray-400 hover:text-white transition-colors">
-                  Home
-                </button>
+            <h3 className="text-lg font-semibold mb-4 text-indigo-400">Contact Us</h3>
+            <ul className="space-y-3 text-sm">
+              <li className="text-gray-300">
+                <span className="font-medium text-white">Address:</span><br />
+                <span className="text-gray-400">Beed Bypass Road, Satara Parisar,<br />Aurangabad - 431010, Maharashtra, India</span>
               </li>
-              <li>
-                <button className="text-gray-400 hover:text-white transition-colors">
-                  Events
-                </button>
+              <li className="text-gray-300">
+                <span className="font-medium text-white">Phone:</span><br />
+                <span className="text-gray-400">+91-240-2375135, 164, 171</span>
               </li>
-              <li>
-                <button className="text-gray-400 hover:text-white transition-colors">
-                  Network
-                </button>
+              <li className="text-gray-300">
+                <span className="font-medium text-white">Fax:</span> <span className="text-gray-400">+91-240-2376154</span>
               </li>
-              <li>
-                <button className="text-gray-400 hover:text-white transition-colors">
-                  Messages
-                </button>
+              <li className="text-gray-300">
+                <span className="font-medium text-white">Email:</span>{' '}
+                <a href="mailto:admissions@mit.asia" className="text-indigo-400 hover:text-indigo-300 transition-colors">
+                  admissions@mit.asia
+                </a>
+              </li>
+              <li className="text-gray-300">
+                <span className="font-medium text-white">Toll Free:</span> <span className="text-gray-400">1800 233 5181, 191</span>
               </li>
             </ul>
           </div>
+
+          {/* Social Media */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Contact</h3>
-            <ul className="space-y-2">
-              <li className="text-gray-400">Email: info@mitalumni.com</li>
-              <li className="text-gray-400">Phone: (123) 456-7890</li>
-              <li className="text-gray-400">Address: 123 MIT Way, Cambridge, MA</li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold mb-4">Follow Us</h3>
-            <div className="flex space-x-4">
-              <button className="text-gray-400 hover:text-white transition-colors">
-                <span className="sr-only">Facebook</span>
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
-                </svg>
-              </button>
-              <button className="text-gray-400 hover:text-white transition-colors">
-                <span className="sr-only">Twitter</span>
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
-                </svg>
-              </button>
-              <button className="text-gray-400 hover:text-white transition-colors">
-                <span className="sr-only">LinkedIn</span>
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
-                </svg>
-              </button>
+            <h3 className="text-lg font-semibold mb-4 text-indigo-400">Connect With Us</h3>
+            <div className="flex flex-wrap gap-3">
+              <a
+                href="https://www.linkedin.com/school/15138113"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-800 hover:bg-indigo-600 p-3 rounded-lg transition-all duration-300 transform hover:scale-110"
+                title="LinkedIn"
+              >
+                <FaLinkedin className="h-6 w-6" />
+              </a>
+              <a
+                href="https://www.instagram.com/mit.chhatrapati_sambhajinagar/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-800 hover:bg-pink-600 p-3 rounded-lg transition-all duration-300 transform hover:scale-110"
+                title="Instagram"
+              >
+                <FaInstagram className="h-6 w-6" />
+              </a>
+              <a
+                href="https://www.youtube.com/@mitaurangabad334"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-800 hover:bg-red-600 p-3 rounded-lg transition-all duration-300 transform hover:scale-110"
+                title="YouTube"
+              >
+                <FaYoutube className="h-6 w-6" />
+              </a>
+              <a
+                href="https://x.com/MIT_Updates"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-800 hover:bg-blue-500 p-3 rounded-lg transition-all duration-300 transform hover:scale-110"
+                title="Twitter/X"
+              >
+                <FaTwitter className="h-6 w-6" />
+              </a>
+              <a
+                href="https://www.facebook.com/Aurangabad.mit"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-800 hover:bg-blue-700 p-3 rounded-lg transition-all duration-300 transform hover:scale-110"
+                title="Facebook"
+              >
+                <FaFacebook className="h-6 w-6" />
+              </a>
+            </div>
+            <div className="mt-6 text-sm text-gray-400">
+              <p className="leading-relaxed">
+                Stay connected with the MIT alumni community and never miss important updates, events, and opportunities.
+              </p>
             </div>
           </div>
         </div>
-        <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>&copy; {new Date().getFullYear()} MIT Alumni Connect. All rights reserved.</p>
+        
+        {/* Bottom Bar */}
+        <div className="border-t border-gray-800 mt-10 pt-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-gray-400 text-sm text-center md:text-left">
+              &copy; {new Date().getFullYear()} MIT Alumni Connect - Maharashtra Institute of Technology, Aurangabad. All rights reserved.
+            </p>
+            <div className="flex gap-6 text-sm text-gray-400">
+              <button className="hover:text-indigo-400 transition-colors">Privacy Policy</button>
+              <button className="hover:text-indigo-400 transition-colors">Terms of Service</button>
+            </div>
+          </div>
         </div>
       </div>
     </footer>

@@ -2,7 +2,6 @@ const User = require("../models/User");
 const Event = require("../models/Event");
 const ForumPost = require("../models/ForumPost");
 const ForumReport = require("../models/ForumReport");
-const Testimonial = require("../models/Testimonial");
 const Post = require("../models/Post");
 const PostReport = require("../models/PostReport");
 const MessageReport = require("../models/MessageReport");
@@ -828,55 +827,6 @@ const bulkDeletePosts = async (req, res) => {
   }
 };
 
-// ===================== Testimonials Management =====================
-const listTestimonials = async (req, res) => {
-  try {
-    const testimonials = await Testimonial.find().sort({
-      order: 1,
-      createdAt: -1,
-    });
-    res.json(testimonials);
-  } catch (err) {
-    console.error("List testimonials error:", err);
-    res.status(500).json({ message: "Failed to list testimonials" });
-  }
-};
-
-const createTestimonial = async (req, res) => {
-  try {
-    const testimonial = await Testimonial.create(req.body);
-    res.status(201).json({ message: "Testimonial created", testimonial });
-  } catch (err) {
-    console.error("Create testimonial error:", err);
-    res.status(500).json({ message: "Failed to create testimonial" });
-  }
-};
-
-const updateTestimonial = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const testimonial = await Testimonial.findByIdAndUpdate(id, req.body, {
-      new: true,
-    });
-    if (!testimonial)
-      return res.status(404).json({ message: "Testimonial not found" });
-    res.json({ message: "Testimonial updated", testimonial });
-  } catch (err) {
-    console.error("Update testimonial error:", err);
-    res.status(500).json({ message: "Failed to update testimonial" });
-  }
-};
-
-const deleteTestimonial = async (req, res) => {
-  try {
-    const { id } = req.params;
-    await Testimonial.findByIdAndDelete(id);
-    res.json({ message: "Testimonial deleted" });
-  } catch (err) {
-    console.error("Delete testimonial error:", err);
-    res.status(500).json({ message: "Failed to delete testimonial" });
-  }
-};
 
 // ===================== Event detail =====================
 const getEventByIdAdmin = async (req, res) => {
@@ -989,10 +939,6 @@ module.exports = {
   deletePostReport,
   getPostAnalytics,
   bulkDeletePosts,
-  listTestimonials,
-  createTestimonial,
-  updateTestimonial,
-  deleteTestimonial,
   getEventByIdAdmin,
   listMessageReports,
   resolveMessageReport,

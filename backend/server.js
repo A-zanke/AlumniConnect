@@ -190,9 +190,7 @@ const avatarRoutes = require("./routes/avatarRoutes");
 const forumRoutes = require("./routes/forumRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 const aiRoutes = require("./routes/aiRoutes");
-const testimonialRoutes = require("./routes/testimonialRoutes");
 const recommendationsRoutes = require("./routes/recommendationsRoutes");
-app.use("/api/testimonials", testimonialRoutes);
 
 app.use("/api/forum", forumRoutes);
 app.use("/api/chatbot", chatbotRoutes);
@@ -392,7 +390,9 @@ io.on("connection", (socket) => {
               
               // Clear plain content only if encryption succeeded
               plainContent = '';
-              console.log('🔒 Socket message encrypted successfully for recipient');
+              if (process.env.NODE_ENV !== 'production') {
+                console.log('🔒 Socket message encrypted successfully for recipient');
+              }
 
               if (sender && sender.publicKey) {
                 try {
@@ -406,20 +406,28 @@ io.on("connection", (socket) => {
                       version: senderEncrypted.version || 'v1',
                     };
                   } else {
-                    console.warn('⚠️ Socket: sender encryption produced incomplete data');
+                    if (process.env.NODE_ENV !== 'production') {
+                      console.warn('⚠️ Socket: sender encryption produced incomplete data');
+                    }
                   }
                 } catch (senderErr) {
-                  console.warn('⚠️ Socket: Failed to encrypt sender copy:', senderErr.message);
+                  if (process.env.NODE_ENV !== 'production') {
+                    console.warn('⚠️ Socket: Failed to encrypt sender copy:', senderErr.message);
+                  }
                 }
               } else {
-                console.warn('⚠️ Socket: Sender has no public key - cannot retain self-encrypted copy');
+                if (process.env.NODE_ENV !== 'production') {
+                  console.warn('⚠️ Socket: Sender has no public key - cannot retain self-encrypted copy');
+                }
               }
             } else {
               console.error('❌ Socket encryption returned incomplete data - sending as plaintext');
               encryptedData = null;
             }
           } else {
-            console.warn('⚠️ Socket: Recipient has no public key - sending unencrypted');
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('⚠️ Socket: Recipient has no public key - sending unencrypted');
+            }
           }
         } catch (encryptError) {
           console.error('❌ Socket encryption failed:', encryptError.message);
@@ -446,11 +454,15 @@ io.on("connection", (socket) => {
           messageData.senderEncryptionData = senderEncryptionData;
         }
         // Plaintext already cleared from content – database stores only encrypted payload
-        console.log('✅ Socket: Message will be stored encrypted (plaintext cleared)');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('✅ Socket: Message will be stored encrypted (plaintext cleared)');
+        }
       } else {
         messageData.encrypted = false;
         messageData.encryptionData = null;
-        console.log('✅ Socket: Message will be stored as plaintext');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('✅ Socket: Message will be stored as plaintext');
+        }
       }
       // Ensure a Thread exists without trying to $set participants in an update (avoids NotSingleValueField)
       let thread = await Thread.findOne({

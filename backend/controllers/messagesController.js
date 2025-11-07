@@ -6,10 +6,11 @@ const fs = require("fs");
 const cloudinary = require("../config/cloudinary");
 const User = require("../models/User");
 const Message = require("../models/Message");
+const MessageBackup = require("../models/MessageBackup"); // Add backup support
 const Thread = require("../models/Thread");
 const Block = require("../models/Block");
 const MessageReport = require("../models/MessageReport");
-const NotificationService = require("../services/notificationService");
+const NotificationService = require("../services/NotificationService");
 const { encryptMessage, compactToPem } = require("../services/encryptionService");
 
 // Helper functions
@@ -32,6 +33,23 @@ async function areConnected(userAId, userBId) {
   const user = await User.findById(userAId).select("connections");
   if (!user) return false;
   return user.connections.some((id) => id.toString() === String(userBId));
+}
+
+// Helper function to get attachment snippet
+function getAttachmentSnippet(attachment) {
+  if (!attachment) return "Attachment";
+  
+  const url = typeof attachment === 'string' ? attachment : attachment?.url;
+  if (!url) return "Attachment";
+  
+  // Check file type
+  const lowerUrl = url.toLowerCase();
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(lowerUrl)) return "📷 Photo";
+  if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(lowerUrl)) return "🎥 Video";
+  if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/i.test(lowerUrl)) return "🎵 Audio";
+  if (/\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/i.test(lowerUrl)) return "📄 Document";
+  
+  return "📎 Attachment";
 }
 
 // Helpers for current schema (attachments used for flags/markers)
@@ -87,10 +105,11 @@ function getReplyFromAttachments(attachments) {
   return id ? { id } : null;
 }
 
-// Robust message parser that works with lean docs
-function parseMessage(doc, viewerId) {
+// Enhanced message parser that works with lean docs and backup content
+async function parseMessageWithBackup(doc, viewerId) {
   try {
     if (isDeletedForViewer(doc, viewerId)) return null;
+    
     // If deleted for everyone (metadata.deleted or attachment flag), return tombstone
     const deletedForEveryone =
       (doc.metadata && doc.metadata.deleted === true) ||
@@ -137,12 +156,33 @@ function parseMessage(doc, viewerId) {
         : doc.encryptionData
       : null;
 
+    // Determine content to show
+    let contentToShow = doc.content || "";
+    
+    // For encrypted messages with empty content, try to get backup content
+    if (doc.encrypted && (!contentToShow || contentToShow.trim() === "")) {
+      try {
+        // Look for backup content in MessageBackup collection
+        const backup = await MessageBackup.findOne({
+          originalMessageId: doc._id,
+          $or: [{ from: doc.from }, { to: doc.to }]
+        }).select('content').lean();
+        
+        if (backup && backup.content) {
+          contentToShow = backup.content;
+          console.log(`🔄 Using backup content for message ${doc._id}`);
+        }
+      } catch (backupError) {
+        console.warn(`⚠️ Failed to fetch backup for message ${doc._id}:`, backupError.message);
+      }
+    }
+
     return {
       id: doc._id,
       messageId: doc.messageId,
       senderId: doc.from?._id || doc.from,
       recipientId: doc.to?._id || doc.to,
-      content: doc.content || "",
+      content: contentToShow,
       attachments: getAttachmentUrls(doc.attachments),
       messageType: doc.messageType,
       timestamp: doc.createdAt,
@@ -161,6 +201,7 @@ function parseMessage(doc, viewerId) {
       encryptionData: encryptionPayload,
     };
   } catch (e) {
+    console.error('❌ Error in parseMessageWithBackup:', e);
     return null;
   }
 }
@@ -225,10 +266,11 @@ exports.getConversations = async (req, res) => {
           isRead: false,
         });
 
-        const hasText = typeof msg.content === 'string' && msg.content.trim().length > 0;
+        const parsedMsg = await parseMessageWithBackup(msg, me);
+        const hasText = parsedMsg && typeof parsedMsg.content === 'string' && parsedMsg.content.trim().length > 0;
         const hasAttachments = Array.isArray(msg.attachments) && msg.attachments.length > 0;
         const snippet = hasText
-          ? msg.content.trim().slice(0, 80)
+          ? parsedMsg.content.trim().slice(0, 80)
           : msg.encrypted && msg.encryptionData
           ? "🔒 Encrypted message"
           : hasAttachments
@@ -320,9 +362,12 @@ exports.getMessages = async (req, res) => {
       .sort({ createdAt: 1 })
       .lean();
 
-    const parsedMessages = messages
-      .map((msg) => parseMessage(msg, me))
-      .filter(Boolean);
+    // Use enhanced parser with backup support
+    const parsedMessages = [];
+    for (const msg of messages) {
+      const parsed = await parseMessageWithBackup(msg, me);
+      if (parsed) parsedMessages.push(parsed);
+    }
 
     // Mark messages as read and delivered
     const readResult = await Message.updateMany(

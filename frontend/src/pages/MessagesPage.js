@@ -157,6 +157,7 @@ const MessagesPage = () => {
   const [uploadProgress, setUploadProgress] = useState({}); // id -> 0..100
   const [mediaLoaded, setMediaLoaded] = useState({}); // url -> boolean
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [expandedMessages, setExpandedMessages] = useState(new Set()); // Track expanded messages
   const [downloadedMedia, setDownloadedMedia] = useState(() => {
     // Load downloaded media from localStorage
     try {
@@ -167,6 +168,7 @@ const MessagesPage = () => {
     }
   }); // url -> boolean (for receiver)
   const [downloadProgress, setDownloadProgress] = useState({}); // url -> 0..100
+  const cameraInputRef = useRef(null); // For camera capture
 
   const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000";
   const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || baseURL;
@@ -209,8 +211,14 @@ const MessagesPage = () => {
       sizes[i]
     }`;
   };
-  const resolveMediaUrl = (u = "") =>
-    u && u.startsWith("/uploads") ? `${baseURL}${u}` : u;
+  const resolveMediaUrl = (u = "") => {
+    if (!u) return u;
+    let url = u.startsWith("/uploads") ? `${baseURL}${u}` : u;
+    
+    // Don't modify Cloudinary URLs - use them as-is
+    // Cloudinary handles documents correctly with /image/upload/ path
+    return url;
+  };
 
   // Message status update callback
   const updateMessageStatus = useCallback((messageId, status) => {
@@ -225,6 +233,124 @@ const MessagesPage = () => {
   const generateClientKey = () =>
     `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+  // Handle document opening - open directly in new tab
+  const handleDocumentOpen = (url, fileName) => {
+    // Simply open the URL in a new tab - Cloudinary will handle it
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  // Handle document download (Save as...) - instant download
+  const handleDocumentDownload = async (url, fileName) => {
+    try {
+      // Check if it's a Cloudinary URL or server URL
+      const isCloudinary = url.includes('cloudinary.com');
+      
+      // For Cloudinary URLs, try to add fl_attachment transformation for proper download
+      let downloadUrl = url;
+      if (isCloudinary) {
+        // Add Cloudinary transformation to force download with filename
+        if (url.includes('/upload/')) {
+          // Insert transformation flags after /upload/
+          const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+          downloadUrl = url.replace(
+            '/upload/',
+            `/upload/fl_attachment:${safeFileName}/`
+          );
+        }
+      }
+      
+      // Add cache-busting parameter
+      downloadUrl = downloadUrl.includes('?') 
+        ? `${downloadUrl}&t=${Date.now()}` 
+        : `${downloadUrl}?t=${Date.now()}`;
+      
+      // Prepare headers
+      const headers = {
+        'Cache-Control': 'no-cache',
+      };
+      
+      // Add auth token only for server URLs (not Cloudinary)
+      if (!isCloudinary) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      
+      // Fetch the file as blob with no-cache headers
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-cache',
+        credentials: isCloudinary ? 'omit' : 'include',
+        headers,
+      });
+      
+      if (!response.ok) {
+        // If Cloudinary URL fails with 401, try the original URL without transformation
+        if (isCloudinary && response.status === 401 && downloadUrl !== url) {
+          console.log('Retrying with original URL...');
+          const fallbackResponse = await fetch(
+            url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`,
+            {
+              method: 'GET',
+              mode: 'cors',
+              cache: 'no-cache',
+              credentials: 'omit',
+              headers: { 'Cache-Control': 'no-cache' },
+            }
+          );
+          
+          if (!fallbackResponse.ok) {
+            throw new Error(`Download failed: ${fallbackResponse.status}`);
+          }
+          
+          const blob = await fallbackResponse.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+          }, 100);
+          
+          toast.success('Download started');
+          return;
+        }
+        
+        throw new Error(`Download failed: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // Create a temporary link and trigger download
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 100);
+      
+      toast.success('Download started');
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error(`Failed to download: ${error.message || 'Please try again'}`);
+    }
+  };
+
   // Handle media download with progress tracking
   const handleMediaDownload = async (url) => {
     if (downloadedMedia[url]) return; // Already downloaded
@@ -232,15 +358,85 @@ const MessagesPage = () => {
     try {
       setDownloadProgress((prev) => ({ ...prev, [url]: 0 }));
       
-      // Don't use withCredentials for Cloudinary URLs to avoid CORS issues
-      const response = await axios.get(url, {
-        responseType: 'blob',
-        withCredentials: false, // Important: avoid CORS issues with Cloudinary
-        onDownloadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-          setDownloadProgress((prev) => ({ ...prev, [url]: percentCompleted }));
+      // Check if URL is valid
+      if (!url || url === 'undefined' || url === 'null') {
+        throw new Error('Invalid media URL');
+      }
+      
+      // Add cache-busting to prevent 304/401 cache issues
+      const downloadUrl = url.includes('?') 
+        ? `${url}&t=${Date.now()}` 
+        : `${url}?t=${Date.now()}`;
+      
+      // Use fetch for Cloudinary URLs (better CORS handling)
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit', // Don't send credentials to Cloudinary
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache',
         },
       });
+      
+      if (!response.ok) {
+        // If first attempt fails, try without cache-busting
+        const retryResponse = await fetch(url, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+        });
+        
+        if (!retryResponse.ok) {
+          throw new Error(`HTTP error! status: ${retryResponse.status}`);
+        }
+        
+        // Use retry response
+        const contentLength = retryResponse.headers.get('content-length');
+        const total = parseInt(contentLength, 10) || 0;
+        
+        const reader = retryResponse.body.getReader();
+        let receivedLength = 0;
+        const chunks = [];
+        
+        while(true) {
+          const {done, value} = await reader.read();
+          
+          if (done) break;
+          
+          chunks.push(value);
+          receivedLength += value.length;
+          
+          // Update progress
+          if (total > 0) {
+            const percentCompleted = Math.round((receivedLength * 100) / total);
+            setDownloadProgress((prev) => ({ ...prev, [url]: percentCompleted }));
+          }
+        }
+      } else {
+        // Get content length for progress
+        const contentLength = response.headers.get('content-length');
+        const total = parseInt(contentLength, 10) || 0;
+        
+        const reader = response.body.getReader();
+        let receivedLength = 0;
+        const chunks = [];
+        
+        while(true) {
+          const {done, value} = await reader.read();
+          
+          if (done) break;
+          
+          chunks.push(value);
+          receivedLength += value.length;
+          
+          // Update progress
+          if (total > 0) {
+            const percentCompleted = Math.round((receivedLength * 100) / total);
+            setDownloadProgress((prev) => ({ ...prev, [url]: percentCompleted }));
+          }
+        }
+      }
       
       // Mark as downloaded and save to localStorage
       const updatedDownloaded = { ...downloadedMedia, [url]: true };
@@ -265,7 +461,7 @@ const MessagesPage = () => {
         delete next[url];
         return next;
       });
-      toast.error('Failed to load media');
+      toast.error(`Media load failed: ${error.message || 'Please try again'}`);
     }
   };
 
@@ -722,37 +918,133 @@ const MessagesPage = () => {
       console.log('📋 Sample message structure:', normalized[0]);
       const decryptedMessages = await Promise.all(
         normalized.map(async (msg) => {
-          console.log('🔍 Checking message:', { 
-            id: msg.id, 
-            encrypted: msg.encrypted, 
+          console.log('🔍 Message structure:', JSON.stringify({
+            id: msg.id,
+            senderId: msg.senderId,
+            recipientId: msg.recipientId,
+            content: msg.content,
+            contentLength: msg.content?.length,
+            contentPreview: msg.content?.substring(0, 100),
+            encrypted: msg.encrypted,
             hasEncryptionData: !!msg.encryptionData,
-            content: msg.content?.substring(0, 20) 
-          });
+            encryptionDataKeys: msg.encryptionData ? Object.keys(msg.encryptionData) : null,
+            attachments: msg.attachments?.length || 0,
+            timestamp: msg.timestamp
+          }, null, 2));
           if (msg.encrypted && msg.encryptionData) {
             console.log('🔓 Decrypting message:', msg.id);
             try {
               const decryptedContent = await decryptReceivedMessage(msg);
               console.log('✅ Decrypted:', decryptedContent);
+              
+              // If decryption returns empty/null, check if message was stored with plaintext
+              if (!decryptedContent || decryptedContent.trim() === '') {
+                console.log('⚠️ Decryption returned empty, checking message data:', {
+                  hasContent: !!msg.content,
+                  contentLength: msg.content?.length,
+                  content: msg.content,
+                  hasAttachments: !!(msg.attachments && msg.attachments.length > 0)
+                });
+                
+                // Check if original message has plaintext content (server keeps backup)
+                if (msg.content && msg.content.trim() !== '') {
+                  console.log('✅ Using plaintext backup from message.content:', msg.content);
+                  return {
+                    ...msg,
+                    encrypted: false, // Mark as unencrypted since using plaintext
+                    _restoredFromBackup: true,
+                  };
+                }
+                
+                // If still no content, return message as-is (might have attachments)
+                if (msg.attachments && msg.attachments.length > 0) {
+                  console.log('📎 Message has attachments, keeping without text');
+                  return msg;
+                }
+                
+                // No content and no attachments - skip this message entirely
+                console.log('🗑️ Message has no content or attachments, filtering out');
+                return null;
+              }
+              
               return {
                 ...msg,
                 content: decryptedContent,
                 _originalEncrypted: true,
               };
             } catch (error) {
-              console.error('❌ Failed to decrypt message:', error);
-              return {
-                ...msg,
-                content: '[Unable to decrypt message]',
-                _decryptionFailed: true,
-              };
+              console.error('❌ Failed to decrypt message:', error.message);
+              console.log('🔍 Attempting fallback recovery:', {
+                hasContent: !!msg.content,
+                contentType: typeof msg.content,
+                content: msg.content,
+                hasAttachments: !!(msg.attachments && msg.attachments.length > 0)
+              });
+              
+              // Try fallback to plain content (server should keep plaintext backup)
+              if (msg.content && msg.content.trim() !== '') {
+                console.log('✅ Using plaintext backup after decryption error:', msg.content);
+                return {
+                  ...msg,
+                  encrypted: false,
+                  _restoredFromBackup: true,
+                };
+              }
+              
+              // If has attachments, show without content
+              if (msg.attachments && msg.attachments.length > 0) {
+                console.log('📎 Keeping message with attachments only');
+                return {
+                  ...msg,
+                  content: '',
+                };
+              }
+              
+              // No content and no attachments - skip message entirely
+              console.log('🗑️ No recoverable content, filtering out message');
+              return null;
             }
           }
+          
+          // For non-encrypted messages, ensure content exists
+          if (!msg.content || msg.content.trim() === '') {
+            // Check if it has attachments
+            if (msg.attachments && msg.attachments.length > 0) {
+              return msg; // Has attachments, content can be empty
+            }
+            // No content and no attachments - skip this message
+            return null;
+          }
+          
+          // Special case: Check if content looks like it was encrypted but failed
+          // This can happen when server sends encrypted content in the content field
+          if (msg.content && msg.content.includes('encryptedMessage')) {
+            console.log('⚠️ Message content appears to be encrypted data, not plaintext');
+            // This is likely encrypted data that was stored incorrectly
+            if (msg.attachments && msg.attachments.length > 0) {
+              return { ...msg, content: '' }; // Keep attachments only
+            }
+            return null; // Skip message entirely
+          }
+          
           return msg;
         })
       );
-      console.log('📝 Final messages:', decryptedMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 20) })));
       
-      setMessages(decryptedMessages);
+      // Filter out null messages (failed decryption with no content/attachments)
+      const validMessages = decryptedMessages.filter(msg => msg !== null);
+      console.log('📝 Final messages:', validMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 20) })));
+      
+      // Load block/unblock history from localStorage
+      const blockHistoryKey = `blockHistory_${user._id}_${userId}`;
+      const blockHistory = JSON.parse(localStorage.getItem(blockHistoryKey) || '[]');
+      
+      // Merge server messages with block history, sorted by timestamp
+      const allMessages = [...validMessages, ...blockHistory].sort(
+        (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+      );
+      
+      setMessages(allMessages);
 
       try {
         const token = localStorage.getItem("token");
@@ -1118,8 +1410,31 @@ const MessagesPage = () => {
         { targetUserId: selectedUser._id, action: block ? "block" : "unblock" },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      
+      // Store block/unblock event in localStorage (client-side only)
+      const blockHistoryKey = `blockHistory_${user._id}_${selectedUser._id}`;
+      const existingHistory = JSON.parse(localStorage.getItem(blockHistoryKey) || '[]');
+      
+      const blockEvent = {
+        id: `system-${block ? 'block' : 'unblock'}-${Date.now()}`,
+        type: 'system',
+        systemType: block ? 'block' : 'unblock',
+        content: block 
+          ? `You blocked this contact on ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+          : `You unblocked this contact`,
+        timestamp: new Date().toISOString(),
+        senderId: user._id,
+        recipientId: selectedUser._id,
+        localOnly: true,
+      };
+      
+      existingHistory.push(blockEvent);
+      localStorage.setItem(blockHistoryKey, JSON.stringify(existingHistory));
+      
       if (block) {
         setBlockedUsers((prev) => new Set([...prev, selectedUser._id]));
+        // Add to current messages view
+        setMessages((prev) => [...prev, blockEvent]);
       } else {
         setBlockedUsers((prev) => {
           const next = new Set(prev);
@@ -1127,7 +1442,10 @@ const MessagesPage = () => {
           return next;
         });
         setShowUnblockSuccess(true);
+        // Add to current messages view
+        setMessages((prev) => [...prev, blockEvent]);
       }
+      
       toast.success(block ? "User blocked" : "User unblocked");
     } catch (e) {
       console.error("Block error:", e.response?.data || e.message);
@@ -1228,6 +1546,9 @@ ${reasonList}`);
     setImagePreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
     }
   };
 
@@ -1401,6 +1722,8 @@ ${reasonList}`);
   const renderMessageContent = (message) => {
     if (!message) return null;
     const isMine = message.senderId === user._id;
+    const isExpanded = expandedMessages.has(message.id);
+    const MAX_LENGTH = 300; // Character limit before "Read more"
     
     // Handle shared post with metadata
     if (message.metadata?.sharedPost) {
@@ -1463,23 +1786,52 @@ ${reasonList}`);
       
       return (
         <div 
-          className="shared-post-container border rounded-lg overflow-hidden cursor-pointer max-w-xs bg-white dark:bg-gray-800"
+          className={`shared-post-card rounded-xl overflow-hidden cursor-pointer shadow-md hover:shadow-lg transition-all duration-200 max-w-sm ${
+            isMine ? 'bg-white/95' : 'bg-gray-50'
+          }`}
           onClick={(e) => {
             e.stopPropagation();
             navigate(postRoute);
           }}
         >
-          <div className="p-3">
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
-              📋 Shared Forum Post
-            </p>
+          {/* Header */}
+          <div className={`px-4 py-2.5 border-b flex items-center gap-2 ${
+            isMine ? 'bg-purple-50 border-purple-100' : 'bg-indigo-50 border-indigo-100'
+          }`}>
+            <div className="flex-shrink-0">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                isMine ? 'bg-purple-500' : 'bg-indigo-500'
+              }`}>
+                <span className="text-white text-lg">📋</span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-semibold ${
+                isMine ? 'text-purple-900' : 'text-indigo-900'
+              }`}>
+                Shared Forum Post
+              </p>
+            </div>
+          </div>
+          
+          {/* Content */}
+          <div className="p-4">
             {contentWithoutLink && (
-              <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3 mb-2">
+              <p className="text-sm text-gray-800 line-clamp-3 mb-3 leading-relaxed">
                 {contentWithoutLink}
               </p>
             )}
-            <div className="mt-2 text-xs text-blue-500 dark:text-blue-400 flex items-center gap-1">
-              View forum post →
+            
+            {/* View Button */}
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              isMine 
+                ? 'bg-purple-500 hover:bg-purple-600 text-white' 
+                : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+            }`}>
+              <span>View Forum Post</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </div>
           </div>
         </div>
@@ -1495,23 +1847,52 @@ ${reasonList}`);
       
       return (
         <div 
-          className="shared-post-container border rounded-lg overflow-hidden cursor-pointer max-w-xs bg-white dark:bg-gray-800"
+          className={`shared-post-card rounded-xl overflow-hidden cursor-pointer shadow-md hover:shadow-lg transition-all duration-200 max-w-sm ${
+            isMine ? 'bg-white/95' : 'bg-gray-50'
+          }`}
           onClick={(e) => {
             e.stopPropagation();
             navigate(postRoute);
           }}
         >
-          <div className="p-3">
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
-              📝 Shared Post
-            </p>
+          {/* Header */}
+          <div className={`px-4 py-2.5 border-b flex items-center gap-2 ${
+            isMine ? 'bg-indigo-50 border-indigo-100' : 'bg-blue-50 border-blue-100'
+          }`}>
+            <div className="flex-shrink-0">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                isMine ? 'bg-indigo-500' : 'bg-blue-500'
+              }`}>
+                <span className="text-white text-lg">📝</span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-semibold ${
+                isMine ? 'text-indigo-900' : 'text-blue-900'
+              }`}>
+                Shared Post
+              </p>
+            </div>
+          </div>
+          
+          {/* Content */}
+          <div className="p-4">
             {contentWithoutLink && (
-              <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3 mb-2">
+              <p className="text-sm text-gray-800 line-clamp-3 mb-3 leading-relaxed">
                 {contentWithoutLink}
               </p>
             )}
-            <div className="mt-2 text-xs text-blue-500 dark:text-blue-400 flex items-center gap-1">
-              View post →
+            
+            {/* View Button */}
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              isMine 
+                ? 'bg-indigo-500 hover:bg-indigo-600 text-white' 
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
+            }`}>
+              <span>View Post</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </div>
           </div>
         </div>
@@ -1533,8 +1914,13 @@ ${reasonList}`);
       return null;
     }
 
+    // Check if text is long and needs truncation
+    const isLongText = text.length > MAX_LENGTH;
+    const displayText = isLongText && !isExpanded ? text.substring(0, MAX_LENGTH) + '...' : text;
+
     // Render clickable hyperlinks with white color for sender, blue for receiver
-    const parts = text.split(/(https?:\/\/\S+|\/(?:posts|forum)\/\S+)/g);
+    const parts = displayText.split(/(https?:\/\/\S+|\/(?:posts|forum)\/\S+)/g);
+    
     return (
       <div className="whitespace-pre-wrap break-words">
         {parts.map((part, idx) => {
@@ -1577,6 +1963,27 @@ ${reasonList}`);
           }
           return <span key={idx}>{part}</span>;
         })}
+        
+        {/* Read more / Read less button */}
+        {isLongText && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedMessages(prev => {
+                const next = new Set(prev);
+                if (next.has(message.id)) {
+                  next.delete(message.id);
+                } else {
+                  next.add(message.id);
+                }
+                return next;
+              });
+            }}
+            className={`block mt-1 text-sm font-medium ${isMine ? 'text-white/80 hover:text-white' : 'text-gray-600 hover:text-gray-800'} transition-colors`}
+          >
+            {isExpanded ? 'Read less' : 'Read more'}
+          </button>
+        )}
       </div>
     );
   };
@@ -1908,10 +2315,17 @@ ${reasonList}`);
           <>
             {/* Chat Header */}
             <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowRightPanel(true)}
+                className="flex items-center gap-3 flex-1 hover:bg-gray-50 p-2 -m-2 rounded-lg transition-colors cursor-pointer"
+                title="Click to view chat details"
+              >
                 <button
                   className="lg:hidden p-2 rounded-full hover:bg-gray-200"
-                  onClick={() => setShowSidebar(true)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowSidebar(true);
+                  }}
                 >
                   <FiArrowLeft />
                 </button>
@@ -1926,21 +2340,10 @@ ${reasonList}`);
                   className="w-10 h-10 rounded-full object-cover"
                 />
 
-                <div>
-                  <button
-                    onClick={() => setShowRightPanel(true)}
-                    onDoubleClick={() =>
-                      navigate(
-                        selectedUser.username
-                          ? `/profile/${selectedUser.username}`
-                          : `/profile/id/${selectedUser._id}`
-                      )
-                    }
-                    className="font-semibold text-gray-900 hover:underline text-left"
-                    title="View profile"
-                  >
+                <div className="text-left">
+                  <div className="font-semibold text-gray-900">
                     {selectedUser.name}
-                  </button>
+                  </div>
                   <p className="text-sm text-gray-500">
                     {isTyping && typingUser ? (
                       <span className="text-green-600 italic">typing...</span>
@@ -1965,7 +2368,7 @@ ${reasonList}`);
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
 
               <div className="flex items-center gap-2">
                 {/* Header search toggler */}
@@ -2240,20 +2643,32 @@ ${reasonList}`);
                           </div>
                         )}
 
-                        {/* Message */}
+                        {/* System message (block/unblock) - centered like date separator */}
+                        {message.type === 'system' && message.localOnly ? (
+                          <div className="flex justify-center my-3 sticky top-2 z-10">
+                            <span className={`text-xs px-3 py-1.5 rounded-full shadow ${
+                              message.systemType === 'block' 
+                                ? 'bg-red-50 text-red-600 border border-red-200' 
+                                : 'bg-green-50 text-green-600 border border-green-200'
+                            }`}>
+                              {message.content}
+                            </span>
+                          </div>
+                        ) : (
+                        <>
+                        {/* Regular Message */}
                         <motion.div
                           key={message.uniqueKey || message.id}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -20 }}
-                          className={`flex ${
-                            isMine ? "justify-end" : "justify-start"
+                          className={`flex ${  isMine ? "justify-end" : "justify-start"
                           } group`}
                           data-mid={message.id}
                         >
                           <div
-                            className={`max-w-xs lg:max-w-md relative ${
-                              isMine ? "order-2" : "order-1"
+                            className={`max-w-xs lg:max-w-md relative flex flex-col ${
+                              isMine ? "items-end" : "items-start"
                             }`}
                           >
                             {/* System banner (block/unblock history) */}
@@ -2282,8 +2697,16 @@ ${reasonList}`);
 
                             {/* Reply context */}
                             {message.replyTo && (
-                              <div
-                                className={`mb-1 p-2 rounded-lg border-l-4 ${
+                              <button
+                                onClick={() => {
+                                  const el = document.querySelector(`[data-mid="${message.replyTo.id}"]`);
+                                  if (el && messageContainerRef.current) {
+                                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                  } else {
+                                    toast.info("Original message not found in current view");
+                                  }
+                                }}
+                                className={`mb-0.5 p-2 rounded-lg border-l-4 text-left hover:opacity-80 transition-opacity cursor-pointer max-w-xs lg:max-w-md ${
                                   isMine
                                     ? "bg-green-50 border-green-500"
                                     : "bg-gray-50 border-gray-400"
@@ -2298,12 +2721,17 @@ ${reasonList}`);
                                     (m) => m.id === message.replyTo.id
                                   )?.content || "Message"}
                                 </div>
-                              </div>
+                              </button>
                             )}
 
                             {/* Message bubble */}
                             <div
-                              className={`relative px-4 py-2 rounded-2xl shadow-sm ${
+                              className={`relative rounded-2xl shadow-sm break-words inline-block max-w-xs lg:max-w-md ${
+                                // Adaptive padding based on content length
+                                message.content && message.content.length < 20 
+                                  ? 'px-3 py-1.5' // Compact padding for short messages
+                                  : 'px-4 py-2'   // Normal padding for longer messages
+                              } ${
                                 isMine
                                   ? "bg-gradient-to-br from-indigo-500 to-blue-500 text-white rounded-br-sm bubble--mine"
                                   : "bg-white text-gray-900 rounded-bl-sm border border-gray-200 bubble--other"
@@ -2442,18 +2870,54 @@ ${reasonList}`);
                                       const isAudio = /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower);
                                       const isDoc = !isVideo && !isAudio;
                                       if (isVideo) {
+                                        const mediaUrl = resolveMediaUrl(att.url);
+                                        const isDownloaded = downloadedMedia[mediaUrl] || isMine;
+                                        const isDownloading = downloadProgress[mediaUrl] !== undefined;
+                                        
                                         return (
-                                          <div key={`vid-${idx}`} className="relative rounded-lg overflow-hidden" style={{ maxWidth: '400px' }}>
-                                            <video controls className="w-full rounded-lg" style={{ maxHeight: '300px' }}>
-                                              <source src={resolveMediaUrl(att.url)} />
+                                          <div key={`vid-${idx}`} className="relative rounded-xl overflow-hidden shadow-md" style={{ maxWidth: '320px' }}>
+                                            <video 
+                                              controls 
+                                              className="w-full rounded-xl bg-black" 
+                                              style={{ maxHeight: '400px', aspectRatio: '9/16' }}
+                                              preload="metadata"
+                                            >
+                                              <source src={mediaUrl} />
                                             </video>
+                                            
+                                            {/* Upload Progress (for sender) */}
                                             {message.uploading && (
-                                              <div className="absolute inset-0 bg-black/60 rounded-lg flex flex-col items-center justify-center pointer-events-none">
+                                              <div className="absolute inset-0 bg-black/60 rounded-xl flex flex-col items-center justify-center pointer-events-none">
                                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent mb-2"></div>
                                                 {uploadProgress[message.id] !== undefined && (
                                                   <div className="text-white text-sm font-semibold">
                                                     {uploadProgress[message.id]}%
                                                   </div>
+                                                )}
+                                              </div>
+                                            )}
+                                            
+                                            {/* Download Button (for receiver) */}
+                                            {!isMine && !isDownloaded && !message.uploading && (
+                                              <div className="absolute inset-0 bg-black/40 rounded-xl flex flex-col items-center justify-center">
+                                                {isDownloading ? (
+                                                  <>
+                                                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent mb-2"></div>
+                                                    <div className="text-white text-sm font-semibold">
+                                                      {downloadProgress[mediaUrl]}%
+                                                    </div>
+                                                  </>
+                                                ) : (
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleMediaDownload(mediaUrl);
+                                                    }}
+                                                    className="p-3 bg-white/90 rounded-full hover:bg-white transition-colors"
+                                                    title="Download to view"
+                                                  >
+                                                    <FiDownload size={24} className="text-gray-700" />
+                                                  </button>
                                                 )}
                                               </div>
                                             )}
@@ -2468,85 +2932,133 @@ ${reasonList}`);
                                         );
                                       }
                                       // Document tile - WhatsApp style
-                                      const fileName = att.name || att.url.split('/').pop() || 'Document';
+                                      const rawFileName = att.name || att.url.split('/').pop() || 'Document';
+                                      // Clean filename: Remove timestamp prefix (numbers and underscores at start)
+                                      const cleanFileName = rawFileName.replace(/^\d+_+/, '');
+                                      const fileName = cleanFileName;
                                       const fileExt = fileName.split('.').pop()?.toUpperCase() || 'FILE';
+                                      const fileSize = att.size || null;
+                                      const mediaUrl = resolveMediaUrl(att.url);
+                                      const isDownloaded = downloadedMedia[mediaUrl] || isMine;
+                                      const isDownloading = downloadProgress[mediaUrl] !== undefined;
+                                      
+                                      // Get file icon color based on extension
+                                      const getFileIcon = (ext) => {
+                                        const colors = {
+                                          'PDF': { bg: 'bg-red-100', text: 'text-red-600', icon: '📄' },
+                                          'DOC': { bg: 'bg-blue-100', text: 'text-blue-600', icon: '📝' },
+                                          'DOCX': { bg: 'bg-blue-100', text: 'text-blue-600', icon: '📝' },
+                                          'XLS': { bg: 'bg-green-100', text: 'text-green-600', icon: '📊' },
+                                          'XLSX': { bg: 'bg-green-100', text: 'text-green-600', icon: '📊' },
+                                          'PPT': { bg: 'bg-orange-100', text: 'text-orange-600', icon: '📊' },
+                                          'PPTX': { bg: 'bg-orange-100', text: 'text-orange-600', icon: '📊' },
+                                          'TXT': { bg: 'bg-gray-100', text: 'text-gray-600', icon: '📃' },
+                                          'ZIP': { bg: 'bg-purple-100', text: 'text-purple-600', icon: '🗜️' },
+                                          'RAR': { bg: 'bg-purple-100', text: 'text-purple-600', icon: '🗜️' },
+                                        };
+                                        return colors[ext] || { bg: 'bg-gray-100', text: 'text-gray-600', icon: '📎' };
+                                      };
+                                      
+                                      const fileIcon = getFileIcon(fileExt);
+                                      
                                       return (
-                                        <div key={`doc-${idx}`} className="relative" style={{ maxWidth: '350px' }}>
-                                          <div className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${
+                                        <div key={`doc-${idx}`} className="relative mb-1" style={{ maxWidth: '320px' }}>
+                                          {/* Document Card - WhatsApp Style */}
+                                          <div className={`rounded-lg overflow-hidden shadow-md ${
                                             isMine 
-                                              ? 'bg-white/20 border-white/30' 
-                                              : 'bg-white border-gray-200'
+                                              ? 'bg-white/95' 
+                                              : 'bg-white'
                                           }`}>
-                                            {/* File Icon */}
-                                            <div className={`flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center ${
-                                              isMine ? 'bg-white/30' : 'bg-blue-100'
-                                            }`}>
-                                              <div className={`text-xs font-bold ${
-                                                isMine ? 'text-white' : 'text-blue-600'
-                                              }`}>
-                                                {fileExt}
+                                            {/* File Info Section */}
+                                            <div className="flex items-center gap-3 p-3 border-b border-gray-100">
+                                              {/* File Icon with Extension Badge */}
+                                              <div className={`relative flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center ${fileIcon.bg}`}>
+                                                <span className="text-2xl">{fileIcon.icon}</span>
+                                                <div className={`absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-white border shadow-sm ${
+                                                  fileIcon.text
+                                                }`}>
+                                                  {fileExt}
+                                                </div>
                                               </div>
+                                              
+                                              {/* File Details */}
+                                              <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-medium text-gray-900 truncate" title={fileName}>
+                                                  {fileName}
+                                                </div>
+                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                  {fileSize ? formatBytes(fileSize) : ''}
+                                                  {fileSize && ' • '}
+                                                  {fileExt} Document
+                                                </div>
+                                              </div>
+                                              
+                                              {/* Upload Progress (for sender) */}
+                                              {message.uploading && (
+                                                <div className="flex items-center gap-2">
+                                                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-blue-500"></div>
+                                                  {uploadProgress[message.id] !== undefined && (
+                                                    <span className="text-xs font-semibold text-gray-600">
+                                                      {uploadProgress[message.id]}%
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              )}
                                             </div>
                                             
-                                            {/* File Info */}
-                                            <div className="flex-1 min-w-0">
-                                              <div className={`text-sm font-medium truncate ${
-                                                isMine ? 'text-white' : 'text-gray-900'
-                                              }`}>
-                                                {fileName}
-                                              </div>
-                                              <div className={`text-xs ${
-                                                isMine ? 'text-white/70' : 'text-gray-500'
-                                              }`}>
-                                                {message.uploading ? 'Uploading...' : 'Document'}
-                                              </div>
-                                            </div>
-                                            
-                                            {/* Download/Upload Status */}
-                                            {message.uploading ? (
-                                              <div className="flex items-center gap-2">
-                                                <div className={`animate-spin rounded-full h-5 w-5 border-2 ${
-                                                  isMine ? 'border-white/50 border-t-white' : 'border-gray-300 border-t-gray-600'
-                                                }`}></div>
-                                                {uploadProgress[message.id] !== undefined && (
-                                                  <span className={`text-xs font-semibold ${
-                                                    isMine ? 'text-white' : 'text-gray-600'
-                                                  }`}>
-                                                    {uploadProgress[message.id]}%
-                                                  </span>
+                                            {/* Action Buttons Section */}
+                                            {!message.uploading && (
+                                              <div className="bg-gray-50 px-3 py-3">
+                                                {/* For receivers - show download first, then Open/Save buttons */}
+                                                {!isMine && !isDownloaded ? (
+                                                  <div className="flex items-center justify-center">
+                                                    {isDownloading ? (
+                                                      <div className="flex items-center gap-3 py-1">
+                                                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
+                                                        <span className="text-sm font-medium text-gray-700">
+                                                          Downloading {downloadProgress[mediaUrl]}%
+                                                        </span>
+                                                      </div>
+                                                    ) : (
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleMediaDownload(mediaUrl);
+                                                        }}
+                                                        className="flex items-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium text-sm transition-colors shadow-sm w-full justify-center"
+                                                      >
+                                                        <FiDownload size={18} />
+                                                        Download
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  /* For sender or after download - show Open and Save as buttons */
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDocumentOpen(mediaUrl, fileName);
+                                                      }}
+                                                      className="flex items-center justify-center gap-2 px-3 py-2.5 bg-white hover:bg-gray-100 text-gray-700 rounded-lg font-medium text-sm transition-colors border border-gray-300 shadow-sm"
+                                                    >
+                                                      <FiExternalLink size={16} />
+                                                      <span className="hidden sm:inline">Open</span>
+                                                      <span className="sm:hidden">📄</span>
+                                                    </button>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDocumentDownload(mediaUrl, fileName);
+                                                      }}
+                                                      className="flex items-center justify-center gap-2 px-3 py-2.5 bg-white hover:bg-gray-100 text-gray-700 rounded-lg font-medium text-sm transition-colors border border-gray-300 shadow-sm"
+                                                    >
+                                                      <FiDownload size={16} />
+                                                      <span className="hidden sm:inline">Save as...</span>
+                                                      <span className="sm:hidden">💾</span>
+                                                    </button>
+                                                  </div>
                                                 )}
-                                              </div>
-                                            ) : (
-                                              <div className="flex items-center gap-1">
-                                                {/* Open button */}
-                                                <a
-                                                  href={resolveMediaUrl(att.url)}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className={`flex-shrink-0 p-2 rounded-full transition-colors ${
-                                                    isMine 
-                                                      ? 'hover:bg-white/20 text-white' 
-                                                      : 'hover:bg-gray-100 text-gray-600'
-                                                  }`}
-                                                  title="Open document"
-                                                >
-                                                  <FiExternalLink size={18} />
-                                                </a>
-                                                {/* Download button */}
-                                                <a
-                                                  href={resolveMediaUrl(att.url)}
-                                                  download={fileName}
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className={`flex-shrink-0 p-2 rounded-full transition-colors ${
-                                                    isMine 
-                                                      ? 'hover:bg-white/20 text-white' 
-                                                      : 'hover:bg-gray-100 text-gray-600'
-                                                  }`}
-                                                  title="Download to device"
-                                                >
-                                                  <FiDownload size={18} />
-                                                </a>
                                               </div>
                                             )}
                                           </div>
@@ -2594,7 +3106,7 @@ ${reasonList}`);
                                         key={emoji}
                                         className="text-sm px-1"
                                       >
-                                        {emoji} {count}
+                                        {emoji} {count > 1 ? count : ''}
                                       </span>
                                     ))}
                                   </button>
@@ -2701,16 +3213,19 @@ ${reasonList}`);
                                     >
                                       <FiCopy /> Copy
                                     </button>
-                                    <button
-                                      onClick={() => {
-                                        setMessageInfo(message);
-                                        setShowMessageInfo(true);
-                                        setOpenMessageMenuFor(null);
-                                      }}
-                                      className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-                                    >
-                                      <FiInfo /> Info
-                                    </button>
+                                    {/* Only show Info for sender's own messages */}
+                                    {isMine && (
+                                      <button
+                                        onClick={() => {
+                                          setMessageInfo(message);
+                                          setShowMessageInfo(true);
+                                          setOpenMessageMenuFor(null);
+                                        }}
+                                        className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                                      >
+                                        <FiInfo /> Info
+                                      </button>
+                                    )}
                                     <button
                                       onClick={async () => {
                                         const isPinned = pinnedMessages.has(
@@ -2781,6 +3296,8 @@ ${reasonList}`);
                             </div>
                           </div>
                         </motion.div>
+                        </>
+                        )}
                       </div>
                     );
                   })}
@@ -2975,6 +3492,20 @@ ${reasonList}`);
 
                       {/* Input actions */}
                       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        {/* Camera icon */}
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                          title="Camera"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </button>
+                        
+                        {/* Attach icon */}
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
@@ -3020,6 +3551,16 @@ ${reasonList}`);
                         type="file"
                         multiple
                         accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt"
+                        onChange={handleImageSelect}
+                        className="hidden"
+                      />
+                      
+                      {/* Camera input - for direct photo/video capture */}
+                      <input
+                        ref={cameraInputRef}
+                        type="file"
+                        accept="image/*,video/*"
+                        capture="environment"
                         onChange={handleImageSelect}
                         className="hidden"
                       />
@@ -3155,24 +3696,47 @@ ${reasonList}`);
                 <div className="grid grid-cols-3 gap-2">
                   {sharedMedia
                     .filter((m) => m.type === "image" || m.type === "video")
-                    .map((m) => (
-                      <button
-                        key={m.id + String(m.url)}
-                        className="block relative group"
-                        onClick={() => {
-                          setShowRightPanel(false);
-                          const el = document.querySelector(`[data-mid="${m.id}"]`);
-                          if (el && messageContainerRef.current) {
-                            el.scrollIntoView({ behavior: "smooth", block: "center" });
-                          }
-                        }}
-                        title={m.isMine ? "You sent this" : `${selectedUser?.name} sent this`}
-                      >
-                        <img src={m.url} alt="" className="w-full h-24 object-cover rounded" />
-                        {/* Indicator badge */}
-                        <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${m.isMine ? 'bg-green-500' : 'bg-blue-500'} opacity-0 group-hover:opacity-100 transition-opacity`}></div>
-                      </button>
-                    ))}
+                    .map((m) => {
+                      const isVideo = m.type === "video";
+                      return (
+                        <button
+                          key={m.id + String(m.url)}
+                          className="block relative group"
+                          onClick={() => {
+                            setShowRightPanel(false);
+                            const el = document.querySelector(`[data-mid="${m.id}"]`);
+                            if (el && messageContainerRef.current) {
+                              el.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }
+                          }}
+                          title={m.isMine ? "You sent this" : `${selectedUser?.name} sent this`}
+                        >
+                          {isVideo ? (
+                            <div className="relative w-full h-24 bg-black rounded overflow-hidden">
+                              <video 
+                                src={m.url} 
+                                className="w-full h-full object-cover"
+                                preload="metadata"
+                              />
+                              {/* Play icon overlay */}
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="w-10 h-10 bg-white/80 rounded-full flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-gray-800 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <img src={m.url} alt="" className="w-full h-24 object-cover rounded" />
+                          )}
+                          {/* Indicator badge */}
+                          <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
+                            m.isMine ? 'bg-green-500' : 'bg-blue-500'
+                          } opacity-0 group-hover:opacity-100 transition-opacity`}></div>
+                        </button>
+                      );
+                    })}
                 </div>
               )}
               {rightPanelTab === "docs" && (
@@ -3367,7 +3931,16 @@ ${reasonList}`);
               <div className="mb-4">
                 <div className="bg-gray-50 p-3 rounded-lg">
                   <div className="text-sm text-gray-600 mb-1">Message</div>
-                  <div>{messageInfo.content || "Media message"}</div>
+                  <div className="break-words">
+                    {/* Display content without exposing API routes */}
+                    {messageInfo.sharedPost ? (
+                      <span className="text-gray-700">📄 Shared post</span>
+                    ) : messageInfo.attachments && messageInfo.attachments.length > 0 ? (
+                      <span className="text-gray-700">📎 {messageInfo.attachments.length} attachment(s)</span>
+                    ) : (
+                      messageInfo.content || "Media message"
+                    )}
+                  </div>
                 </div>
               </div>
 

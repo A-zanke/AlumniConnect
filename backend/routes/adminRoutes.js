@@ -26,10 +26,6 @@ const {
   listReports,
   resolveReport,
   deleteReport,
-  listTestimonials,
-  createTestimonial,
-  updateTestimonial,
-  deleteTestimonial,
   getEventByIdAdmin,
   listPostReports,
   resolvePostReport,
@@ -102,11 +98,7 @@ router.get("/reports", listReports);
 router.put("/reports/:id/resolve", resolveReport);
 router.delete("/reports/:id", deleteReport);
 
-// ===================== Testimonials Management =====================
-router.get("/testimonials", listTestimonials);
-router.post("/testimonials", createTestimonial);
-router.put("/testimonials/:id", updateTestimonial);
-router.delete("/testimonials/:id", deleteTestimonial);
+
 
 // Export the router
 module.exports = router;
