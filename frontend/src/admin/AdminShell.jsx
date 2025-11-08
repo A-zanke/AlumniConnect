@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import axios from "axios";
 import {
   RiDashboard2Line,
-  RiUserSearchLine,
   RiTeamLine,
   RiCalendarEventLine,
   RiCustomerService2Line,
@@ -15,7 +14,6 @@ import {
   RiLogoutBoxLine,
   RiMenuLine,
   RiSearch2Line,
-  RiNotification3Line,
 } from "react-icons/ri";
 
 const NAV_SECTIONS = [

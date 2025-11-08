@@ -6,7 +6,6 @@ import {
   FiX,
   FiMessageSquare,
   FiUser,
-  FiUserPlus,
   FiLogOut,
   FiSearch,
   FiHome,
@@ -31,7 +30,6 @@ const Navbar = () => {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
-  const [activeMobileDropdown, setActiveMobileDropdown] = useState(null);
   const [msgUnreadTotal, setMsgUnreadTotal] = useState(0);
   const socketRef = useRef(null);
 
@@ -224,14 +222,7 @@ const Navbar = () => {
   }, [navItems, user]);
 
   useEffect(() => {
-    if (!isOpen) {
-      setActiveMobileDropdown(null);
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
     setActiveDropdown(null);
-    setActiveMobileDropdown(null);
   }, [location.pathname]);
 
   // Keep global navbar visible on admin pages; admin has its own side nav
@@ -240,7 +231,7 @@ const Navbar = () => {
     <motion.nav
       ref={navRef}
       className="relative z-50 transition-all duration-500 backdrop-blur-md bg-transparent"
-      style={{ ["--navbar-height"]: `${navHeight}px` }}
+      style={{ "--navbar-height": `${navHeight}px` }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ type: "spring", stiffness: 200, damping: 20 }}
@@ -711,34 +702,6 @@ function NavLink({ to, label, icon: Icon, isActive }) {
           whileHover={{ width: "80%" }}
           transition={{ duration: 0.3 }}
         />
-      </Link>
-    </motion.div>
-  );
-}
-
-// Enhanced Mobile NavLink Component
-function MobileNavLink({ to, label, icon: Icon, onClick, isActive }) {
-  return (
-    <motion.div whileHover={{ x: 5 }} whileTap={{ scale: 0.98 }}>
-      <Link
-        to={to}
-        onClick={onClick}
-        className={`flex items-center gap-3 px-4 py-4 rounded-xl font-semibold transition-all duration-300 ${
-          isActive
-            ? "text-indigo-600 bg-gradient-to-r from-indigo-100 to-purple-100"
-            : "text-slate-700 hover:text-indigo-600 hover:bg-indigo-50"
-        }`}
-      >
-        <Icon size={20} />
-        <span>{label}</span>
-        {isActive && (
-          <motion.div
-            className="ml-auto w-2 h-2 bg-indigo-500 rounded-full"
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", stiffness: 500 }}
-          />
-        )}
       </Link>
     </motion.div>
   );
