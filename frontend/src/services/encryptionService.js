@@ -14,6 +14,94 @@ import forge from 'node-forge';
 const privateKeyCache = new Map();
 const CACHE_MAX_SIZE = 10; // Small cache for private keys
 
+// IndexedDB persistence for private keys (better durability than localStorage alone)
+const hasIndexedDB = typeof window !== 'undefined' && 'indexedDB' in window;
+const DB_NAME = 'alumni-connect-e2ee';
+const DB_VERSION = 1;
+const STORE_NAME = 'privateKeys';
+
+let idbOpenPromise = null;
+
+function openKeyDatabase() {
+  if (!hasIndexedDB) {
+    return Promise.reject(new Error('IndexedDB not available'));
+  }
+
+  if (!idbOpenPromise) {
+    idbOpenPromise = new Promise((resolve, reject) => {
+      try {
+        const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Failed to open IndexedDB'));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  return idbOpenPromise;
+}
+
+async function persistPrivateKeyIndexedDB(userId, privateKeyPem) {
+  if (!hasIndexedDB || !userId || !privateKeyPem) return;
+
+  try {
+    const db = await openKeyDatabase();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.put(privateKeyPem, userId);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error || new Error('Failed to persist private key to IndexedDB'));
+    });
+  } catch (error) {
+    console.warn('Failed to persist private key to IndexedDB:', error?.message || error);
+  }
+}
+
+async function removePrivateKeyIndexedDB(userId) {
+  if (!hasIndexedDB || !userId) return;
+
+  try {
+    const db = await openKeyDatabase();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.delete(userId);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error || new Error('Failed to remove private key from IndexedDB'));
+    });
+  } catch (error) {
+    console.warn('Failed to remove private key from IndexedDB:', error?.message || error);
+  }
+}
+
+async function loadPrivateKeyIndexedDB(userId) {
+  if (!hasIndexedDB || !userId) return null;
+
+  try {
+    const db = await openKeyDatabase();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.get(userId);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error('Failed to load private key from IndexedDB'));
+    });
+  } catch (error) {
+    console.warn('Failed to load private key from IndexedDB:', error?.message || error);
+    return null;
+  }
+}
+
 /**
  * Get or parse private key from PEM (with caching)
  * @param {string} privateKeyPem - Private key in PEM format
@@ -45,6 +133,8 @@ export function storePrivateKey(userId, privateKeyPem) {
   try {
     localStorage.setItem(`e2ee_private_${userId}`, privateKeyPem);
     console.log('🔑 Private key stored successfully');
+    // Persist asynchronously to IndexedDB for better durability (no await to keep API synchronous)
+    persistPrivateKeyIndexedDB(userId, privateKeyPem);
   } catch (error) {
     console.error('Error storing private key:', error);
   }
@@ -62,6 +152,23 @@ export function getPrivateKey(userId) {
     console.error('Error retrieving private key:', error);
     return null;
   }
+}
+
+/**
+ * Attempt to restore a private key from IndexedDB (fallback when localStorage entry is missing)
+ * @param {string} userId
+ * @returns {Promise<string|null>} Private key if stored, otherwise null
+ */
+export async function restorePrivateKeyFromIndexedDB(userId) {
+  const key = await loadPrivateKeyIndexedDB(userId);
+  if (key) {
+    try {
+      localStorage.setItem(`e2ee_private_${userId}`, key);
+    } catch (error) {
+      console.warn('Failed to sync IndexedDB private key back to localStorage:', error?.message || error);
+    }
+  }
+  return key;
 }
 
 /**
@@ -116,19 +223,75 @@ export function decryptMessage(encryptedData, privateKeyPem) {
     try {
       privateKey = getCachedPrivateKey(privateKeyPem);
     } catch (pemError) {
-      console.error('❌ Failed to parse private key PEM:', pemError.message);
+      console.error(' Failed to parse private key PEM:', pemError.message);
       return null;
     }
     
     // Step 2: Decrypt AES key using RSA private key (fast with cached key)
     const encryptedKeyBinary = forge.util.decode64(encryptedAESKey);
-    const aesKeyBinary = privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP', {
-      md: forge.md.sha256.create(),
-      mgf1: {
-        md: forge.md.sha256.create()
+
+    // Attempt RSA-OAEP decryption with modern parameters first, then fall back to legacy combos
+    const rsaAttempts = [
+      {
+        label: 'sha256',
+        options: {
+          md: forge.md.sha256.create(),
+          mgf1: { md: forge.md.sha256.create() }
+        }
+      },
+      {
+        label: 'sha1',
+        options: {
+          md: forge.md.sha1.create(),
+          mgf1: { md: forge.md.sha1.create() }
+        }
+      },
+      {
+        label: 'sha256-mgf1:sha1',
+        options: {
+          md: forge.md.sha256.create(),
+          mgf1: { md: forge.md.sha1.create() }
+        }
+      },
+      {
+        label: 'sha1-mgf1:sha256',
+        options: {
+          md: forge.md.sha1.create(),
+          mgf1: { md: forge.md.sha256.create() }
+        }
+      },
+      {
+        label: 'default',
+        options: null,
+      },
+    ];
+
+    let aesKeyBinary = null;
+    let lastRsaError = null;
+    for (const attempt of rsaAttempts) {
+      try {
+        const decrypted = attempt.options
+          ? privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP', attempt.options)
+          : privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP');
+
+        if (decrypted) {
+          if (attempt.label !== 'sha256') {
+            console.debug(` RSA-OAEP fallback succeed using ${attempt.label}`);
+          }
+          aesKeyBinary = decrypted;
+          break;
+        }
+      } catch (rsaError) {
+        lastRsaError = rsaError;
+        // Try next variation on padding/hash mismatch errors
       }
-    });
-    
+    }
+
+    if (!aesKeyBinary) {
+      console.error(' Failed to decrypt AES key with RSA-OAEP fallbacks', lastRsaError?.message || lastRsaError);
+      return null;
+    }
+
     // Step 3: Convert to proper format for AES decryption
     const aesKey = forge.util.createBuffer(aesKeyBinary, 'raw');
     const ivBuffer = forge.util.decode64(iv);
@@ -235,6 +398,7 @@ export function clearPrivateKey(userId) {
   try {
     localStorage.removeItem(`e2ee_private_${userId}`);
     console.log('🗑️ Private key cleared');
+    removePrivateKeyIndexedDB(userId);
   } catch (error) {
     console.error('Error clearing private key:', error);
   }

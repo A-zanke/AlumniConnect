@@ -42,7 +42,8 @@ const storage = new CloudinaryStorage({
     folder: 'alumni-connect/posts',
     resource_type: 'auto',
     allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'pdf', 'doc', 'docx'],
-    transformation: [{ quality: 'auto' }]
+    transformation: [{ quality: 'auto' }],
+    upload_preset: 'alumni_upload',
   }
 });
 

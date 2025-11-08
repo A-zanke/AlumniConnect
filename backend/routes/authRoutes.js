@@ -50,6 +50,7 @@ const storage = new CloudinaryStorage({
     resource_type: 'image',
     public_id: `avatar_${Date.now()}`,
     overwrite: false,
+    upload_preset: 'alumni_upload',
   }),
 });
 

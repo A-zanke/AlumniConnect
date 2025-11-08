@@ -52,7 +52,12 @@ const userSchema = new mongoose.Schema({
   
   // End-to-End Encryption
   publicKey: { type: String }, // RSA public key for E2EE
+  publicKeyVersion: { type: Number, default: 1 },
+  publicKeyGeneratedAt: { type: Date },
 }, { timestamps: true });
+
+// Index for efficient querying by publicKeyVersion
+userSchema.index({ publicKeyVersion: 1 });
 
 // Match user entered password to hashed password in database
 userSchema.methods.matchPassword = async function (enteredPassword) {

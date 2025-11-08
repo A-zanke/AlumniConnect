@@ -233,79 +233,52 @@ const MessagesPage = () => {
   const generateClientKey = () =>
     `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  // Handle document opening - open directly in new tab
-  const handleDocumentOpen = (url, fileName) => {
-    // Simply open the URL in a new tab - Cloudinary will handle it
-    window.open(url, '_blank', 'noopener,noreferrer');
+  // Handle document opening - open directly in new tab (view only, no download)
+  const handleDocumentOpen = async (url, fileName) => {
+    try {
+      // Just open the original URL directly - browser will display it inline
+      window.open(url, '_blank', 'noopener,noreferrer');
+      toast.success('Document opened in new tab');
+    } catch (error) {
+      console.error('Open error:', error);
+      toast.error('Failed to open document');
+    }
   };
 
   // Handle document download (Save as...) - instant download
   const handleDocumentDownload = async (url, fileName) => {
     try {
-      // Check if it's a Cloudinary URL or server URL
-      const isCloudinary = url.includes('cloudinary.com');
-      
-      // For Cloudinary URLs, try to add fl_attachment transformation for proper download
-      let downloadUrl = url;
-      if (isCloudinary) {
-        // Add Cloudinary transformation to force download with filename
-        if (url.includes('/upload/')) {
-          // Insert transformation flags after /upload/
-          const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-          downloadUrl = url.replace(
-            '/upload/',
-            `/upload/fl_attachment:${safeFileName}/`
-          );
-        }
-      }
-      
-      // Add cache-busting parameter
-      downloadUrl = downloadUrl.includes('?') 
-        ? `${downloadUrl}&t=${Date.now()}` 
-        : `${downloadUrl}?t=${Date.now()}`;
-      
-      // Prepare headers
-      const headers = {
-        'Cache-Control': 'no-cache',
-      };
-      
-      // Add auth token only for server URLs (not Cloudinary)
-      if (!isCloudinary) {
-        const token = localStorage.getItem('token');
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-      }
-      
-      // Fetch the file as blob with no-cache headers
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-cache',
-        credentials: isCloudinary ? 'omit' : 'include',
-        headers,
-      });
-      
-      if (!response.ok) {
-        // If Cloudinary URL fails with 401, try the original URL without transformation
-        if (isCloudinary && response.status === 401 && downloadUrl !== url) {
-          console.log('Retrying with original URL...');
-          const fallbackResponse = await fetch(
-            url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`,
-            {
-              method: 'GET',
-              mode: 'cors',
-              cache: 'no-cache',
-              credentials: 'omit',
-              headers: { 'Cache-Control': 'no-cache' },
-            }
-          );
-          
-          if (!fallbackResponse.ok) {
-            throw new Error(`Download failed: ${fallbackResponse.status}`);
+      // Fix Cloudinary URL by adding fl_attachment transformation
+      let fixedUrl = url;
+      if (url.includes('cloudinary.com')) {
+        // Check if it's a document (PDF, DOC, etc.)
+        const isPDF = url.toLowerCase().includes('.pdf');
+        const isDoc = /\.(doc|docx|txt|xls|xlsx|ppt|pptx|zip|rar)(\?|$)/i.test(url);
+        
+        if (isPDF || isDoc) {
+          // Add fl_attachment transformation to force proper handling
+          // This works for both /image/upload/ and /raw/upload/ URLs
+          if (url.includes('/upload/v')) {
+            // URL has version: .../upload/v123456/...
+            fixedUrl = url.replace(/\/upload\/v\d+\//, (match) => match.replace('/upload/', '/upload/fl_attachment/'));
+          } else if (url.includes('/upload/')) {
+            // URL without version: .../upload/...
+            fixedUrl = url.replace('/upload/', '/upload/fl_attachment/');
           }
-          
-          const blob = await fallbackResponse.blob();
+          console.log('Fixed document URL for download:', fixedUrl);
+        }
+      }
+      
+      // Try direct download first
+      try {
+        const response = await fetch(fixedUrl, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+        });
+        
+        if (response.ok) {
+          const blob = await response.blob();
           const blobUrl = URL.createObjectURL(blob);
           
           const link = document.createElement('a');
@@ -323,7 +296,58 @@ const MessagesPage = () => {
           toast.success('Download started');
           return;
         }
-        
+      } catch (directError) {
+        console.log('Direct download failed, trying proxy...', directError);
+      }
+      
+      // Fallback: Use backend proxy with fixed URL
+      const token = localStorage.getItem('token');
+      const proxyUrl = `/api/messages/proxy-download?url=${encodeURIComponent(fixedUrl)}`;
+      
+      const response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 100);
+      
+      toast.success('Download started');
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error(`Failed to download: ${error.message || 'Download failed. Please try again'}`);
+    }
+  };
+
+  // Handle image download to device
+  const handleImageDownload = async (url, fileName) => {
+    try {
+      // Fetch the image as blob
+      const response = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+      });
+      
+      if (!response.ok) {
         throw new Error(`Download failed: ${response.status}`);
       }
       
@@ -344,10 +368,10 @@ const MessagesPage = () => {
         URL.revokeObjectURL(blobUrl);
       }, 100);
       
-      toast.success('Download started');
+      toast.success('Image downloaded');
     } catch (error) {
       console.error('Download error:', error);
-      toast.error(`Failed to download: ${error.message || 'Please try again'}`);
+      toast.error('Failed to download image');
     }
   };
 
@@ -632,24 +656,28 @@ const MessagesPage = () => {
             currentSelected && String(senderId) === String(currentSelected._id);
           const tabFocused = document.visibilityState === "visible";
 
-          // Decrypt message if encrypted
-          let messageContent = body ?? fallbackContent ?? '';
-          if (encrypted && encryptionData) {
-            console.log('🔓 Decrypting incoming message...');
+          // Decrypt message if encrypted, but always fallback to plaintext
+          let messageContent = fallbackContent || body || '';
+          if (encrypted && encryptionData && messageContent) {
+            console.log('🔓 Attempting to decrypt incoming message...');
             try {
-              messageContent = await decryptReceivedMessage({
+              const decrypted = await decryptReceivedMessage({
                 encrypted,
                 encryptionData,
-                content: body,
-                fallbackContent,
+                content: messageContent,
+                fallbackContent: messageContent,
               });
-              console.log('✅ Incoming message decrypted:', messageContent);
+              if (decrypted && decrypted.trim() !== '' && !decrypted.includes('[Unable to decrypt')) {
+                messageContent = decrypted;
+                console.log('✅ Incoming message decrypted successfully');
+              } else {
+                console.log('📝 Using plaintext fallback for incoming message');
+              }
             } catch (error) {
-              console.error('❌ Failed to decrypt incoming message:', error);
-              messageContent = '[Unable to decrypt message]';
+              console.warn('⚠️ Decryption failed, using plaintext fallback:', error.message);
             }
           } else {
-            console.log('📨 Received unencrypted message:', body);
+            console.log('📨 Received message:', messageContent ? 'with content' : 'empty');
           }
 
           if (isCurrent && tabFocused) {
@@ -915,125 +943,52 @@ const MessagesPage = () => {
       
       // Decrypt messages if they're encrypted
       console.log('📥 Processing messages:', normalized.length, 'messages');
-      console.log('📋 Sample message structure:', normalized[0]);
       const decryptedMessages = await Promise.all(
         normalized.map(async (msg) => {
-          console.log('🔍 Message structure:', JSON.stringify({
-            id: msg.id,
-            senderId: msg.senderId,
-            recipientId: msg.recipientId,
-            content: msg.content,
-            contentLength: msg.content?.length,
-            contentPreview: msg.content?.substring(0, 100),
-            encrypted: msg.encrypted,
-            hasEncryptionData: !!msg.encryptionData,
-            encryptionDataKeys: msg.encryptionData ? Object.keys(msg.encryptionData) : null,
-            attachments: msg.attachments?.length || 0,
-            timestamp: msg.timestamp
-          }, null, 2));
+          // For encrypted messages, try to decrypt
           if (msg.encrypted && msg.encryptionData) {
-            console.log('🔓 Decrypting message:', msg.id);
             try {
               const decryptedContent = await decryptReceivedMessage(msg);
-              console.log('✅ Decrypted:', decryptedContent);
-              
-              // If decryption returns empty/null, check if message was stored with plaintext
-              if (!decryptedContent || decryptedContent.trim() === '') {
-                console.log('⚠️ Decryption returned empty, checking message data:', {
-                  hasContent: !!msg.content,
-                  contentLength: msg.content?.length,
-                  content: msg.content,
-                  hasAttachments: !!(msg.attachments && msg.attachments.length > 0)
-                });
-                
-                // Check if original message has plaintext content (server keeps backup)
-                if (msg.content && msg.content.trim() !== '') {
-                  console.log('✅ Using plaintext backup from message.content:', msg.content);
-                  return {
-                    ...msg,
-                    encrypted: false, // Mark as unencrypted since using plaintext
-                    _restoredFromBackup: true,
-                  };
-                }
-                
-                // If still no content, return message as-is (might have attachments)
-                if (msg.attachments && msg.attachments.length > 0) {
-                  console.log('📎 Message has attachments, keeping without text');
-                  return msg;
-                }
-                
-                // No content and no attachments - skip this message entirely
-                console.log('🗑️ Message has no content or attachments, filtering out');
-                return null;
+              if (decryptedContent && decryptedContent.trim() !== '' && !decryptedContent.includes('[Unable to decrypt')) {
+                console.log('✅ Successfully decrypted message:', msg.id);
+                return {
+                  ...msg,
+                  content: decryptedContent,
+                  _decrypted: true,
+                };
               }
-              
-              return {
-                ...msg,
-                content: decryptedContent,
-                _originalEncrypted: true,
-              };
             } catch (error) {
-              console.error('❌ Failed to decrypt message:', error.message);
-              console.log('🔍 Attempting fallback recovery:', {
-                hasContent: !!msg.content,
-                contentType: typeof msg.content,
-                content: msg.content,
-                hasAttachments: !!(msg.attachments && msg.attachments.length > 0)
-              });
-              
-              // Try fallback to plain content (server should keep plaintext backup)
-              if (msg.content && msg.content.trim() !== '') {
-                console.log('✅ Using plaintext backup after decryption error:', msg.content);
-                return {
-                  ...msg,
-                  encrypted: false,
-                  _restoredFromBackup: true,
-                };
-              }
-              
-              // If has attachments, show without content
-              if (msg.attachments && msg.attachments.length > 0) {
-                console.log('📎 Keeping message with attachments only');
-                return {
-                  ...msg,
-                  content: '',
-                };
-              }
-              
-              // No content and no attachments - skip message entirely
-              console.log('🗑️ No recoverable content, filtering out message');
-              return null;
+              console.warn('⚠️ Decryption failed:', error.message);
             }
+            // Decryption failed - use fallback content or show placeholder
+            const fallbackContent = msg.content || msg.fallbackContent || '[Message content unavailable]';
+            console.log('📝 Using fallback for encrypted message:', msg.id);
+            return {
+              ...msg,
+              content: fallbackContent,
+            };
           }
           
-          // For non-encrypted messages, ensure content exists
-          if (!msg.content || msg.content.trim() === '') {
-            // Check if it has attachments
-            if (msg.attachments && msg.attachments.length > 0) {
-              return msg; // Has attachments, content can be empty
-            }
-            // No content and no attachments - skip this message
-            return null;
+          // For non-encrypted messages, use content as-is
+          if (msg.content && msg.content.trim() !== '') {
+            return msg;
           }
           
-          // Special case: Check if content looks like it was encrypted but failed
-          // This can happen when server sends encrypted content in the content field
-          if (msg.content && msg.content.includes('encryptedMessage')) {
-            console.log('⚠️ Message content appears to be encrypted data, not plaintext');
-            // This is likely encrypted data that was stored incorrectly
-            if (msg.attachments && msg.attachments.length > 0) {
-              return { ...msg, content: '' }; // Keep attachments only
-            }
-            return null; // Skip message entirely
+          // No plaintext content - check if it has attachments
+          if (msg.attachments && msg.attachments.length > 0) {
+            console.log('📎 Message has attachments only:', msg.id);
+            return msg;
           }
           
-          return msg;
+          // No content and no attachments - skip this message
+          console.log('🗑️ Skipping empty message:', msg.id);
+          return null;
         })
       );
       
-      // Filter out null messages (failed decryption with no content/attachments)
+      // Filter out null messages
       const validMessages = decryptedMessages.filter(msg => msg !== null);
-      console.log('📝 Final messages:', validMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 20) })));
+      console.log('📝 Final valid messages:', validMessages.length);
       
       // Load block/unblock history from localStorage
       const blockHistoryKey = `blockHistory_${user._id}_${userId}`;
@@ -1109,42 +1064,6 @@ const MessagesPage = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
     
     try {
-      // WhatsApp-style: Send text message first if there's text with media
-      if (textContent && hasAnyMedia) {
-        const clientKey = generateClientKey();
-        
-        const textFormData = new FormData();
-        textFormData.append("content", textContent); // Send plain text - server will encrypt
-        textFormData.append("clientKey", clientKey);
-        
-        if (savedReplyTo?.id) {
-          textFormData.append("replyToId", savedReplyTo.id);
-        }
-        
-        // Create optimistic text message
-        const optimisticText = {
-          id: clientKey,
-          senderId: user._id,
-          recipientId: selectedUser._id,
-          content: textContent,
-          attachments: [],
-          timestamp: new Date().toISOString(),
-          status: "sending",
-        };
-        setMessages((prev) => [...prev, optimisticText]);
-        
-        // Send text message
-        await axios.post(
-          `${baseURL}/api/messages/${selectedUser._id}`,
-          textFormData,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-      }
-      
       // Collect all media files
       const allMediaFiles = [
         ...imagesToSend.slice(0, 5).map(f => ({ file: f, type: 'image' })),
@@ -1152,47 +1071,61 @@ const MessagesPage = () => {
         ...docsToSend.slice(0, 3).map(f => ({ file: f, type: 'document' })),
       ];
       
-      // Send each media file as a separate message
-      for (const mediaItem of allMediaFiles) {
-        const formData = new FormData();
-        formData.append("content", ""); // Empty content for media-only messages
-        formData.append(mediaItem.type, mediaItem.file);
-        
-        const clientKey = generateClientKey();
-        formData.append("clientKey", clientKey);
-        
-        // Create optimistic message for this media
-        const localUrl = URL.createObjectURL(mediaItem.file);
-        const optimisticMedia = {
-          id: clientKey,
-          senderId: user._id,
-          recipientId: selectedUser._id,
-          content: "",
-          attachments: [{
-            url: localUrl,
-            type: mediaItem.type,
-            name: mediaItem.file.name,
-          }],
-          timestamp: new Date().toISOString(),
-          status: "sending",
-          uploading: true,
-        };
-        setMessages((prev) => [...prev, optimisticMedia]);
-        
-        // Send media message
-        await axios.post(
-          `${baseURL}/api/messages/${selectedUser._id}`,
-          formData,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            onUploadProgress: (evt) => {
-              const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
-              setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
-            },
+      // WhatsApp-style: Combine text with first media file if both exist
+      if (hasAnyMedia) {
+        for (let i = 0; i < allMediaFiles.length; i++) {
+          const mediaItem = allMediaFiles[i];
+          const formData = new FormData();
+          
+          // Add text content only to the first media file
+          if (i === 0 && textContent) {
+            formData.append("content", textContent);
+          } else {
+            formData.append("content", "");
           }
-        );
+          
+          formData.append(mediaItem.type, mediaItem.file);
+          
+          const clientKey = generateClientKey();
+          formData.append("clientKey", clientKey);
+          
+          if (i === 0 && savedReplyTo?.id) {
+            formData.append("replyToId", savedReplyTo.id);
+          }
+          
+          // Create optimistic message for this media
+          const localUrl = URL.createObjectURL(mediaItem.file);
+          const optimisticMedia = {
+            id: clientKey,
+            senderId: user._id,
+            recipientId: selectedUser._id,
+            content: i === 0 ? textContent : "",
+            attachments: [{
+              url: localUrl,
+              type: mediaItem.type,
+              name: mediaItem.file.name,
+            }],
+            timestamp: new Date().toISOString(),
+            status: "sending",
+            uploading: true,
+          };
+          setMessages((prev) => [...prev, optimisticMedia]);
+          
+          // Send media message
+          await axios.post(
+            `${baseURL}/api/messages/${selectedUser._id}`,
+            formData,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              onUploadProgress: (evt) => {
+                const percent = Math.round((evt.loaded * 100) / (evt.total || 1));
+                setUploadProgress((prev) => ({ ...prev, [clientKey]: percent }));
+              },
+            }
+          );
+        }
       }
       
       // Handle text-only message
@@ -2849,15 +2782,17 @@ ${reasonList}`);
                                               
                                               {/* Download to device button (always visible on hover for downloaded images) */}
                                               {isDownloaded && !message.uploading && (
-                                                <a
-                                                  href={mediaUrl}
-                                                  download={`image-${idx}.jpg`}
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className="absolute top-2 right-2 p-2 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const fileName = `image-${Date.now()}.jpg`;
+                                                    handleImageDownload(mediaUrl, fileName);
+                                                  }}
+                                                  className="absolute top-2 right-2 p-2 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
                                                   title="Download to device"
                                                 >
                                                   <FiDownload size={16} className="text-white" />
-                                                </a>
+                                                </button>
                                               )}
                                             </div>
                                           );
@@ -3569,7 +3504,7 @@ ${reasonList}`);
                     {/* Send button */}
                     <button
                       type="submit"
-                      disabled={!newMessage.trim() && !selectedImage}
+                      disabled={!newMessage.trim() && !selectedImage && selectedImages.length === 0 && selectedVideos.length === 0 && selectedDocs.length === 0}
                       className="p-3 bg-green-500 text-white rounded-full hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FiSend size={18} />

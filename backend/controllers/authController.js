@@ -17,7 +17,7 @@ const generateToken = (id) => {
 async function ensureEncryptionKeys(userId, options = {}) {
   const forceRegenerate = options.forceRegenerate === true;
   try {
-    const user = await User.findById(userId).select('publicKey');
+    const user = await User.findById(userId).select('publicKey publicKeyVersion publicKeyGeneratedAt');
 
     if (!user) {
       console.warn(`⚠️ Cannot generate encryption keys - user ${userId} not found`);
@@ -29,19 +29,27 @@ async function ensureEncryptionKeys(userId, options = {}) {
       return null;
     }
 
-    console.log(`${forceRegenerate ? '♻️ Regenerating' : '🔐 Generating'} encryption keys for user: ${userId}`);
+    // Calculate new version number
+    let newVersion;
+    if (user.publicKeyVersion) {
+      newVersion = user.publicKeyVersion + 1;
+    } else {
+      newVersion = 1;
+    }
+
+    console.log(`${forceRegenerate ? '♻️ Regenerating' : '🔐 Generating'} encryption keys v${newVersion} for user: ${userId}`);
 
     // Generate new RSA key pair using node-forge
     const { publicKey, privateKey } = generateRSAKeyPair();
     
     // Store only public key in database (compact format to save space)
     const compactPublicKey = pemToCompact(publicKey);
-    await User.findByIdAndUpdate(userId, { publicKey: compactPublicKey });
+    await User.findByIdAndUpdate(userId, { publicKey: compactPublicKey, publicKeyVersion: newVersion, publicKeyGeneratedAt: new Date() });
     
-    console.log(`✅ Encryption keys ${forceRegenerate ? 'regenerated' : 'generated'} for user: ${userId}`);
+    console.log(`✅ Encryption keys ${forceRegenerate ? 'regenerated' : 'generated'} v${newVersion} for user: ${userId}`);
     
     // Return private key to be sent to client (only once, never stored on server)
-    return { publicKey: compactPublicKey, privateKey };
+    return { publicKey: compactPublicKey, privateKey, publicKeyVersion: newVersion };
   } catch (error) {
     console.error(`❌ Error generating encryption keys for user ${userId}:`, error.message);
     // Don't fail the registration/login if key generation fails

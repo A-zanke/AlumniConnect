@@ -135,6 +135,7 @@ const MessageSchema = new mongoose.Schema(
     // E2EE encryption data (Hybrid RSA + AES)
     encryptionData: {
       version: { type: String, default: 'v1' }, // Encryption version
+      keyVersion: { type: Number }, // Version of recipient's public key used for encryption
       encryptedMessage: { type: String }, // Base64 encrypted message content (AES encrypted)
       encryptedAESKey: { type: String }, // Base64 encrypted AES key (RSA encrypted)
       iv: { type: String }, // Base64 initialization vector for AES
@@ -143,6 +144,7 @@ const MessageSchema = new mongoose.Schema(
     // Sender-side encrypted copy so the author can decrypt after refresh
     senderEncryptionData: {
       version: { type: String, default: 'v1' },
+      keyVersion: { type: Number }, // Version of sender's public key used for encryption
       encryptedMessage: { type: String },
       encryptedAESKey: { type: String },
       iv: { type: String },
@@ -227,6 +229,12 @@ MessageSchema.pre("save", function (next) {
     const senderComplete = !!(senderEd.encryptedMessage && senderEd.encryptedAESKey && senderEd.iv);
     if (!senderComplete) {
       console.warn('⚠️ senderEncryptionData incomplete for encrypted message', this._id?.toString?.() || 'new message');
+    }
+    if (!ed.keyVersion) {
+      console.warn('⚠️ keyVersion missing in encryptionData for encrypted message', this._id?.toString?.() || 'new message');
+    }
+    if (!senderEd.keyVersion) {
+      console.warn('⚠️ keyVersion missing in senderEncryptionData for encrypted message', this._id?.toString?.() || 'new message');
     }
     // For valid encrypted records, ensure content is cleared
     this.content = '';
@@ -376,5 +384,3 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
 };
 
 module.exports = mongoose.model("Message", MessageSchema);
-
-

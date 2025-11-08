@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   storePrivateKey,
   getPrivateKey,
@@ -7,8 +7,10 @@ import {
   hasPrivateKey,
   isValidEncryptionData,
   validatePrivateKey,
-  clearPrivateKey
+  clearPrivateKey,
+  restorePrivateKeyFromIndexedDB
 } from '../services/encryptionService';
+import { toast } from 'react-toastify';
 
 /**
  * Custom hook for managing end-to-end encryption
@@ -21,6 +23,91 @@ import {
 export function useEncryption(user) {
   const [isReady, setIsReady] = useState(false);
   const [hasKey, setHasKey] = useState(false);
+  const failureCountRef = useRef(0);
+  const refreshInFlightRef = useRef(false);
+  const refreshPromiseRef = useRef(null);
+  const refreshInfoShownRef = useRef(false);
+  const fallbackErrorShownRef = useRef(false);
+
+  const refreshPrivateKeyFromServer = useCallback(
+    async ({ forceRegenerate = true, silent = false } = {}) => {
+      if (!user?._id) return null;
+
+      if (refreshInFlightRef.current && refreshPromiseRef.current) {
+        try {
+          return await refreshPromiseRef.current;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        if (!silent) {
+          toast.error('Cannot refresh encryption keys: missing authentication.');
+        }
+        return null;
+      }
+
+      const runRefresh = (async () => {
+        try {
+          if (!silent && !refreshInfoShownRef.current) {
+            toast.info('Refreshing encryption keys…');
+            refreshInfoShownRef.current = true;
+          }
+
+          // Clear existing key before regeneration as it is considered invalid
+          const previousKey = getPrivateKey(user._id);
+          clearPrivateKey(user._id);
+
+          const axiosModule = await import('axios');
+          const axiosInstance = axiosModule.default || axiosModule;
+          const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+          const response = await axiosInstance.get(`${baseURL}/api/auth/profile`, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: forceRegenerate ? { regenerateKeys: true } : {}
+          });
+
+          const serverKey = response?.data?.encryptionKeys?.privateKey;
+          if (serverKey) {
+            storePrivateKey(user._id, serverKey);
+            failureCountRef.current = 0;
+            setHasKey(true);
+            setIsReady(true);
+            if (!silent) {
+              toast.success('Encryption keys refreshed');
+              refreshInfoShownRef.current = false;
+            }
+            return serverKey;
+          }
+
+          // Server did not provide a key – restore previous key so user is not locked out
+          if (previousKey) {
+            storePrivateKey(user._id, previousKey);
+          }
+          if (!silent) {
+            toast.warn('Server did not issue a new encryption key.');
+          }
+          return null;
+        } catch (error) {
+          console.warn('Failed to refresh encryption keys:', error?.message || error);
+          if (!silent) {
+            toast.error('Failed to refresh encryption keys. Please try again.');
+            refreshInfoShownRef.current = false;
+          }
+          return null;
+        } finally {
+          refreshInFlightRef.current = false;
+          refreshPromiseRef.current = null;
+        }
+      })();
+
+      refreshInFlightRef.current = true;
+      refreshPromiseRef.current = runRefresh;
+      return await runRefresh;
+    },
+    [user]
+  );
 
   // Check if user has a private key
   useEffect(() => {
@@ -35,66 +122,43 @@ export function useEncryption(user) {
         return;
       }
 
-      const keyExists = hasPrivateKey(user._id);
-      if (!cancelled) {
-        setHasKey(keyExists);
-        setIsReady(keyExists);
-      }
+      let keyExists = hasPrivateKey(user._id);
+      let privateKey = keyExists ? getPrivateKey(user._id) : null;
 
       if (keyExists) {
-        // Validate the key format
-        const privateKey = getPrivateKey(user._id);
         const validation = validatePrivateKey(privateKey);
-
         if (!validation.valid) {
-          console.error('❌ Private key validation failed:', validation.error);
-          console.error('🧹 Clearing invalid private key from localStorage...');
-
+          console.warn('⚠️ Stored private key invalid, regenerating…');
           clearPrivateKey(user._id);
-
-          if (!cancelled) {
-            setHasKey(false);
-            setIsReady(false);
-          }
-
-          console.error('⚠️ Invalid encryption key detected and cleared!');
-          console.error('🔑 Please LOGOUT and LOGIN again to get a fresh encryption key');
+          keyExists = false;
+          privateKey = null;
         } else {
-          console.log('🔐 E2EE ready - private key is valid');
-        }
-        return;
-      }
-
-      console.warn('⚠️ No private key found - attempting to fetch from server');
-
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          console.warn('⚠️ Cannot fetch private key - missing auth token');
-          return;
-        }
-
-        const axiosModule = await import('axios');
-        const axiosInstance = axiosModule.default || axiosModule;
-        const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-        const response = await axiosInstance.get(`${baseURL}/api/auth/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { regenerateKeys: true },
-        });
-        const serverKey = response?.data?.encryptionKeys?.privateKey;
-        if (serverKey) {
-          storePrivateKey(user._id, serverKey);
           if (!cancelled) {
             setHasKey(true);
             setIsReady(true);
           }
-          console.log('✅ Private key fetched from server and stored locally');
-        } else {
-          console.warn('⚠️ Server did not return a private key even after regeneration request');
+          return;
         }
-      } catch (error) {
-        console.warn('Failed to fetch private key from server:', error?.message || error);
       }
+
+      if (!keyExists) {
+        const restored = await restorePrivateKeyFromIndexedDB(user._id);
+        if (restored) {
+          if (!cancelled) {
+            setHasKey(true);
+            setIsReady(true);
+          }
+          console.log('✅ Private key restored from secure storage');
+          return;
+        }
+      }
+
+      if (!cancelled) {
+        setHasKey(false);
+        setIsReady(false);
+      }
+
+      await refreshPrivateKeyFromServer({ forceRegenerate: true, silent: true });
     };
 
     ensurePrivateKey();
@@ -102,7 +166,7 @@ export function useEncryption(user) {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, refreshPrivateKeyFromServer]);
 
   /**
    * Store private key (called after registration or when keys are received)
@@ -149,23 +213,12 @@ export function useEncryption(user) {
     let privateKey = getPrivateKey(user._id);
 
     if (!privateKey) {
-      try {
-        const token = localStorage.getItem('token');
-        if (token) {
-          const axios = (await import('axios')).default;
-          const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-          const response = await axios.get(`${baseURL}/api/auth/profile`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const fromServer = response?.data?.encryptionKeys?.privateKey;
-          if (fromServer) {
-            privateKey = fromServer;
-            storePrivateKey(user._id, privateKey);
-            console.log('✅ Private key fetched and stored from server');
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to fetch private key from server:', error?.message || error);
+      privateKey = await restorePrivateKeyFromIndexedDB(user._id);
+      if (!privateKey) {
+        privateKey = await refreshPrivateKeyFromServer({ forceRegenerate: true, silent: false });
+      } else {
+        setHasKey(true);
+        setIsReady(true);
       }
     }
 
@@ -177,11 +230,38 @@ export function useEncryption(user) {
     // Attempt decryption (frontend service returns null on failure)
     const decrypted = decryptMessage(encryptionPayload, privateKey);
     if (decrypted === null) {
-      // Graceful fallback: return original content if present
-      return message.content || message.body || message.fallbackContent || '';
+      // Decryption failed - silently use fallback content (backend keeps plaintext)
+      const fallback = message.content || message.body || message.fallbackContent;
+      if (fallback && fallback.trim() !== '') {
+        // Successfully using fallback - no need to show errors
+        console.log('📝 Using plaintext fallback for message');
+        failureCountRef.current = 0;
+        return fallback;
+      }
+      
+      // Only try key refresh if we have no fallback content
+      failureCountRef.current += 1;
+      if (failureCountRef.current === 1 && !refreshInfoShownRef.current) {
+        console.warn('⚠️ Decryption failed and no fallback available, refreshing keys...');
+        refreshInfoShownRef.current = true;
+      }
+
+      const refreshedKey = await refreshPrivateKeyFromServer({ forceRegenerate: true, silent: true });
+      if (refreshedKey) {
+        const retry = decryptMessage(encryptionPayload, refreshedKey);
+        if (retry !== null) {
+          failureCountRef.current = 0;
+          return retry;
+        }
+      }
+
+      // Still failed - return whatever fallback we have
+      return fallback || '[Unable to decrypt message]';
     }
+    failureCountRef.current = 0;
+    fallbackErrorShownRef.current = false;
     return decrypted;
-  }, [user]);
+  }, [user, refreshPrivateKeyFromServer]);
 
   return {
     isReady,

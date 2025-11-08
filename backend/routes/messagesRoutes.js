@@ -39,12 +39,23 @@ const storage = new CloudinaryStorage({
       .basename(file.originalname, path.extname(file.originalname))
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .substring(0, 100);
+    
+    // Determine resource type based on file mimetype
+    let resourceType = "auto";
+    if (file.mimetype.startsWith("image/")) {
+      resourceType = "image";
+    } else if (file.mimetype.startsWith("video/")) {
+      resourceType = "video";
+    } else {
+      // For documents (PDF, DOC, etc.), use 'raw'
+      resourceType = "raw";
+    }
+    
     return {
       folder: "alumni-connect/messages",
-      resource_type: "auto", // allow images, video, raw docs
+      resource_type: resourceType,
       public_id: `${Date.now()}_${base}`,
       overwrite: false,
-      type: "upload", // Ensure files are publicly accessible
       access_mode: "public", // Make files public
     };
   },
@@ -773,5 +784,40 @@ router.get("/health", async (req, res) => {
 
 // Repair broken encrypted messages (admin/debug endpoint)
 router.post("/repair-broken-messages", protect, repairBrokenMessages);
+
+// Proxy download endpoint for handling CORS issues
+router.get("/proxy-download", protect, async (req, res) => {
+  try {
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ message: "URL parameter required" });
+    }
+    
+    // Fetch the file from Cloudinary
+    const https = require('https');
+    const http = require('http');
+    const urlModule = require('url');
+    
+    const parsedUrl = urlModule.parse(url);
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
+    
+    protocol.get(url, (fileResponse) => {
+      // Set headers for download
+      res.setHeader('Content-Type', fileResponse.headers['content-type'] || 'application/octet-stream');
+      res.setHeader('Content-Length', fileResponse.headers['content-length']);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      
+      // Pipe the file to response
+      fileResponse.pipe(res);
+    }).on('error', (error) => {
+      console.error('Proxy download error:', error);
+      res.status(500).json({ message: 'Failed to download file' });
+    });
+  } catch (error) {
+    console.error('Proxy download error:', error);
+    res.status(500).json({ message: 'Failed to download file' });
+  }
+});
 
 module.exports = router;
