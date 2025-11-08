@@ -1,79 +1,93 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import {
-  FaChartBar, FaUsers, FaCalendar, FaComments, FaExclamationTriangle,
-  FaStar, FaNewspaper, FaNetworkWired, FaCog, FaChevronLeft, FaChevronRight
-} from 'react-icons/fa';
+  FiHome,
+  FiUsers,
+  FiCalendar,
+  FiFileText,
+  FiMessageSquare,
+  FiAlertCircle,
+  FiBarChart2,
+  FiSettings,
+} from 'react-icons/fi';
 
-const Sidebar = ({ collapsed, setCollapsed }) => {
+const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
 
   const navItems = [
-    { path: '/admin', label: 'Dashboard', icon: FaChartBar, exact: true },
-    { path: '/admin/users', label: 'Users', icon: FaUsers },
-    { path: '/admin/posts', label: 'Posts', icon: FaNewspaper },
-    { path: '/admin/forum', label: 'Forum', icon: FaComments },
-    { path: '/admin/events', label: 'Events', icon: FaCalendar },
-    { path: '/admin/network', label: 'Network', icon: FaNetworkWired },
-    { path: '/admin/reports', label: 'Reports', icon: FaExclamationTriangle },
-    { path: '/admin/testimonials', label: 'Testimonials', icon: FaStar },
-    { path: '/admin/settings', label: 'Settings', icon: FaCog },
+    { label: 'Dashboard', path: '/admin', icon: FiHome },
+    { label: 'Users', path: '/admin/users', icon: FiUsers },
+    { label: 'Events', path: '/admin/events', icon: FiCalendar },
+    { label: 'Forum', path: '/admin/forum', icon: FiMessageSquare },
+    { label: 'Posts', path: '/admin/posts', icon: FiFileText },
+    { label: 'Reports', path: '/admin/reports', icon: FiAlertCircle },
+    { label: 'Analytics', path: '/admin/analytics', icon: FiBarChart2 },
+    { label: 'Settings', path: '/admin/settings', icon: FiSettings },
   ];
 
-  const isActive = (path, exact) => {
-    if (exact) return location.pathname === path;
+  const isActive = (path) => {
+    if (path === '/admin') {
+      return location.pathname === '/admin';
+    }
     return location.pathname.startsWith(path);
   };
 
   return (
-    <aside
-      className={`fixed left-0 top-14 h-[calc(100vh-3.5rem)] bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transition-all duration-300 ${
-        collapsed ? 'w-16' : 'w-72'
-      }`}
-    >
-      {/* Collapse Toggle */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-6 w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors z-10"
+    <>
+      {/* Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`fixed left-0 top-16 z-50 h-[calc(100vh-4rem)] w-64 transform border-r border-slate-700 bg-slate-900 transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0`}
       >
-        {collapsed ? <FaChevronRight className="text-xs" /> : <FaChevronLeft className="text-xs" />}
-      </button>
+        <div className="flex h-full flex-col overflow-y-auto py-6">
+          <div className="mb-6 px-6">
+            <h2 className="text-xl font-bold text-white">Admin Panel</h2>
+            <p className="mt-1 text-sm text-slate-400">Manage your platform</p>
+          </div>
 
-      {/* Navigation */}
-      <nav className="p-3 space-y-1">
-        {navItems.map((item) => {
-          const active = isActive(item.path, item.exact);
+          <nav className="flex-1 space-y-1 px-3">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
 
-          return (
-            <Link key={item.path} to={item.path}>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative ${
-                  active
-                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                <item.icon className={`text-lg flex-shrink-0 ${active ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={onClose}
+                  className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                    active
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/50'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <Icon
+                    size={20}
+                    className={`${
+                      active ? 'text-white' : 'text-slate-400 group-hover:text-white'
+                    }`}
+                  />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
 
-                {!collapsed && (
-                  <span className="font-medium truncate">{item.label}</span>
-                )}
-
-                {/* Tooltip for collapsed state */}
-                {collapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    {item.label}
-                  </div>
-                )}
-              </motion.div>
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
+          <div className="border-t border-slate-700 px-6 pt-4">
+            <p className="text-xs text-slate-500">Admin Dashboard v1.0</p>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 };
 

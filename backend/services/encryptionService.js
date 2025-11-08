@@ -61,13 +61,19 @@ function generateRSAKeyPair() {
 function encryptMessage(plainText, recipientPublicKeyPem) {
   try {
     // Validate inputs
-    if (!plainText || typeof plainText !== 'string') {
+    if (!plainText || typeof plainText !== 'string' || plainText.trim() === '') {
       console.error('❌ Invalid plainText provided to encryptMessage');
       return null;
     }
     
-    if (!recipientPublicKeyPem) {
+    if (!recipientPublicKeyPem || typeof recipientPublicKeyPem !== 'string') {
       console.error('❌ No recipient public key provided');
+      return null;
+    }
+    
+    // Validate PEM format
+    if (!recipientPublicKeyPem.includes('BEGIN PUBLIC KEY')) {
+      console.error('❌ Invalid PEM format - missing BEGIN PUBLIC KEY header');
       return null;
     }
     
@@ -80,8 +86,20 @@ function encryptMessage(plainText, recipientPublicKeyPem) {
     let encryptedMessage = cipher.update(plainText, 'utf8', 'base64');
     encryptedMessage += cipher.final('base64');
     
-    // Step 3: Get cached public key (avoids re-parsing PEM)
-    const publicKey = getPublicKey(recipientPublicKeyPem);
+    // Verify encryption produced output
+    if (!encryptedMessage || encryptedMessage.length === 0) {
+      console.error('❌ AES encryption produced empty result');
+      return null;
+    }
+    
+    // Step 3: Parse public key (with error handling)
+    let publicKey;
+    try {
+      publicKey = getPublicKey(recipientPublicKeyPem);
+    } catch (keyError) {
+      console.error('❌ Failed to parse public key:', keyError.message);
+      return null;
+    }
     
     // Step 4: Encrypt the AES key using recipient's RSA public key
     const encryptedAESKey = publicKey.encrypt(aesKey.toString('binary'), 'RSA-OAEP', {
@@ -91,15 +109,30 @@ function encryptMessage(plainText, recipientPublicKeyPem) {
       }
     });
     
-    // Step 5: Return result (all operations completed)
-    return {
+    // Verify RSA encryption produced output
+    if (!encryptedAESKey || encryptedAESKey.length === 0) {
+      console.error('❌ RSA encryption produced empty result');
+      return null;
+    }
+    
+    // Step 5: Return result (all operations completed successfully)
+    const result = {
       encryptedMessage: encryptedMessage,
       encryptedAESKey: forge.util.encode64(encryptedAESKey),
       iv: iv.toString('base64'),
       version: 'v1'
     };
+    
+    // Final validation
+    if (!result.encryptedMessage || !result.encryptedAESKey || !result.iv) {
+      console.error('❌ Encryption result missing required fields');
+      return null;
+    }
+    
+    return result;
   } catch (error) {
     console.error('❌ Encryption error:', error.message);
+    console.error('Stack:', error.stack);
     return null; // Return null instead of throwing
   }
 }
@@ -114,41 +147,75 @@ function decryptMessage(encryptedData, recipientPrivateKeyPem) {
   try {
     // Defensive validation to avoid throwing on missing fields
     if (!encryptedData || typeof encryptedData !== 'object') {
-      throw new Error('Missing encryption data');
+      throw new Error('Missing encryption data object');
     }
 
     const { encryptedMessage, encryptedAESKey, iv } = encryptedData;
 
-    if (!encryptedMessage || !encryptedAESKey || !iv) {
-      throw new Error('Missing encryption data fields');
+    // Validate all required fields are present
+    if (!encryptedMessage || typeof encryptedMessage !== 'string') {
+      throw new Error('Missing or invalid encryptedMessage');
     }
-    if (!recipientPrivateKeyPem) {
-      throw new Error('Missing recipient private key');
+    if (!encryptedAESKey || typeof encryptedAESKey !== 'string') {
+      throw new Error('Missing or invalid encryptedAESKey');
+    }
+    if (!iv || typeof iv !== 'string') {
+      throw new Error('Missing or invalid IV');
+    }
+    if (!recipientPrivateKeyPem || typeof recipientPrivateKeyPem !== 'string') {
+      throw new Error('Missing or invalid recipient private key');
     }
     
-    // Step 1: Decrypt the AES key using RSA private key
-    const privateKey = forge.pki.privateKeyFromPem(recipientPrivateKeyPem);
-    const encryptedKeyBinary = forge.util.decode64(encryptedAESKey);
-    const aesKeyBinary = privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP', {
-      md: forge.md.sha256.create(),
-      mgf1: {
-        md: forge.md.sha256.create()
-      }
-    });
+    // Validate private key format
+    if (!recipientPrivateKeyPem.includes('BEGIN') || !recipientPrivateKeyPem.includes('PRIVATE KEY')) {
+      throw new Error('Invalid private key PEM format');
+    }
     
-    // Step 2: Convert AES key from binary to Buffer
+    // Step 1: Parse private key
+    let privateKey;
+    try {
+      privateKey = forge.pki.privateKeyFromPem(recipientPrivateKeyPem);
+    } catch (keyError) {
+      throw new Error(`Failed to parse private key: ${keyError.message}`);
+    }
+    
+    // Step 2: Decrypt the AES key using RSA private key
+    let aesKeyBinary;
+    try {
+      const encryptedKeyBinary = forge.util.decode64(encryptedAESKey);
+      aesKeyBinary = privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP', {
+        md: forge.md.sha256.create(),
+        mgf1: {
+          md: forge.md.sha256.create()
+        }
+      });
+    } catch (rsaError) {
+      throw new Error(`RSA decryption failed: ${rsaError.message}`);
+    }
+    
+    if (!aesKeyBinary || aesKeyBinary.length !== 32) {
+      throw new Error('Decrypted AES key has invalid length');
+    }
+    
+    // Step 3: Convert AES key from binary to Buffer
     const aesKey = Buffer.from(aesKeyBinary, 'binary');
     const ivBuffer = Buffer.from(iv, 'base64');
     
-    // Step 3: Decrypt the message using AES-256-CBC
-    const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, ivBuffer);
-    let decrypted = decipher.update(encryptedMessage, 'base64', 'utf8');
-    decrypted += decipher.final('utf8');
+    // Step 4: Decrypt the message using AES-256-CBC
+    let decrypted;
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, ivBuffer);
+      decrypted = decipher.update(encryptedMessage, 'base64', 'utf8');
+      decrypted += decipher.final('utf8');
+    } catch (aesError) {
+      throw new Error(`AES decryption failed: ${aesError.message}`);
+    }
     
     return decrypted;
   } catch (error) {
-    // Keep error concise for callers while logging details once here
-    console.error('Decryption error:', error);
+    // Log detailed error for debugging
+    console.error('❌ Decryption error:', error.message);
+    // Return user-friendly error
     throw new Error('Failed to decrypt message: ' + error.message);
   }
 }

@@ -99,6 +99,8 @@ const AUTH_OTP_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/send-otp",
   "/api/auth/verify-otp",
+  "/api/auth/send-personal-email-otp",
+  "/api/auth/verify-personal-email-otp",
   "/api/auth/forgot/send-otp",
   "/api/auth/forgot/verify-otp",
   "/api/auth/forgot/reset",

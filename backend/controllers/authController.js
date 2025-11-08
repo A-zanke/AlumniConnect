@@ -399,21 +399,38 @@ const verifyResetOtp = async (req, res) => {
 // Forgot password: reset
 const resetPassword = async (req, res) => {
   try {
-    const { emailPrefix, newPassword } = req.body;
-    if (!emailPrefix || /@/.test(emailPrefix) || !newPassword) {
-      return res.status(400).json({ message: "Invalid input" });
+    const { emailPrefix, newPassword, email: directEmail, usePersonalEmail } = req.body;
+    
+    let email;
+    if (usePersonalEmail || directEmail) {
+      // Personal email case
+      email = directEmail || emailPrefix;
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ message: "Valid email required" });
+      }
+    } else {
+      // College email case
+      if (!emailPrefix || /@/.test(emailPrefix)) {
+        return res.status(400).json({ message: "Invalid email prefix" });
+      }
+      email = `${emailPrefix}@mit.asia`;
     }
-    const email = `${emailPrefix}@mit.asia`;
 
-    // Ensure the last reset OTP is consumed
-    const lastOtp = await Otp.findOne({ email, purpose: "reset" }).sort({
-      createdAt: -1,
-    });
+    if (!newPassword) {
+      return res.status(400).json({ message: "Password required" });
+    }
+
+    // Ensure the last OTP is consumed (either reset or registration purpose)
+    const lastOtp = await Otp.findOne({ 
+      email: email.toLowerCase(), 
+      purpose: usePersonalEmail ? 'registration' : 'reset' 
+    }).sort({ createdAt: -1 });
+    
     if (!lastOtp || !lastOtp.consumed) {
       return res.status(400).json({ message: "OTP verification required" });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // Relaxed password validation for reset as well
@@ -594,6 +611,87 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
+// Send OTP to personal email (for alumni)
+const sendPersonalEmailOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ message: 'Valid email required' });
+    }
+
+    // Check if email already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    // Generate 6-digit OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Store OTP using email field (matching Otp model schema)
+    await Otp.findOneAndUpdate(
+      { email: email.toLowerCase(), purpose: 'registration' },
+      { code, expiresAt, consumed: false },
+      { upsert: true, new: true }
+    );
+
+    // Send OTP email to the user's personal email
+    try {
+      await sendOtpEmail({ to: email, code });
+      console.log(`✅ OTP sent to personal email: ${email}`);
+    } catch (mailError) {
+      console.error('Mail send failed:', mailError?.message || mailError);
+    }
+
+    const payload = { success: true, message: 'OTP sent to your email' };
+    if (process.env.NODE_ENV !== 'production') {
+      payload.devOtp = code;
+      console.log(`DEV ONLY: OTP for ${email} is ${code}`);
+    }
+    res.json(payload);
+  } catch (error) {
+    console.error('Send personal email OTP error:', error);
+    res.status(500).json({ message: 'Failed to send OTP' });
+  }
+};
+
+// Verify personal email OTP (for alumni)
+const verifyPersonalEmailOtp = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ message: 'Email and OTP required' });
+    }
+
+    const otpRecord = await Otp.findOne({ 
+      email: email.toLowerCase(), 
+      purpose: 'registration' 
+    }).sort({ createdAt: -1 });
+    
+    if (!otpRecord) {
+      return res.status(400).json({ message: 'OTP not found or expired' });
+    }
+
+    if (otpRecord.code !== code.trim()) {
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      return res.status(400).json({ message: 'OTP expired' });
+    }
+
+    // Mark as consumed
+    otpRecord.consumed = true;
+    await otpRecord.save();
+
+    res.json({ message: 'Email verified successfully', email });
+  } catch (error) {
+    console.error('Verify personal email OTP error:', error);
+    res.status(500).json({ message: 'OTP verification failed' });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -606,4 +704,6 @@ module.exports = {
   sendResetOtp,
   verifyResetOtp,
   resetPassword,
+  sendPersonalEmailOtp,
+  verifyPersonalEmailOtp,
 };

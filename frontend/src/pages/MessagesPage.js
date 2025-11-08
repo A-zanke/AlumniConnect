@@ -656,9 +656,11 @@ const MessagesPage = () => {
             currentSelected && String(senderId) === String(currentSelected._id);
           const tabFocused = document.visibilityState === "visible";
 
-          // Decrypt message if encrypted, but always fallback to plaintext
+          // Decrypt message if encrypted, but ALWAYS fallback to plaintext if decryption fails
           let messageContent = fallbackContent || body || '';
-          if (encrypted && encryptionData && messageContent) {
+          let isDecrypted = false;
+          
+          if (encrypted && encryptionData) {
             console.log('🔓 Attempting to decrypt incoming message...');
             try {
               const decrypted = await decryptReceivedMessage({
@@ -669,15 +671,18 @@ const MessagesPage = () => {
               });
               if (decrypted && decrypted.trim() !== '' && !decrypted.includes('[Unable to decrypt')) {
                 messageContent = decrypted;
+                isDecrypted = true;
                 console.log('✅ Incoming message decrypted successfully');
               } else {
-                console.log('📝 Using plaintext fallback for incoming message');
+                console.log('📝 Decryption returned empty, using plaintext fallback');
+                messageContent = fallbackContent || body || '';
               }
             } catch (error) {
               console.warn('⚠️ Decryption failed, using plaintext fallback:', error.message);
+              messageContent = fallbackContent || body || '';
             }
           } else {
-            console.log('📨 Received message:', messageContent ? 'with content' : 'empty');
+            console.log('📨 Received plaintext message');
           }
 
           if (isCurrent && tabFocused) {
@@ -958,15 +963,30 @@ const MessagesPage = () => {
                 };
               }
             } catch (error) {
-              console.warn('⚠️ Decryption failed:', error.message);
+              console.warn('⚠️ Decryption failed, using fallback:', error.message);
             }
-            // Decryption failed - use fallback content or show placeholder
-            const fallbackContent = msg.content || msg.fallbackContent || '[Message content unavailable]';
-            console.log('📝 Using fallback for encrypted message:', msg.id);
-            return {
-              ...msg,
-              content: fallbackContent,
-            };
+            // Decryption failed - ALWAYS use fallback content (plaintext)
+            const fallbackContent = msg.fallbackContent || msg.content || '';
+            if (fallbackContent && fallbackContent.trim() !== '') {
+              console.log('📝 Using plaintext fallback for encrypted message:', msg.id);
+              return {
+                ...msg,
+                content: fallbackContent,
+                encrypted: false, // Mark as not encrypted since we're showing plaintext
+              };
+            }
+            // No fallback content - check if it has attachments
+            if (msg.attachments && msg.attachments.length > 0) {
+              console.log('📎 Encrypted message has attachments only:', msg.id);
+              return {
+                ...msg,
+                content: '',
+                encrypted: false,
+              };
+            }
+            // No content and no attachments - skip
+            console.log('🗑️ Skipping empty encrypted message:', msg.id);
+            return null;
           }
           
           // For non-encrypted messages, use content as-is

@@ -1,137 +1,61 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { FiMenu, FiBell, FiSearch, FiUser } from 'react-icons/fi';
+import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { FaSearch, FaMoon, FaSun, FaBell, FaUser, FaCog, FaKeyboard, FaSignOutAlt } from 'react-icons/fa';
-import { motion, AnimatePresence } from 'framer-motion';
 
-const Topbar = () => {
-  const [theme, setTheme] = useState(
-    localStorage.getItem('theme') || 'light'
-  );
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    document.documentElement.classList.toggle('dark');
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    window.location.href = '/login';
-  };
+const Topbar = ({ onMenuClick }) => {
+  const { user } = useAuth();
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm">
-      {/* Left: Logo */}
-      <Link to="/admin" className="flex items-center gap-3">
-        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl">
-          <span className="text-white font-bold text-sm">AC</span>
-        </div>
-        <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-          Admin
-        </span>
-      </Link>
-
-      {/* Center: Search */}
-      <div className="hidden md:flex items-center flex-1 max-w-xl mx-8">
-        <div className="relative w-full">
-          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search... (Ctrl+K)"
-            className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
-            onFocus={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-          />
-        </div>
-      </div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-2">
-        {/* Theme Toggle */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={toggleTheme}
-          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          aria-label="Toggle theme"
-        >
-          {theme === 'light' ? <FaMoon className="text-gray-600" /> : <FaSun className="text-yellow-400" />}
-        </motion.button>
-
-        {/* Notifications */}
-        <div className="relative">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setNotificationsOpen(!notificationsOpen)}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative"
+    <header className="fixed top-0 left-0 right-0 z-40 border-b border-slate-700 bg-slate-900/95 backdrop-blur-sm">
+      <div className="flex h-16 items-center justify-between px-4 lg:px-6">
+        {/* Left Section */}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onMenuClick}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
           >
-            <FaBell className="text-gray-600 dark:text-gray-300" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </motion.button>
+            <FiMenu size={24} />
+          </button>
 
-          <AnimatePresence>
-            {notificationsOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
-              >
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">Notifications</h3>
-                </div>
-                <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                  No new notifications
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Profile Menu */}
-        <div className="relative">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setProfileOpen(!profileOpen)}
-            className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-              <FaUser className="text-white text-sm" />
+          <Link to="/admin" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600">
+              <span className="text-sm font-bold text-white">A</span>
             </div>
-          </motion.button>
+            <span className="hidden text-lg font-bold text-white sm:block">
+              AlumniConnect Admin
+            </span>
+          </Link>
+        </div>
 
-          <AnimatePresence>
-            {profileOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
-              >
-                <Link to="/profile" className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <FaUser className="text-gray-600 dark:text-gray-300" />
-                  <span className="text-gray-900 dark:text-white">Profile</span>
-                </Link>
-                <Link to="/admin/settings" className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <FaCog className="text-gray-600 dark:text-gray-300" />
-                  <span className="text-gray-900 dark:text-white">Settings</span>
-                </Link>
-                <button className="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-full">
-                  <FaKeyboard className="text-gray-600 dark:text-gray-300" />
-                  <span className="text-gray-900 dark:text-white">Shortcuts</span>
-                </button>
-                <hr className="border-gray-200 dark:border-gray-700" />
-                <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors w-full text-red-600 dark:text-red-400">
-                  <FaSignOutAlt />
-                  <span>Logout</span>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Center Section - Search */}
+        <div className="hidden flex-1 max-w-xl px-8 md:block">
+          <div className="relative">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search users, events, posts..."
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 pl-10 pr-4 text-sm text-white placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Right Section */}
+        <div className="flex items-center gap-3">
+          <button className="relative rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
+            <FiBell size={20} />
+            <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500"></span>
+          </button>
+
+          <Link
+            to="/profile"
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+          >
+            <FiUser size={20} />
+            <span className="hidden text-sm font-medium sm:block">
+              {user?.name || 'Admin'}
+            </span>
+          </Link>
         </div>
       </div>
     </header>

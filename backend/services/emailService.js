@@ -4,32 +4,53 @@ let transporter;
 
 function getTransporter() {
   if (transporter) return transporter;
+  
+  // Use Brevo SMTP credentials 
+  const smtpHost = process.env.SMTP_HOST || process.env.MAILTRAP_HOST || 'sandbox.smtp.mailtrap.io';
+  const smtpPort = Number(process.env.SMTP_PORT || process.env.MAILTRAP_PORT || 2525);
+  const smtpUser = process.env.SMTP_USER || process.env.MAILTRAP_USER;
+  const smtpPass = process.env.SMTP_PASS || process.env.MAILTRAP_PASS;
+  
+  if (!smtpUser || !smtpPass) {
+    console.warn('⚠️ SMTP credentials not configured. Emails will not be sent.');
+  }
+  
   transporter = nodemailer.createTransport({
-    host: process.env.MAILTRAP_HOST || 'sandbox.smtp.mailtrap.io',
-    port: Number(process.env.MAILTRAP_PORT || 2525),
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465, // true for port 465, false for other ports
     auth: {
-      user: process.env.MAILTRAP_USER,
-      pass: process.env.MAILTRAP_PASS
+      user: smtpUser,
+      pass: smtpPass
     },
-    tls: { rejectUnauthorized: false } // helpful on some dev setups
+    tls: { 
+      rejectUnauthorized: false // helpful on some dev setups
+    }
   });
+  
+  console.log(`📧 Email transporter configured: ${smtpHost}:${smtpPort}`);
   return transporter;
 }
 
 async function sendOtpEmail({ to, code }) {
   const mailer = getTransporter();
+  
+  console.log(`📧 Attempting to send OTP to: ${to}`);
+  
   try {
     await mailer.verify();
+    console.log('✅ SMTP connection verified');
   } catch (e) {
-    console.error('SMTP verify failed:', e?.message || e);
-    throw e;
+    console.error('❌ SMTP verify failed:', e?.message || e);
+    console.error('Full error:', e);
+    throw new Error(`SMTP verification failed: ${e?.message}`);
   }
 
-  const appName = process.env.APP_NAME || 'MIT Alumni Connect';
-  const fromEmail = process.env.MAIL_FROM || 'no-reply@mit.asia';
+  const appName = process.env.FROM_NAME || process.env.APP_NAME || 'MIT Alumni Connect';
+  const fromEmail = process.env.FROM_EMAIL || process.env.MAIL_FROM || 'no-reply@mit.asia';
 
   try {
-    await mailer.sendMail({
+    const info = await mailer.sendMail({
       from: `${appName} <${fromEmail}>`,
       to,
       subject: `Your OTP Code: ${code}`,
@@ -39,9 +60,16 @@ async function sendOtpEmail({ to, code }) {
         <p>It expires in 10 minutes.</p>
       </div>`
     });
+    
+    console.log('✅ Email sent successfully!');
+    console.log('Message ID:', info.messageId);
+    console.log('Response:', info.response);
+    
+    return info;
   } catch (e) {
-    console.error('sendMail failed:', e?.response || e?.message || e);
-    throw e;
+    console.error('❌ sendMail failed:', e?.response || e?.message || e);
+    console.error('Full error:', e);
+    throw new Error(`Failed to send email: ${e?.message}`);
   }
 }
 
@@ -54,8 +82,8 @@ async function sendWelcomeEmail({ to, password, loginUrl }) {
     throw e;
   }
 
-  const appName = process.env.APP_NAME || 'MIT Alumni Connect';
-  const fromEmail = process.env.MAIL_FROM || 'no-reply@mit.asia';
+  const appName = process.env.FROM_NAME || process.env.APP_NAME || 'MIT Alumni Connect';
+  const fromEmail = process.env.FROM_EMAIL || process.env.MAIL_FROM || 'no-reply@mit.asia';
 
   try {
     await mailer.sendMail({

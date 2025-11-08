@@ -163,7 +163,20 @@ const Navbar = () => {
 
     if (role === "admin") {
       return [
-        ...baseLinks,
+        { key: "home", type: "link", to: "/", label: "Home", icon: FiHome },
+        { key: "about", type: "link", to: "/about", label: "About", icon: FiUsers },
+        {
+          key: "events",
+          type: "dropdown",
+          label: "Events",
+          icon: FiCalendar,
+          to: "/events",
+          items: [
+            { key: "events-network", to: "/network", label: "Network", icon: FiUsers },
+            { key: "events-forum", to: "/forum", label: "Forum", icon: FiMessageCircle },
+            { key: "events-posts", to: "/posts", label: "Posts", icon: FiFileText },
+          ],
+        },
         { key: "admin", type: "link", to: "/admin", label: "Admin Panel", icon: FiUser },
       ];
     }

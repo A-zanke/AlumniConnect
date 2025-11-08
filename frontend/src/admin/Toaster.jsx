@@ -1,21 +1,30 @@
 import React from 'react';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { Toaster as HotToaster } from 'react-hot-toast';
 
 const Toaster = () => {
   return (
-    <ToastContainer
+    <HotToaster
       position="top-right"
-      autoClose={3000}
-      hideProgressBar={false}
-      newestOnTop
-      closeOnClick
-      rtl={false}
-      pauseOnFocusLoss
-      draggable
-      pauseOnHover
-      theme="colored"
-      className="mt-14"
+      toastOptions={{
+        duration: 4000,
+        style: {
+          background: '#1e293b',
+          color: '#fff',
+          border: '1px solid #334155',
+        },
+        success: {
+          iconTheme: {
+            primary: '#10b981',
+            secondary: '#fff',
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: '#ef4444',
+            secondary: '#fff',
+          },
+        },
+      }}
     />
   );
 };

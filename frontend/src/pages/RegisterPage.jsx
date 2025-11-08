@@ -18,6 +18,8 @@ const RegisterPage = () => {
     otherDepartment: "",
     year: "",
     graduationYear: "",
+    usePersonalEmail: false,
+    personalEmail: "",
   });
 
   const departments = ['CSE', 'AI-DS', 'E&TC', 'Mechanical', 'Civil', 'Other'];
@@ -29,7 +31,7 @@ const RegisterPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const { register, sendOtp, verifyOtp, checkUsername } = useAuth();
+  const { register, sendOtp, verifyOtp, checkUsername, sendPersonalEmailOtp, verifyPersonalEmailOtp } = useAuth();
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [emailVerified, setEmailVerified] = useState(false);
@@ -48,6 +50,30 @@ const RegisterPage = () => {
 
   // Send OTP
   const handleSendOtp = async () => {
+    // For personal email (alumni)
+    if (formData.usePersonalEmail) {
+      if (!formData.personalEmail || !formData.personalEmail.includes('@')) {
+        toast.error("Enter a valid email address");
+        return;
+      }
+      setOtpLoading(true);
+      try {
+        const resp = await sendPersonalEmailOtp(formData.personalEmail.trim());
+        if (resp.success) {
+          setOtpSent(true);
+          toast.success("OTP sent to your email.");
+        } else {
+          toast.error(resp.error || "Failed to send OTP");
+        }
+      } catch (e) {
+        toast.error("Failed to send OTP");
+      } finally {
+        setOtpLoading(false);
+      }
+      return;
+    }
+    
+    // For college email
     if (!formData.emailPrefix || /@/.test(formData.emailPrefix)) {
       toast.error("Enter email prefix only (no @)");
       return;
@@ -76,16 +102,32 @@ const RegisterPage = () => {
     }
     setVerifyLoading(true);
     try {
-      const resp = await verifyOtp(formData.emailPrefix.trim(), otpCode.trim());
-      if (resp.success) {
-        setEmailVerified(true);
-        setFormData((prev) => ({
-          ...prev,
-          email: resp.data?.email || `${formData.emailPrefix}@mit.asia`,
-        }));
-        toast.success("Email verified");
+      // For personal email (alumni)
+      if (formData.usePersonalEmail) {
+        const resp = await verifyPersonalEmailOtp(formData.personalEmail.trim(), otpCode.trim());
+        if (resp.success) {
+          setEmailVerified(true);
+          setFormData((prev) => ({
+            ...prev,
+            email: formData.personalEmail,
+          }));
+          toast.success("Email verified ✓");
+        } else {
+          toast.error(resp.error || "OTP verification failed");
+        }
       } else {
-        toast.error(resp.error || "OTP verification failed");
+        // For college email
+        const resp = await verifyOtp(formData.emailPrefix.trim(), otpCode.trim());
+        if (resp.success) {
+          setEmailVerified(true);
+          setFormData((prev) => ({
+            ...prev,
+            email: resp.data?.email || `${formData.emailPrefix}@mit.asia`,
+          }));
+          toast.success("Email verified ✓");
+        } else {
+          toast.error(resp.error || "OTP verification failed");
+        }
       }
     } catch (e) {
       toast.error("OTP verification failed");
@@ -133,9 +175,16 @@ const RegisterPage = () => {
       setError("Full Name is required");
       return;
     }
-    if (!formData.emailPrefix.trim()) {
-      setError("Email prefix is required");
-      return;
+    if (formData.usePersonalEmail) {
+      if (!formData.personalEmail.trim()) {
+        setError("Personal email is required");
+        return;
+      }
+    } else {
+      if (!formData.emailPrefix.trim()) {
+        setError("Email prefix is required");
+        return;
+      }
     }
     if (!emailVerified) {
       setError("Please verify your email via OTP before registering");
@@ -165,7 +214,7 @@ const RegisterPage = () => {
       return;
     }
 
-    const finalEmail = `${formData.emailPrefix}@mit.asia`;
+    const finalEmail = formData.usePersonalEmail ? formData.personalEmail : `${formData.emailPrefix}@mit.asia`;
     setLoading(true);
     try {
       const result = await register({
@@ -221,36 +270,111 @@ const RegisterPage = () => {
               />
             </div>
 
-            {/* Institution Email + OTP */}
+            {/* Role */}
             <div className="register-field">
-              <label>Institution Email</label>
-              <div
-                style={{ display: "flex", gap: "5px", alignItems: "center" }}
+              <label>I am a</label>
+              <select
+                name="role"
+                value={formData.role}
+                onChange={handleChange}
+                className="register-select"
               >
-                <input
-                  type="text"
-                  name="emailPrefix"
-                  value={formData.emailPrefix}
-                  onChange={(e) => {
-                    if (e.target.value.includes("@")) return; // prevent typing @
-                    handleChange(e);
-                  }}
-                  required
-                  placeholder="email prefix"
-                />
-                <span>@mit.asia</span>
-                {!emailVerified && (
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={otpLoading}
-                    className="register-button"
-                    style={{ padding: "8px 12px" }}
-                  >
-                    {otpLoading ? "Sending..." : "Send OTP"}
-                  </button>
-                )}
+                <option value="student">Student</option>
+                <option value="teacher">Teacher</option>
+                <option value="alumni">Alumni</option>
+              </select>
+            </div>
+
+            {/* Email Section - Different for Alumni */}
+            {formData.role === "alumni" && (
+              <div className="register-field">
+                <label>Do you have college email?</label>
+                <div className="email-choice-container">
+                  <label className="email-choice-option">
+                    <input
+                      type="radio"
+                      name="emailChoice"
+                      checked={!formData.usePersonalEmail}
+                      onChange={() => {
+                        setFormData(prev => ({ ...prev, usePersonalEmail: false }));
+                        setOtpSent(false);
+                        setEmailVerified(false);
+                        setOtpCode("");
+                      }}
+                    />
+                    <span>Yes, I have @mit.asia</span>
+                  </label>
+                  <label className="email-choice-option">
+                    <input
+                      type="radio"
+                      name="emailChoice"
+                      checked={formData.usePersonalEmail}
+                      onChange={() => {
+                        setFormData(prev => ({ ...prev, usePersonalEmail: true }));
+                        setOtpSent(false);
+                        setEmailVerified(false);
+                        setOtpCode("");
+                      }}
+                    />
+                    <span>Use personal Gmail</span>
+                  </label>
+                </div>
               </div>
+            )}
+
+            {/* Email Input Field */}
+            <div className="register-field">
+              <label>{formData.usePersonalEmail ? "Personal Email" : "Institution Email"}</label>
+              {formData.usePersonalEmail ? (
+                <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
+                  <input
+                    type="email"
+                    name="personalEmail"
+                    value={formData.personalEmail}
+                    onChange={handleChange}
+                    required
+                    placeholder="your.email@gmail.com"
+                    style={{ flex: 1 }}
+                  />
+                  {!emailVerified && (
+                    <button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={otpLoading}
+                      className="register-button"
+                      style={{ padding: "8px 12px" }}
+                    >
+                      {otpLoading ? "Sending..." : "Send OTP"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    name="emailPrefix"
+                    value={formData.emailPrefix}
+                    onChange={(e) => {
+                      if (e.target.value.includes("@")) return;
+                      handleChange(e);
+                    }}
+                    required
+                    placeholder="email prefix"
+                  />
+                  <span>@mit.asia</span>
+                  {!emailVerified && (
+                    <button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={otpLoading}
+                      className="register-button"
+                      style={{ padding: "8px 12px" }}
+                    >
+                      {otpLoading ? "Sending..." : "Send OTP"}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {otpSent && !emailVerified && (
                 <div
@@ -284,7 +408,7 @@ const RegisterPage = () => {
               )}
 
               {emailVerified && (
-                <div className="register-success">Email verified</div>
+                <div className="register-success">✓ Email verified</div>
               )}
             </div>
 
@@ -309,21 +433,6 @@ const RegisterPage = () => {
               {formData.username.trim() && usernameAvailable === true && (
                 <div className="register-success">Username available</div>
               )}
-            </div>
-
-            {/* Role */}
-            <div className="register-field">
-              <label>I am a</label>
-              <select
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-                className="register-select"
-              >
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="alumni">Alumni</option>
-              </select>
             </div>
 
             {/* Department */}

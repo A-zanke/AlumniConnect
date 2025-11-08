@@ -1,34 +1,42 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaChevronRight, FaHome } from 'react-icons/fa';
+import { FiChevronRight, FiHome } from 'react-icons/fi';
 
 const Breadcrumbs = () => {
   const location = useLocation();
-  const pathnames = location.pathname.split('/').filter(x => x);
+  const pathnames = location.pathname.split('/').filter((x) => x);
 
-  const formatLabel = (str) => {
-    return str.charAt(0).toUpperCase() + str.slice(1).replace(/-/g, ' ');
+  const formatBreadcrumb = (str) => {
+    return str
+      .split('-')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
 
   return (
-    <nav className="flex items-center gap-2 text-sm mb-6" aria-label="Breadcrumb">
-      <Link to="/admin" className="flex items-center gap-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors">
-        <FaHome />
-        <span>Admin</span>
+    <nav className="flex items-center space-x-2 text-sm text-slate-400">
+      <Link
+        to="/admin"
+        className="flex items-center hover:text-white transition-colors"
+      >
+        <FiHome size={16} />
       </Link>
 
-      {pathnames.slice(1).map((name, index) => {
-        const routeTo = `/${pathnames.slice(0, index + 2).join('/')}`;
-        const isLast = index === pathnames.length - 2;
+      {pathnames.map((name, index) => {
+        const routeTo = `/${pathnames.slice(0, index + 1).join('/')}`;
+        const isLast = index === pathnames.length - 1;
 
         return (
           <React.Fragment key={name}>
-            <FaChevronRight className="text-gray-400 text-xs" />
+            <FiChevronRight size={16} className="text-slate-600" />
             {isLast ? (
-              <span className="text-gray-900 dark:text-white font-medium">{formatLabel(name)}</span>
+              <span className="text-white font-medium">{formatBreadcrumb(name)}</span>
             ) : (
-              <Link to={routeTo} className="text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors">
-                {formatLabel(name)}
+              <Link
+                to={routeTo}
+                className="hover:text-white transition-colors"
+              >
+                {formatBreadcrumb(name)}
               </Link>
             )}
           </React.Fragment>

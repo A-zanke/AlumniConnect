@@ -1,37 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FaSearch, FaTimes } from 'react-icons/fa';
+import { FiSearch, FiCommand } from 'react-icons/fi';
 
 const CommandPalette = () => {
-  const [open, setOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
 
   const commands = [
-    { label: 'Dashboard', path: '/admin', keywords: 'home overview stats' },
-    { label: 'Users', path: '/admin/users', keywords: 'people accounts' },
-    { label: 'Posts', path: '/admin/posts', keywords: 'content articles' },
-    { label: 'Forum', path: '/admin/forum', keywords: 'discussion threads' },
-    { label: 'Events', path: '/admin/events', keywords: 'calendar schedule' },
-    { label: 'Reports', path: '/admin/reports', keywords: 'issues flags moderation' },
-    { label: 'Testimonials', path: '/admin/testimonials', keywords: 'reviews feedback' },
-    { label: 'Settings', path: '/admin/settings', keywords: 'config preferences' },
+    { label: 'Dashboard', path: '/admin', keywords: ['home', 'overview'] },
+    { label: 'Users', path: '/admin/users', keywords: ['members', 'people'] },
+    { label: 'Events', path: '/admin/events', keywords: ['calendar'] },
+    { label: 'Forum Analytics', path: '/admin/forum', keywords: ['stats'] },
+    { label: 'Forum Management', path: '/admin/forum/manage', keywords: ['posts'] },
+    { label: 'Posts Analytics', path: '/admin/posts', keywords: ['stats'] },
+    { label: 'Posts Management', path: '/admin/posts/manage', keywords: ['content'] },
+    { label: 'Reports', path: '/admin/reports', keywords: ['flags', 'moderation'] },
   ];
 
-  const filteredCommands = commands.filter(cmd =>
+  const filteredCommands = commands.filter((cmd) =>
     cmd.label.toLowerCase().includes(search.toLowerCase()) ||
-    cmd.keywords.includes(search.toLowerCase())
+    cmd.keywords.some((k) => k.includes(search.toLowerCase()))
   );
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setOpen(true);
+        setIsOpen(true);
       }
       if (e.key === 'Escape') {
-        setOpen(false);
+        setIsOpen(false);
       }
     };
 
@@ -41,75 +40,56 @@ const CommandPalette = () => {
 
   const handleSelect = (path) => {
     navigate(path);
-    setOpen(false);
+    setIsOpen(false);
     setSearch('');
   };
 
+  if (!isOpen) return null;
+
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-20">
+      <div className="w-full max-w-2xl rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="flex items-center gap-3 border-b border-slate-700 px-4 py-3">
+          <FiSearch className="text-slate-400" size={20} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search commands..."
+            className="flex-1 bg-transparent text-white placeholder-slate-400 focus:outline-none"
+            autoFocus
           />
+          <kbd className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-400">
+            ESC
+          </kbd>
+        </div>
 
-          {/* Command Palette */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed top-1/4 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl z-50 overflow-hidden"
-          >
-            {/* Search Input */}
-            <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
-              <FaSearch className="text-gray-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search commands..."
-                className="flex-1 bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-400"
-                autoFocus
-              />
-              <button onClick={() => setOpen(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-                <FaTimes className="text-gray-400" />
+        <div className="max-h-96 overflow-y-auto p-2">
+          {filteredCommands.length === 0 ? (
+            <div className="py-8 text-center text-slate-400">
+              No commands found
+            </div>
+          ) : (
+            filteredCommands.map((cmd) => (
+              <button
+                key={cmd.path}
+                onClick={() => handleSelect(cmd.path)}
+                className="w-full rounded-lg px-4 py-3 text-left text-white hover:bg-slate-800"
+              >
+                {cmd.label}
               </button>
-            </div>
+            ))
+          )}
+        </div>
 
-            {/* Results */}
-            <div className="max-h-96 overflow-y-auto p-2">
-              {filteredCommands.length > 0 ? (
-                filteredCommands.map((cmd, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSelect(cmd.path)}
-                    className="w-full text-left px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <div className="font-medium text-gray-900 dark:text-white">{cmd.label}</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">{cmd.path}</div>
-                  </button>
-                ))
-              ) : (
-                <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                  No commands found
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-              <span>Type to search</span>
-              <span>ESC to close</span>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+        <div className="border-t border-slate-700 px-4 py-2 text-xs text-slate-400">
+          <kbd className="rounded bg-slate-800 px-1.5 py-0.5">
+            <FiCommand size={10} className="inline" /> K
+          </kbd>{' '}
+          to open
+        </div>
+      </div>
+    </div>
   );
 };
 

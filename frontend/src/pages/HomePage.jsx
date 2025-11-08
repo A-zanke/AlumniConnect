@@ -27,7 +27,8 @@ import kunalImg from '../assets/images/Kunal mahajan.png';
 import sachinImg from '../assets/images/Sachin gunjakar.png';
 // import deanImg from '../assets/images/Dean.jpg';
 // import hodImg from '../assets/images/Hod.jpg';
-import athrvaImg from '../assets/images/AtharvaD.png'
+import athrvaImg from '../assets/images/AtharvaD.png';
+import ankitImg from '../assets/images/Ankit Patil.png';
 
 const HomePage = () => {
   const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
@@ -103,37 +104,26 @@ const HomePage = () => {
   const testimonials = [
     {
       name: "Atharva Domale",
-      role: "Data Scientist",
-      company: "Google Inc.",
+      role: "Python Developer",
+      company: "ApTask",
       department: "Artificial intelligence & Data Science",
       graduationYear: "Class of 2025",
-      feedback: "The alumni network transformed my career trajectory. Through the mentorship program, I connected with industry leaders who provided invaluable guidance. The platform's AI-powered recommendations helped me discover opportunities I never knew existed.",
+      feedback: "I never thought I’d reconnect with so many batchmates until I joined AlumniConnect. It feels great to share experiences, mentor students, and see how our community keeps growing stronger.",
       rating: 5,
       image: athrvaImg,
       linkedIn: "linkedin.com/in/sarahchen"
     },
     {
-      name: "Michael Rodriguez", 
-      role: "Product Manager",
-      company: "Microsoft Corporation",
-      department: "Business Administration",
-      graduationYear: "Class of 2017",
-      feedback: "This platform is more than a network—it's a community. The real-time chat feature kept me connected with my batchmates globally, and the job board helped me land my dream role at Microsoft. Truly exceptional experience.",
+      name: "Ankit Patil", 
+      role: "Data Scientist",
+      company: "Global Bees",
+      department: "Artificial intelligence & Data Science",
+      graduationYear: "Class of 2025",
+      feedback: "Joining AlumniConnect reminded me that our bond with college never really ends. It’s wonderful to stay in touch, share opportunities, and celebrate each other’s success stories.",
       rating: 5,
-      image: dummyImg,
+      image: ankitImg,
       linkedIn: "linkedin.com/in/mrodriguez"
     },
-    {
-      name: "Dr. Priya Sharma",
-      role: "Research Scientist",
-      company: "Tesla Energy Division",
-      department: "Electrical Engineering",
-      graduationYear: "Class of 2015",
-      feedback: "The forum discussions allowed me to collaborate with fellow alumni on cutting-edge research. The platform's professional ecosystem fostered meaningful connections that led to groundbreaking partnerships in renewable energy technology.",
-      rating: 5,
-      image: dummyImg,
-      linkedIn: "linkedin.com/in/drpriyasharma"
-    }
   ];
 
   // Faculty/Deans data with enhanced information
@@ -210,13 +200,7 @@ const HomePage = () => {
     }
   ];
 
-  // Animated text slogans
-  const slogans = [
-    "Connect Inspire Grow!!!",
-    "Building Tomorrow's Leaders Today.", 
-    "Your Network is Your Net Worth.",
-    "Excellence in Education & Beyond."
-  ];
+  
 
   // Hero carousel auto-play
   useEffect(() => {

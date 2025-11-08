@@ -16,7 +16,9 @@ const {
   checkUsername,
   sendResetOtp,
   verifyResetOtp,
-  resetPassword
+  resetPassword,
+  sendPersonalEmailOtp,
+  verifyPersonalEmailOtp
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const { OAuth2Client } = require('google-auth-library');
@@ -74,6 +76,8 @@ router.post('/register', authLimiter, registerUser);
 router.post('/login', authLimiter, loginUser);
 router.post('/send-otp', otpLimiter, sendOtp);
 router.post('/verify-otp', authLimiter, verifyOtp);
+router.post('/send-personal-email-otp', otpLimiter, sendPersonalEmailOtp);
+router.post('/verify-personal-email-otp', authLimiter, verifyPersonalEmailOtp);
 router.post('/forgot/send-otp', otpLimiter, sendResetOtp);
 router.post('/forgot/verify-otp', authLimiter, verifyResetOtp);
 router.post('/forgot/reset', authLimiter, resetPassword);

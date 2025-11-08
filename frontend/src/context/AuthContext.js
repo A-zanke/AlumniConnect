@@ -111,9 +111,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Forgot password: reset
-  const resetPassword = async (emailPrefix, newPassword) => {
+  const resetPassword = async (emailOrPrefix, newPassword, usePersonalEmail = false) => {
     try {
-      const res = await axios.post('/api/auth/forgot/reset', { emailPrefix, newPassword });
+      const payload = usePersonalEmail 
+        ? { email: emailOrPrefix, newPassword, usePersonalEmail: true }
+        : { emailPrefix: emailOrPrefix, newPassword };
+      const res = await axios.post('/api/auth/forgot/reset', payload);
       return { success: true, data: res.data };
     } catch (err) {
       const errorMsg = err.response?.data?.message || 'Password reset failed';
@@ -128,6 +131,28 @@ export const AuthProvider = ({ children }) => {
       return { success: true, ...res.data };
     } catch (err) {
       return { success: false, available: false, suggestions: [] };
+    }
+  };
+
+  // Send OTP to personal email (for alumni)
+  const sendPersonalEmailOtp = async (email) => {
+    try {
+      const res = await axios.post('/api/auth/send-personal-email-otp', { email });
+      return { success: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Failed to send OTP';
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  // Verify personal email OTP (for alumni)
+  const verifyPersonalEmailOtp = async (email, code) => {
+    try {
+      const res = await axios.post('/api/auth/verify-personal-email-otp', { email, code });
+      return { success: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'OTP verification failed';
+      return { success: false, error: errorMsg };
     }
   };
 
@@ -214,7 +239,7 @@ export const AuthProvider = ({ children }) => {
   
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent, sendResetOtp, verifyResetOtp, resetPassword }}>
+    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent, sendResetOtp, verifyResetOtp, resetPassword, sendPersonalEmailOtp, verifyPersonalEmailOtp }}>
       {children}
     </AuthContext.Provider>
   );

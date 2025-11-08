@@ -356,3 +356,83 @@
     font-size: 1.35rem;
   }
 }
+
+/* Email Choice Radio Buttons */
+.email-choice-container {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.email-choice-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid #d0d0d0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+  min-width: 140px;
+  background: white;
+}
+
+.email-choice-option:hover {
+  border-color: #1976d2;
+  background: #f5f9ff;
+}
+
+.email-choice-option input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  margin: 0;
+  accent-color: #1976d2;
+}
+
+.email-choice-option input[type="radio"]:checked + span {
+  color: #1976d2;
+  font-weight: 600;
+}
+
+.email-choice-option input[type="radio"]:checked {
+  border-color: #1976d2;
+}
+
+.email-choice-option:has(input[type="radio"]:checked) {
+  border-color: #1976d2;
+  background: #f5f9ff;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.15);
+}
+
+.email-choice-option span {
+  font-size: 0.9rem;
+  color: #333;
+  transition: all 0.3s ease;
+  user-select: none;
+}
+
+/* Mobile responsive for email choice */
+@media (max-width: 640px) {
+  .email-choice-container {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .email-choice-option {
+    min-width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .email-choice-option {
+    padding: 0.65rem 0.875rem;
+  }
+
+  .email-choice-option span {
+    font-size: 0.85rem;
+  }
+}

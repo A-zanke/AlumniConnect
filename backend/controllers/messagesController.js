@@ -542,13 +542,57 @@ exports.sendMessage = async (req, res) => {
       }
     }
 
-    // ENCRYPTION DISABLED - Store all messages as plaintext for reliability
-    // This ensures messages always display correctly without decryption issues
+    // ENCRYPTION ENABLED - Encrypt messages like WhatsApp with robust error handling
     let isEncrypted = false;
     let encryptionDataObj = null;
     let senderEncryptionDataObj = null;
     
-    console.log('📝 Storing message as plaintext (encryption disabled for reliability)');
+    // Only encrypt if there's actual text content (not just attachments)
+    if (content && content.trim()) {
+      try {
+        // Fetch both users' public keys
+        const [recipientUser, senderUser] = await Promise.all([
+          User.findById(to).select('publicKey').lean(),
+          User.findById(me).select('publicKey').lean()
+        ]);
+        
+        // Validate both users have public keys
+        if (!recipientUser?.publicKey || !senderUser?.publicKey) {
+          console.warn(`⚠️ Missing encryption keys - Recipient: ${!!recipientUser?.publicKey}, Sender: ${!!senderUser?.publicKey}`);
+          console.log('📝 Storing message as plaintext (keys not available)');
+        } else {
+          // Validate keys are valid PEM format
+          const recipientKeyValid = recipientUser.publicKey.includes('BEGIN PUBLIC KEY');
+          const senderKeyValid = senderUser.publicKey.includes('BEGIN PUBLIC KEY');
+          
+          if (!recipientKeyValid || !senderKeyValid) {
+            console.warn(`⚠️ Invalid key format - Recipient: ${recipientKeyValid}, Sender: ${senderKeyValid}`);
+            console.log('📝 Storing message as plaintext (invalid keys)');
+          } else {
+            // Encrypt for recipient (so they can read it)
+            const recipientEncrypted = encryptMessage(content, recipientUser.publicKey);
+            
+            // Encrypt for sender (so they can see their own sent messages)
+            const senderEncrypted = encryptMessage(content, senderUser.publicKey);
+            
+            // Verify encryption succeeded
+            if (recipientEncrypted && senderEncrypted) {
+              encryptionDataObj = recipientEncrypted;
+              senderEncryptionDataObj = senderEncrypted;
+              isEncrypted = true;
+              console.log('🔐 Message encrypted successfully for both sender and recipient');
+            } else {
+              console.warn('⚠️ Encryption returned null, storing as plaintext');
+            }
+          }
+        }
+      } catch (encErr) {
+        console.error('❌ Encryption failed:', encErr.message);
+        console.log('📝 Storing message as plaintext (encryption error)');
+      }
+    } else {
+      console.log('📝 No text content to encrypt (attachments only or empty)');
+    }
 
     // Validate at least one of content or attachments exists (encrypted messages are allowed)
     if (!content.trim() && attachments.length === 0 && !isEncrypted) {
@@ -567,11 +611,11 @@ exports.sendMessage = async (req, res) => {
       thread = await Thread.create({ participants });
     }
 
-    // Create message
+    // Create message with encryption data if encrypted
     const messageData = {
       from: me,
       to,
-      content: content, // Always keep content for fallback
+      content: content, // Always store plaintext as fallback
       attachments,
       messageType,
       clientKey,
@@ -579,13 +623,17 @@ exports.sendMessage = async (req, res) => {
       messageId:
         `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       deliveredAt: new Date(),
+      encrypted: isEncrypted,
     };
     
-    // Always store as plaintext (encryption disabled)
-    messageData.encrypted = false;
-    messageData.encryptionData = null;
-    messageData.senderEncryptionData = null;
-    console.log('✅ Message stored as plaintext');
+    // Add encryption data if message was encrypted
+    if (isEncrypted && encryptionDataObj && senderEncryptionDataObj) {
+      messageData.encryptionData = encryptionDataObj;
+      messageData.senderEncryptionData = senderEncryptionDataObj;
+      console.log('✅ Message stored with encryption (plaintext fallback included)');
+    } else {
+      console.log('✅ Message stored as plaintext only');
+    }
     
     // Only add forward-related fields if actually forwarded
     if (isForwarded && forwardedFrom) {
@@ -624,21 +672,25 @@ exports.sendMessage = async (req, res) => {
 
     // Real-time notifications
     if (req.io) {
-      // Send to recipient with normalized payload including attachments for rich preview
+      // Send to recipient with encryption data
       req.io.to(String(to)).emit("message:new", {
         conversationId: String(thread?._id || `${me}_${to}`),
         messageId: String(dto.id),
         senderId: String(me),
-        body: dto.content,
-        fallbackContent: content,
+        body: dto.content, // Send content (may be encrypted or plaintext)
+        fallbackContent: content, // Always send plaintext fallback for reliability
         attachments: dto.attachments || [],
         createdAt: dto.timestamp,
         isForwarded: dto.isForwarded === true,
         forwardedFrom: populatedMessage?.forwardedFrom || null,
-        encrypted: false,
-        encryptionData: null,
-        senderEncryptionData: null,
+        encrypted: isEncrypted,
+        encryptionData: isEncrypted ? encryptionDataObj : null,
+        senderEncryptionData: isEncrypted ? senderEncryptionDataObj : null,
       });
+      
+      if (isEncrypted) {
+        console.log('🔒 Socket message sent with encryption data');
+      }
 
       // Send delivery confirmation to sender
       req.io.to(String(me)).emit("message:delivered", {

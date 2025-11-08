@@ -1,10 +1,10 @@
-import React, { Component } from 'react';
-import { FaExclamationTriangle } from 'react-icons/fa';
+import React from 'react';
+import { FiAlertTriangle } from 'react-icons/fi';
 
-class ErrorBoundary extends Component {
+class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -12,24 +12,33 @@ class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('Error boundary caught:', error, errorInfo);
+    console.error('Error caught by boundary:', error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <FaExclamationTriangle className="text-6xl text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+        <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
+          <div className="max-w-md rounded-lg border border-red-500/20 bg-slate-800 p-8 text-center">
+            <div className="mb-4 flex justify-center">
+              <div className="rounded-full bg-red-500/10 p-4">
+                <FiAlertTriangle className="text-red-500" size={48} />
+              </div>
+            </div>
+            <h2 className="mb-2 text-2xl font-bold text-white">
               Something went wrong
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              {this.state.error?.message || 'An unexpected error occurred'}
+            <p className="mb-4 text-slate-400">
+              An error occurred while rendering this component.
             </p>
+            {this.state.error && (
+              <pre className="mb-4 overflow-auto rounded bg-slate-900 p-4 text-left text-xs text-red-400">
+                {this.state.error.toString()}
+              </pre>
+            )}
             <button
               onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700"
             >
               Reload Page
             </button>
