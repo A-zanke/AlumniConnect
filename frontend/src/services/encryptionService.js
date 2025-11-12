@@ -1,30 +1,30 @@
 /**
  * Frontend Encryption Service
- * 
+ *
  * This service handles client-side decryption only.
  * Encryption is now handled server-side for better security.
- * 
+ *
  * The private key is stored in localStorage (in production, consider more secure storage)
  */
 
 // Import forge for RSA operations
-import forge from 'node-forge';
+import forge from "node-forge";
 
 // Cache for parsed private keys to avoid re-parsing on every message
 const privateKeyCache = new Map();
 const CACHE_MAX_SIZE = 10; // Small cache for private keys
 
 // IndexedDB persistence for private keys (better durability than localStorage alone)
-const hasIndexedDB = typeof window !== 'undefined' && 'indexedDB' in window;
-const DB_NAME = 'alumni-connect-e2ee';
+const hasIndexedDB = typeof window !== "undefined" && "indexedDB" in window;
+const DB_NAME = "alumni-connect-e2ee";
 const DB_VERSION = 1;
-const STORE_NAME = 'privateKeys';
+const STORE_NAME = "privateKeys";
 
 let idbOpenPromise = null;
 
 function openKeyDatabase() {
   if (!hasIndexedDB) {
-    return Promise.reject(new Error('IndexedDB not available'));
+    return Promise.reject(new Error("IndexedDB not available"));
   }
 
   if (!idbOpenPromise) {
@@ -40,7 +40,8 @@ function openKeyDatabase() {
         };
 
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error || new Error('Failed to open IndexedDB'));
+        request.onerror = () =>
+          reject(request.error || new Error("Failed to open IndexedDB"));
       } catch (error) {
         reject(error);
       }
@@ -56,14 +57,21 @@ async function persistPrivateKeyIndexedDB(userId, privateKeyPem) {
   try {
     const db = await openKeyDatabase();
     await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
       const request = store.put(privateKeyPem, userId);
       request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error || new Error('Failed to persist private key to IndexedDB'));
+      request.onerror = () =>
+        reject(
+          request.error ||
+            new Error("Failed to persist private key to IndexedDB")
+        );
     });
   } catch (error) {
-    console.warn('Failed to persist private key to IndexedDB:', error?.message || error);
+    console.warn(
+      "Failed to persist private key to IndexedDB:",
+      error?.message || error
+    );
   }
 }
 
@@ -73,14 +81,21 @@ async function removePrivateKeyIndexedDB(userId) {
   try {
     const db = await openKeyDatabase();
     await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const tx = db.transaction(STORE_NAME, "readwrite");
       const store = tx.objectStore(STORE_NAME);
       const request = store.delete(userId);
       request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error || new Error('Failed to remove private key from IndexedDB'));
+      request.onerror = () =>
+        reject(
+          request.error ||
+            new Error("Failed to remove private key from IndexedDB")
+        );
     });
   } catch (error) {
-    console.warn('Failed to remove private key from IndexedDB:', error?.message || error);
+    console.warn(
+      "Failed to remove private key from IndexedDB:",
+      error?.message || error
+    );
   }
 }
 
@@ -90,14 +105,21 @@ async function loadPrivateKeyIndexedDB(userId) {
   try {
     const db = await openKeyDatabase();
     return await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
+      const tx = db.transaction(STORE_NAME, "readonly");
       const store = tx.objectStore(STORE_NAME);
       const request = store.get(userId);
       request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error || new Error('Failed to load private key from IndexedDB'));
+      request.onerror = () =>
+        reject(
+          request.error ||
+            new Error("Failed to load private key from IndexedDB")
+        );
     });
   } catch (error) {
-    console.warn('Failed to load private key from IndexedDB:', error?.message || error);
+    console.warn(
+      "Failed to load private key from IndexedDB:",
+      error?.message || error
+    );
     return null;
   }
 }
@@ -111,16 +133,16 @@ function getCachedPrivateKey(privateKeyPem) {
   if (!privateKeyCache.has(privateKeyPem)) {
     // Parse and cache the key
     const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-    
+
     // Limit cache size (FIFO)
     if (privateKeyCache.size >= CACHE_MAX_SIZE) {
       const firstKey = privateKeyCache.keys().next().value;
       privateKeyCache.delete(firstKey);
     }
-    
+
     privateKeyCache.set(privateKeyPem, privateKey);
   }
-  
+
   return privateKeyCache.get(privateKeyPem);
 }
 
@@ -132,11 +154,11 @@ function getCachedPrivateKey(privateKeyPem) {
 export function storePrivateKey(userId, privateKeyPem) {
   try {
     localStorage.setItem(`e2ee_private_${userId}`, privateKeyPem);
-    console.log('🔑 Private key stored successfully');
+    console.log("🔑 Private key stored successfully");
     // Persist asynchronously to IndexedDB for better durability (no await to keep API synchronous)
     persistPrivateKeyIndexedDB(userId, privateKeyPem);
   } catch (error) {
-    console.error('Error storing private key:', error);
+    console.error("Error storing private key:", error);
   }
 }
 
@@ -149,7 +171,7 @@ export function getPrivateKey(userId) {
   try {
     return localStorage.getItem(`e2ee_private_${userId}`);
   } catch (error) {
-    console.error('Error retrieving private key:', error);
+    console.error("Error retrieving private key:", error);
     return null;
   }
 }
@@ -165,7 +187,10 @@ export async function restorePrivateKeyFromIndexedDB(userId) {
     try {
       localStorage.setItem(`e2ee_private_${userId}`, key);
     } catch (error) {
-      console.warn('Failed to sync IndexedDB private key back to localStorage:', error?.message || error);
+      console.warn(
+        "Failed to sync IndexedDB private key back to localStorage:",
+        error?.message || error
+      );
     }
   }
   return key;
@@ -181,136 +206,173 @@ export function decryptMessage(encryptedData, privateKeyPem) {
   try {
     // Validate encryption data - return null instead of throwing for missing fields
     if (!encryptedData) {
-      console.warn('⚠️ No encryption data provided');
+      console.warn("⚠️ No encryption data provided");
       return null;
     }
-    
+
     const { encryptedMessage, encryptedAESKey, iv } = encryptedData;
-    
+
     // Check for missing required fields
     if (!encryptedMessage || !encryptedAESKey || !iv) {
-      console.warn('⚠️ Missing encryption data fields:', {
+      console.warn("⚠️ Missing encryption data fields:", {
         hasEncryptedMessage: !!encryptedMessage,
         hasEncryptedAESKey: !!encryptedAESKey,
-        hasIV: !!iv
+        hasIV: !!iv,
       });
       return null; // Return null instead of throwing
     }
-    
+
     if (!privateKeyPem) {
-      console.warn('⚠️ No private key provided');
+      console.warn("⚠️ No private key provided");
       return null;
     }
-    
+
     // Validate private key format
-    if (typeof privateKeyPem !== 'string') {
-      console.error('❌ Private key is not a string:', typeof privateKeyPem);
+    if (typeof privateKeyPem !== "string") {
+      console.error("❌ Private key is not a string:", typeof privateKeyPem);
       return null;
     }
-    
+
     // Check if key has proper PEM headers
-    const hasPrivateKeyHeader = privateKeyPem.includes('-----BEGIN') && 
-                                (privateKeyPem.includes('PRIVATE KEY-----') || 
-                                 privateKeyPem.includes('RSA PRIVATE KEY-----'));
-    
+    const hasPrivateKeyHeader =
+      privateKeyPem.includes("-----BEGIN") &&
+      (privateKeyPem.includes("PRIVATE KEY-----") ||
+        privateKeyPem.includes("RSA PRIVATE KEY-----"));
+
     if (!hasPrivateKeyHeader) {
-      console.error('❌ Invalid private key format - missing PEM headers');
+      console.error("❌ Invalid private key format - missing PEM headers");
       return null;
     }
-    
+
     // Step 1: Get cached private key (avoids re-parsing)
     let privateKey;
     try {
       privateKey = getCachedPrivateKey(privateKeyPem);
     } catch (pemError) {
-      console.error(' Failed to parse private key PEM:', pemError.message);
+      console.error(" Failed to parse private key PEM:", pemError.message);
       return null;
     }
-    
+
     // Step 2: Decrypt AES key using RSA private key (fast with cached key)
     const encryptedKeyBinary = forge.util.decode64(encryptedAESKey);
 
-    // Attempt RSA-OAEP decryption with modern parameters first, then fall back to legacy combos
-    const rsaAttempts = [
-      {
-        label: 'sha256',
-        options: {
-          md: forge.md.sha256.create(),
-          mgf1: { md: forge.md.sha256.create() }
-        }
-      },
-      {
-        label: 'sha1',
-        options: {
-          md: forge.md.sha1.create(),
-          mgf1: { md: forge.md.sha1.create() }
-        }
-      },
-      {
-        label: 'sha256-mgf1:sha1',
-        options: {
-          md: forge.md.sha256.create(),
-          mgf1: { md: forge.md.sha1.create() }
-        }
-      },
-      {
-        label: 'sha1-mgf1:sha256',
-        options: {
-          md: forge.md.sha1.create(),
-          mgf1: { md: forge.md.sha256.create() }
-        }
-      },
-      {
-        label: 'default',
-        options: null,
-      },
-    ];
+    // CRITICAL: Use EXACT same parameters as backend encryption (SHA-256 + MGF1 SHA-256)
+    // Backend: encryptionService.js uses forge.md.sha256.create() consistently
+    // DO NOT try random fallback combinations - only use what backend uses
+    const backendRSAOptions = {
+      md: forge.md.sha256.create(),
+      mgf1: { md: forge.md.sha256.create() },
+    };
 
+    // Attempt RSA-OAEP with backend's exact parameters first
     let aesKeyBinary = null;
     let lastRsaError = null;
-    for (const attempt of rsaAttempts) {
-      try {
-        const decrypted = attempt.options
-          ? privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP', attempt.options)
-          : privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP');
 
-        if (decrypted) {
-          if (attempt.label !== 'sha256') {
-            console.debug(` RSA-OAEP fallback succeed using ${attempt.label}`);
-          }
-          aesKeyBinary = decrypted;
-          break;
+    try {
+      aesKeyBinary = privateKey.decrypt(
+        encryptedKeyBinary,
+        "RSA-OAEP",
+        backendRSAOptions
+      );
+      if (aesKeyBinary) {
+        // Success with backend parameters
+        if (aesKeyBinary.length !== 32) {
+          console.warn(
+            "⚠️ Decrypted AES key has unexpected length:",
+            aesKeyBinary.length
+          );
+          aesKeyBinary = null;
         }
-      } catch (rsaError) {
-        lastRsaError = rsaError;
-        // Try next variation on padding/hash mismatch errors
+      }
+    } catch (rsaError) {
+      lastRsaError = rsaError;
+      console.warn(
+        "⚠️ Primary RSA-OAEP decryption failed (SHA-256):",
+        rsaError.message
+      );
+    }
+
+    // Only if primary fails, try SHA-1 as fallback for older encrypted messages
+    if (!aesKeyBinary) {
+      try {
+        const fallbackOptions = {
+          md: forge.md.sha1.create(),
+          mgf1: { md: forge.md.sha1.create() },
+        };
+        aesKeyBinary = privateKey.decrypt(
+          encryptedKeyBinary,
+          "RSA-OAEP",
+          fallbackOptions
+        );
+        if (aesKeyBinary) {
+          console.debug("📋 RSA-OAEP fallback succeeded using SHA-1");
+          if (aesKeyBinary.length !== 32) {
+            console.warn(
+              "⚠️ Fallback AES key has unexpected length:",
+              aesKeyBinary.length
+            );
+            aesKeyBinary = null;
+          }
+        }
+      } catch (fallbackError) {
+        lastRsaError = fallbackError;
       }
     }
 
+    // If still failed, this is a real error
     if (!aesKeyBinary) {
-      console.error(' Failed to decrypt AES key with RSA-OAEP fallbacks', lastRsaError?.message || lastRsaError);
+      console.error(
+        "❌ Failed to decrypt AES key - neither SHA-256 nor SHA-1 worked"
+      );
+      console.error(
+        "   Backend error: " + (lastRsaError?.message || "Unknown")
+      );
+      console.error(
+        "   This usually means: encryption/decryption parameters mismatch"
+      );
       return null;
     }
 
-    // Step 3: Convert to proper format for AES decryption
-    const aesKey = forge.util.createBuffer(aesKeyBinary, 'raw');
+    // Step 3: Convert to proper format for AES decryption using Forge
+    // Backend encrypts with Node crypto AES-256-CBC, frontend decrypts with Forge
+    // Both use identical algorithm/key derivation, so they're fully compatible
+    const aesKey = forge.util.createBuffer(aesKeyBinary, "raw");
     const ivBuffer = forge.util.decode64(iv);
-    
-    // Step 4: Decrypt message using AES-256-CBC (fast)
-    const decipher = forge.cipher.createDecipher('AES-CBC', aesKey);
-    decipher.start({ iv: ivBuffer });
-    
-    const encryptedBytes = forge.util.decode64(encryptedMessage);
-    decipher.update(forge.util.createBuffer(encryptedBytes, 'raw'));
-    
-    if (!decipher.finish()) {
-      console.warn('⚠️ Decryption failed - cipher finish returned false');
+
+    // Step 4: Decrypt message using AES-256-CBC with Forge
+    try {
+      const decipher = forge.cipher.createDecipher("AES-CBC", aesKey);
+      decipher.start({ iv: ivBuffer });
+
+      const encryptedBytes = forge.util.decode64(encryptedMessage);
+      decipher.update(forge.util.createBuffer(encryptedBytes, "raw"));
+
+      // CRITICAL: Check if decipher.finish() succeeds
+      // If false, the decryption failed - usually means AES key is wrong
+      if (!decipher.finish()) {
+        console.warn("⚠️ AES-256-CBC decipher.finish() returned false");
+        console.warn("   This usually means the AES key or IV is corrupted");
+        console.warn("   Key length:", aesKeyBinary.length, "Expected: 32");
+        console.warn("   IV length:", ivBuffer.length(), "Expected: 16");
+        return null;
+      }
+
+      const decrypted = decipher.output.toString("utf8");
+
+      // Validate we got valid UTF-8 output
+      if (!decrypted || decrypted.trim() === "") {
+        console.warn("⚠️ Decryption produced empty output");
+        return null;
+      }
+
+      return decrypted;
+    } catch (aesError) {
+      console.error("❌ AES-256-CBC decryption error:", aesError.message);
+      console.error("   Stack:", aesError.stack);
       return null;
     }
-    
-    return decipher.output.toString('utf8');
   } catch (error) {
-    console.error('❌ Decryption error:', error.message);
+    console.error("❌ Decryption error:", error.message);
     // Return null instead of throwing - let caller handle it
     return null;
   }
@@ -322,12 +384,12 @@ export function decryptMessage(encryptedData, privateKeyPem) {
  * @returns {boolean} True if valid, false otherwise
  */
 export function isValidEncryptionData(encryptionData) {
-  if (!encryptionData || typeof encryptionData !== 'object') {
+  if (!encryptionData || typeof encryptionData !== "object") {
     return false;
   }
-  
+
   const { encryptedMessage, encryptedAESKey, iv } = encryptionData;
-  
+
   return !!encryptedMessage && !!encryptedAESKey && !!iv;
 }
 
@@ -339,18 +401,24 @@ export function isValidEncryptionData(encryptionData) {
 export function hasPrivateKey(userId) {
   const key = getPrivateKey(userId);
   if (!key) return false;
-  
+
   // Validate it's a proper PEM format
-  const isValidFormat = typeof key === 'string' && 
-                       key.includes('-----BEGIN') && 
-                       (key.includes('PRIVATE KEY-----') || key.includes('RSA PRIVATE KEY-----'));
-  
+  const isValidFormat =
+    typeof key === "string" &&
+    key.includes("-----BEGIN") &&
+    (key.includes("PRIVATE KEY-----") || key.includes("RSA PRIVATE KEY-----"));
+
   if (!isValidFormat) {
-    console.error('❌ Invalid private key format in localStorage for user:', userId);
-    console.log('Key should start with "-----BEGIN PRIVATE KEY-----" or "-----BEGIN RSA PRIVATE KEY-----"');
+    console.error(
+      "❌ Invalid private key format in localStorage for user:",
+      userId
+    );
+    console.log(
+      'Key should start with "-----BEGIN PRIVATE KEY-----" or "-----BEGIN RSA PRIVATE KEY-----"'
+    );
     return false;
   }
-  
+
   return true;
 }
 
@@ -361,26 +429,29 @@ export function hasPrivateKey(userId) {
  */
 export function validatePrivateKey(privateKeyPem) {
   if (!privateKeyPem) {
-    return { valid: false, error: 'No private key provided' };
+    return { valid: false, error: "No private key provided" };
   }
-  
-  if (typeof privateKeyPem !== 'string') {
-    return { valid: false, error: 'Private key must be a string' };
+
+  if (typeof privateKeyPem !== "string") {
+    return { valid: false, error: "Private key must be a string" };
   }
-  
-  if (!privateKeyPem.includes('-----BEGIN')) {
-    return { valid: false, error: 'Missing PEM header (-----BEGIN...)' };
+
+  if (!privateKeyPem.includes("-----BEGIN")) {
+    return { valid: false, error: "Missing PEM header (-----BEGIN...)" };
   }
-  
-  if (!privateKeyPem.includes('-----END')) {
-    return { valid: false, error: 'Missing PEM footer (-----END...)' };
+
+  if (!privateKeyPem.includes("-----END")) {
+    return { valid: false, error: "Missing PEM footer (-----END...)" };
   }
-  
-  const hasPrivateKeyMarker = privateKeyPem.includes('PRIVATE KEY-----');
+
+  const hasPrivateKeyMarker = privateKeyPem.includes("PRIVATE KEY-----");
   if (!hasPrivateKeyMarker) {
-    return { valid: false, error: 'Not a private key (missing PRIVATE KEY marker)' };
+    return {
+      valid: false,
+      error: "Not a private key (missing PRIVATE KEY marker)",
+    };
   }
-  
+
   try {
     // Try to parse it with forge
     forge.pki.privateKeyFromPem(privateKeyPem);
@@ -397,10 +468,10 @@ export function validatePrivateKey(privateKeyPem) {
 export function clearPrivateKey(userId) {
   try {
     localStorage.removeItem(`e2ee_private_${userId}`);
-    console.log('🗑️ Private key cleared');
+    console.log("🗑️ Private key cleared");
     removePrivateKeyIndexedDB(userId);
   } catch (error) {
-    console.error('Error clearing private key:', error);
+    console.error("Error clearing private key:", error);
   }
 }
 
@@ -410,16 +481,18 @@ export function clearPrivateKey(userId) {
 export function clearAllEncryptionKeys() {
   try {
     const keys = Object.keys(localStorage);
-    const encryptionKeys = keys.filter(key => key.startsWith('e2ee_private_'));
-    
-    encryptionKeys.forEach(key => {
+    const encryptionKeys = keys.filter((key) =>
+      key.startsWith("e2ee_private_")
+    );
+
+    encryptionKeys.forEach((key) => {
       localStorage.removeItem(key);
     });
-    
+
     console.log(`🗑️ Cleared ${encryptionKeys.length} encryption keys`);
     return encryptionKeys.length;
   } catch (error) {
-    console.error('Error clearing encryption keys:', error);
+    console.error("Error clearing encryption keys:", error);
     return 0;
   }
 }
@@ -430,12 +503,12 @@ export function clearAllEncryptionKeys() {
  * @returns {string} PEM formatted key
  */
 export function compactToPem(compactKey) {
-  const header = '-----BEGIN PUBLIC KEY-----\n';
-  const footer = '\n-----END PUBLIC KEY-----';
-  
+  const header = "-----BEGIN PUBLIC KEY-----\n";
+  const footer = "\n-----END PUBLIC KEY-----";
+
   // Split into 64-character lines
   const lines = compactKey.match(/.{1,64}/g) || [];
-  return header + lines.join('\n') + footer;
+  return header + lines.join("\n") + footer;
 }
 
 /**

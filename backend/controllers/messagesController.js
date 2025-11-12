@@ -11,7 +11,10 @@ const Thread = require("../models/Thread");
 const Block = require("../models/Block");
 const MessageReport = require("../models/MessageReport");
 const NotificationService = require("../services/NotificationService");
-const { encryptMessage, compactToPem } = require("../services/encryptionService");
+const {
+  encryptMessage,
+  compactToPem,
+} = require("../services/encryptionService");
 
 // Helper functions
 async function isBlocked(userAId, userBId) {
@@ -38,17 +41,22 @@ async function areConnected(userAId, userBId) {
 // Helper function to get attachment snippet
 function getAttachmentSnippet(attachment) {
   if (!attachment) return "Attachment";
-  
-  const url = typeof attachment === 'string' ? attachment : attachment?.url;
+
+  const url = typeof attachment === "string" ? attachment : attachment?.url;
   if (!url) return "Attachment";
-  
+
   // Check file type
   const lowerUrl = url.toLowerCase();
-  if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(lowerUrl)) return "📷 Photo";
+  if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(lowerUrl))
+    return "📷 Photo";
   if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(lowerUrl)) return "🎥 Video";
-  if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/i.test(lowerUrl)) return "🎵 Audio";
-  if (/\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/i.test(lowerUrl)) return "📄 Document";
-  
+  if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/i.test(lowerUrl))
+    return "🎵 Audio";
+  if (
+    /\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/i.test(lowerUrl)
+  )
+    return "📄 Document";
+
   return "📎 Attachment";
 }
 
@@ -109,12 +117,14 @@ function getReplyFromAttachments(attachments) {
 async function parseMessageWithBackup(doc, viewerId) {
   try {
     if (isDeletedForViewer(doc, viewerId)) return null;
-    
+
     // If deleted for everyone (metadata.deleted or attachment flag), return tombstone
     const deletedForEveryone =
       (doc.metadata && doc.metadata.deleted === true) ||
-      (Array.isArray(doc.attachments) && doc.attachments.includes('deletedForEveryone')) ||
-      (typeof doc.content === 'string' && doc.content === 'This message was deleted');
+      (Array.isArray(doc.attachments) &&
+        doc.attachments.includes("deletedForEveryone")) ||
+      (typeof doc.content === "string" &&
+        doc.content === "This message was deleted");
 
     const reactions = normalizeReactions(doc);
 
@@ -151,17 +161,24 @@ async function parseMessageWithBackup(doc, viewerId) {
     }
 
     const viewerIdStr = viewerId ? String(viewerId) : null;
-    const senderIdStr = doc.from?._id ? String(doc.from._id) : doc.from ? String(doc.from) : null;
-    const viewerIsSender = viewerIdStr && senderIdStr && viewerIdStr === senderIdStr;
+    const senderIdStr = doc.from?._id
+      ? String(doc.from._id)
+      : doc.from
+      ? String(doc.from)
+      : null;
+    const viewerIsSender =
+      viewerIdStr && senderIdStr && viewerIdStr === senderIdStr;
     const encryptionPayload = doc.encrypted
-      ? viewerIsSender && doc.senderEncryptionData && doc.senderEncryptionData.encryptedMessage
+      ? viewerIsSender &&
+        doc.senderEncryptionData &&
+        doc.senderEncryptionData.encryptedMessage
         ? doc.senderEncryptionData
         : doc.encryptionData
       : null;
 
     // Determine content to show
     let contentToShow = doc.content || "";
-    
+
     // For encrypted messages with empty content, try to get backup content
     if (doc.encrypted && (!contentToShow || contentToShow.trim() === "")) {
       try {
@@ -178,15 +195,18 @@ async function parseMessageWithBackup(doc, viewerId) {
         }
 
         const backup = await MessageBackup.findOne(backupQuery)
-          .select('content')
+          .select("content")
           .lean();
-        
+
         if (backup && backup.content) {
           contentToShow = backup.content;
           console.log(`🔄 Using backup content for message ${doc._id}`);
         }
       } catch (backupError) {
-        console.warn(`⚠️ Failed to fetch backup for message ${doc._id}:`, backupError.message);
+        console.warn(
+          `⚠️ Failed to fetch backup for message ${doc._id}:`,
+          backupError.message
+        );
       }
     }
 
@@ -196,7 +216,7 @@ async function parseMessageWithBackup(doc, viewerId) {
       senderId: doc.from?._id || doc.from,
       recipientId: doc.to?._id || doc.to,
       content: contentToShow,
-      fallbackContent: contentToShow, // Always provide fallback content
+      fallbackContent: contentToShow, // Always provide plaintext fallback for resilience
       attachments: getAttachmentUrls(doc.attachments),
       messageType: doc.messageType,
       timestamp: doc.createdAt,
@@ -210,12 +230,15 @@ async function parseMessageWithBackup(doc, viewerId) {
       isForwarded: !!doc.forwardedFrom,
       forwardedFrom: doc.forwardedFrom || null,
       isSystem: !!(doc.metadata && doc.metadata.system === true),
-      systemCode: doc.metadata && doc.metadata.systemCode ? doc.metadata.systemCode : undefined,
+      systemCode:
+        doc.metadata && doc.metadata.systemCode
+          ? doc.metadata.systemCode
+          : undefined,
       encrypted: doc.encrypted || false,
       encryptionData: encryptionPayload,
     };
   } catch (e) {
-    console.error('❌ Error in parseMessageWithBackup:', e);
+    console.error("❌ Error in parseMessageWithBackup:", e);
     return null;
   }
 }
@@ -281,8 +304,12 @@ exports.getConversations = async (req, res) => {
         });
 
         const parsedMsg = await parseMessageWithBackup(msg, me);
-        const hasText = parsedMsg && typeof parsedMsg.content === 'string' && parsedMsg.content.trim().length > 0;
-        const hasAttachments = Array.isArray(msg.attachments) && msg.attachments.length > 0;
+        const hasText =
+          parsedMsg &&
+          typeof parsedMsg.content === "string" &&
+          parsedMsg.content.trim().length > 0;
+        const hasAttachments =
+          Array.isArray(msg.attachments) && msg.attachments.length > 0;
         const snippet = hasText
           ? parsedMsg.content.trim().slice(0, 80)
           : msg.encrypted && msg.encryptionData
@@ -353,12 +380,12 @@ exports.getMessages = async (req, res) => {
     }
     if (!mongoose.Types.ObjectId.isValid(other)) {
       console.error("getMessages: Invalid user ID format:", other);
-      return res.status(400).json({ message: "Invalid user ID format. Expected a 24-character hex string." });
+      return res.status(400).json({
+        message: "Invalid user ID format. Expected a 24-character hex string.",
+      });
     }
 
-    const [connected] = await Promise.all([
-      areConnected(me, other),
-    ]);
+    const [connected] = await Promise.all([areConnected(me, other)]);
 
     if (!connected)
       return res
@@ -475,7 +502,9 @@ exports.sendMessage = async (req, res) => {
     const content = (req.body.content || "").toString();
     const messageType = req.body.messageType || "text";
     // Always ensure a non-null clientKey for unique index (threadId + clientKey)
-    const clientKey = req.body.clientKey || `ck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const clientKey =
+      req.body.clientKey ||
+      `ck_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     console.log("sendMessage called:", {
       recipientId: req.params.userId,
@@ -546,52 +575,81 @@ exports.sendMessage = async (req, res) => {
     let isEncrypted = false;
     let encryptionDataObj = null;
     let senderEncryptionDataObj = null;
-    
-    // Only encrypt if there's actual text content (not just attachments)
-    if (content && content.trim()) {
+
+    // Encrypt if there's text content OR attachments (ALL messages should be encrypted)
+    // For media-only messages, encrypt the media metadata/placeholder
+    const shouldEncrypt = (content && content.trim()) || attachments.length > 0;
+
+    if (shouldEncrypt) {
       try {
         // Fetch both users' public keys
         const [recipientUser, senderUser] = await Promise.all([
-          User.findById(to).select('publicKey').lean(),
-          User.findById(me).select('publicKey').lean()
+          User.findById(to).select("publicKey").lean(),
+          User.findById(me).select("publicKey").lean(),
         ]);
-        
+
         // Validate both users have public keys
         if (!recipientUser?.publicKey || !senderUser?.publicKey) {
-          console.warn(`⚠️ Missing encryption keys - Recipient: ${!!recipientUser?.publicKey}, Sender: ${!!senderUser?.publicKey}`);
-          console.log('📝 Storing message as plaintext (keys not available)');
+          console.warn(
+            `⚠️ Missing encryption keys - Recipient: ${!!recipientUser?.publicKey}, Sender: ${!!senderUser?.publicKey}`
+          );
+          console.log("📝 Storing message as plaintext (keys not available)");
         } else {
           // Validate keys are valid PEM format
-          const recipientKeyValid = recipientUser.publicKey.includes('BEGIN PUBLIC KEY');
-          const senderKeyValid = senderUser.publicKey.includes('BEGIN PUBLIC KEY');
-          
+          const recipientKeyValid =
+            recipientUser.publicKey.includes("BEGIN PUBLIC KEY");
+          const senderKeyValid =
+            senderUser.publicKey.includes("BEGIN PUBLIC KEY");
+
           if (!recipientKeyValid || !senderKeyValid) {
-            console.warn(`⚠️ Invalid key format - Recipient: ${recipientKeyValid}, Sender: ${senderKeyValid}`);
-            console.log('📝 Storing message as plaintext (invalid keys)');
+            console.warn(
+              `⚠️ Invalid key format - Recipient: ${recipientKeyValid}, Sender: ${senderKeyValid}`
+            );
+            console.log("📝 Storing message as plaintext (invalid keys)");
           } else {
+            // For media-only messages (no text), encrypt a placeholder metadata
+            const textToEncrypt =
+              content && content.trim()
+                ? content
+                : `📎 Media message with ${attachments.length} attachment(s)`;
+
             // Encrypt for recipient (so they can read it)
-            const recipientEncrypted = encryptMessage(content, recipientUser.publicKey);
-            
+            const recipientEncrypted = encryptMessage(
+              textToEncrypt,
+              recipientUser.publicKey
+            );
+
             // Encrypt for sender (so they can see their own sent messages)
-            const senderEncrypted = encryptMessage(content, senderUser.publicKey);
-            
+            const senderEncrypted = encryptMessage(
+              textToEncrypt,
+              senderUser.publicKey
+            );
+
             // Verify encryption succeeded
             if (recipientEncrypted && senderEncrypted) {
               encryptionDataObj = recipientEncrypted;
               senderEncryptionDataObj = senderEncrypted;
               isEncrypted = true;
-              console.log('🔐 Message encrypted successfully for both sender and recipient');
+              if (attachments.length > 0 && !content.trim()) {
+                console.log(
+                  `🔐 Media message encrypted successfully (${attachments.length} attachment(s))`
+                );
+              } else {
+                console.log(
+                  "🔐 Message encrypted successfully for both sender and recipient"
+                );
+              }
             } else {
-              console.warn('⚠️ Encryption returned null, storing as plaintext');
+              console.warn("⚠️ Encryption returned null, storing as plaintext");
             }
           }
         }
       } catch (encErr) {
-        console.error('❌ Encryption failed:', encErr.message);
-        console.log('📝 Storing message as plaintext (encryption error)');
+        console.error("❌ Encryption failed:", encErr.message);
+        console.log("📝 Storing message as plaintext (encryption error)");
       }
     } else {
-      console.log('📝 No text content to encrypt (attachments only or empty)');
+      console.log("📝 No content or attachments to encrypt (empty message)");
     }
 
     // Validate at least one of content or attachments exists (encrypted messages are allowed)
@@ -620,21 +678,22 @@ exports.sendMessage = async (req, res) => {
       messageType,
       clientKey,
       threadId: String(thread._id),
-      messageId:
-        `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       deliveredAt: new Date(),
       encrypted: isEncrypted,
     };
-    
+
     // Add encryption data if message was encrypted
     if (isEncrypted && encryptionDataObj && senderEncryptionDataObj) {
       messageData.encryptionData = encryptionDataObj;
       messageData.senderEncryptionData = senderEncryptionDataObj;
-      console.log('✅ Message stored with encryption (plaintext fallback included)');
+      console.log(
+        "✅ Message stored with encryption (plaintext fallback included)"
+      );
     } else {
-      console.log('✅ Message stored as plaintext only');
+      console.log("✅ Message stored as plaintext only");
     }
-    
+
     // Only add forward-related fields if actually forwarded
     if (isForwarded && forwardedFrom) {
       messageData.isForwarded = true;
@@ -687,9 +746,9 @@ exports.sendMessage = async (req, res) => {
         encryptionData: isEncrypted ? encryptionDataObj : null,
         senderEncryptionData: isEncrypted ? senderEncryptionDataObj : null,
       });
-      
+
       if (isEncrypted) {
-        console.log('🔒 Socket message sent with encryption data');
+        console.log("🔒 Socket message sent with encryption data");
       }
 
       // Send delivery confirmation to sender
@@ -705,19 +764,19 @@ exports.sendMessage = async (req, res) => {
         let notificationContent;
         if (dto.attachments && dto.attachments.length > 0) {
           // Check if it's an image, video, or document
-          const hasImage = dto.attachments.some(att => {
-            const url = typeof att === 'string' ? att : att?.url;
+          const hasImage = dto.attachments.some((att) => {
+            const url = typeof att === "string" ? att : att?.url;
             return /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/i.test(url);
           });
-          const hasVideo = dto.attachments.some(att => {
-            const url = typeof att === 'string' ? att : att?.url;
+          const hasVideo = dto.attachments.some((att) => {
+            const url = typeof att === "string" ? att : att?.url;
             return /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/i.test(url);
           });
-          const hasDoc = dto.attachments.some(att => {
-            const url = typeof att === 'string' ? att : att?.url;
+          const hasDoc = dto.attachments.some((att) => {
+            const url = typeof att === "string" ? att : att?.url;
             return /\.(pdf|doc|docx|txt|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(url);
           });
-          
+
           if (hasImage) notificationContent = "sent you a photo";
           else if (hasVideo) notificationContent = "sent you a video";
           else if (hasDoc) notificationContent = "sent you a document";
@@ -725,7 +784,7 @@ exports.sendMessage = async (req, res) => {
         } else {
           notificationContent = "sent you a message";
         }
-        
+
         const note = await NotificationService.createNotification({
           recipientId: to,
           senderId: me,
@@ -796,10 +855,15 @@ exports.react = async (req, res) => {
 
     // Allow removing reaction when emoji is empty/null.
     // If provided, do a light validation only (string and reasonable length).
-    const isRemoval = emoji === undefined || emoji === null || String(emoji).trim() === "";
+    const isRemoval =
+      emoji === undefined || emoji === null || String(emoji).trim() === "";
     if (!isRemoval) {
       const emojiStr = String(emoji);
-      if (typeof emojiStr !== "string" || emojiStr.trim() === "" || emojiStr.length > 16) {
+      if (
+        typeof emojiStr !== "string" ||
+        emojiStr.trim() === "" ||
+        emojiStr.length > 16
+      ) {
         return res.status(400).json({ message: "Invalid emoji" });
       }
     }
@@ -877,7 +941,10 @@ exports.react = async (req, res) => {
 
       // Create and push a notification to the other participant
       try {
-        const recipientId = String(message.from) === String(me) ? String(message.to) : String(message.from);
+        const recipientId =
+          String(message.from) === String(me)
+            ? String(message.to)
+            : String(message.from);
         if (recipientId !== String(me)) {
           const note = await NotificationService.createNotification({
             recipientId,
@@ -1051,7 +1118,7 @@ exports.deleteMessage = async (req, res) => {
       message.set("metadata.deleted", true);
       message.attachments = [
         ...(Array.isArray(message.attachments) ? message.attachments : []),
-        'deletedForEveryone',
+        "deletedForEveryone",
       ];
       await message.save();
 
@@ -1128,7 +1195,7 @@ exports.bulkDelete = async (req, res) => {
         message.set("metadata.deleted", true);
         message.attachments = [
           ...(Array.isArray(message.attachments) ? message.attachments : []),
-          'deletedForEveryone',
+          "deletedForEveryone",
         ];
         await message.save();
         result.deleted += 1;
@@ -1361,7 +1428,7 @@ exports.getMedia = async (req, res) => {
 
     // Get thread between the two users
     const thread = await Thread.findOne({
-      participants: { $all: [me, other], $size: 2 }
+      participants: { $all: [me, other], $size: 2 },
     });
 
     if (!thread) {
@@ -1381,10 +1448,7 @@ exports.getMedia = async (req, res) => {
     // Build query based on type and thread
     const baseQuery = {
       threadId: thread._id,
-      $or: [
-        { from: me },
-        { from: other }
-      ],
+      $or: [{ from: me }, { from: other }],
     };
 
     let query;
@@ -1412,37 +1476,42 @@ exports.getMedia = async (req, res) => {
       .populate("from", "name username avatarUrl")
       .sort({ createdAt: -1 })
       .lean();
-    const messages = messagesAll.filter((msg) => {
-      const atts = msg.attachments || [];
-      const hasDeletedForMe = atts.includes(`deletedFor:${me}`);
-      const hasDeletedForEveryone = atts.includes("deletedForEveryone") || msg?.metadata?.deleted === true;
-      return !hasDeletedForMe && !hasDeletedForEveryone;
-    }).slice((page - 1) * limit, (page - 1) * limit + parseInt(limit));
+    const messages = messagesAll
+      .filter((msg) => {
+        const atts = msg.attachments || [];
+        const hasDeletedForMe = atts.includes(`deletedFor:${me}`);
+        const hasDeletedForEveryone =
+          atts.includes("deletedForEveryone") ||
+          msg?.metadata?.deleted === true;
+        return !hasDeletedForMe && !hasDeletedForEveryone;
+      })
+      .slice((page - 1) * limit, (page - 1) * limit + parseInt(limit));
 
     const media = [];
     const links = [];
 
     messages.forEach((msg) => {
       (msg.attachments || []).forEach((attachment) => {
-        const url = typeof attachment === "string" ? attachment : attachment?.url;
+        const url =
+          typeof attachment === "string" ? attachment : attachment?.url;
         // Only treat http(s) URLs as media; skip markers like react:*, reply:*, deletedFor:*
-        if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+        if (!url || typeof url !== "string" || !/^https?:\/\//i.test(url))
+          return;
         const lower = url.toLowerCase();
-        const type =
-          /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)
-            ? "image"
-            : /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)
-            ? "video"
-            : /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)
-            ? "audio"
-            : "document";
+        const type = /\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)
+          ? "image"
+          : /\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)
+          ? "video"
+          : /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)
+          ? "audio"
+          : "document";
 
         const mediaItem = {
           id: msg._id,
           messageId: msg.messageId,
           url,
           type,
-          filename: url.split('/').pop() || 'file',
+          filename: url.split("/").pop() || "file",
           size: undefined,
           mimeType: undefined,
           thumbnail: undefined,
@@ -1470,18 +1539,20 @@ exports.getMedia = async (req, res) => {
             id: msg._id,
             messageId: msg.messageId,
             url: imageUrl,
-            type: 'image', // or 'post' if you want a special type
-            filename: 'shared-post.jpg',
+            type: "image", // or 'post' if you want a special type
+            filename: "shared-post.jpg",
             size: 0,
-            mimeType: 'image/*',
+            mimeType: "image/*",
             thumbnail: imageUrl,
             timestamp: msg.createdAt,
             sender: msg.from,
             isMine: String(msg.from._id || msg.from) === String(me),
-            isStarred: Array.isArray(msg.isStarred) ? msg.isStarred.includes(me) : false,
+            isStarred: Array.isArray(msg.isStarred)
+              ? msg.isStarred.includes(me)
+              : false,
             isSharedPost: true,
             postId: postId,
-            preview: preview || 'Shared post'
+            preview: preview || "Shared post",
           });
         }
       }
@@ -1493,7 +1564,7 @@ exports.getMedia = async (req, res) => {
           foundLinks.forEach((link) => {
             // Skip if this is a shared post image URL that we already processed
             if (msg.metadata?.sharedPost?.imageUrl === link) return;
-            
+
             links.push({
               id: msg._id,
               messageId: msg.messageId,
@@ -1503,7 +1574,9 @@ exports.getMedia = async (req, res) => {
               timestamp: msg.createdAt,
               sender: msg.from,
               isMine: String(msg.from._id || msg.from) === String(me),
-              isStarred: Array.isArray(msg.isStarred) ? msg.isStarred.includes(me) : false,
+              isStarred: Array.isArray(msg.isStarred)
+                ? msg.isStarred.includes(me)
+                : false,
             });
           });
         }
@@ -1592,7 +1665,9 @@ exports.searchMessages = async (req, res) => {
       $or: [{ from: me }, { to: me }],
       $text: { $search: query },
       // Exclude messages hidden for this viewer and global-deleted tombstones
-      attachments: { $not: { $in: [`deletedFor:${me}`, 'deletedForEveryone'] } },
+      attachments: {
+        $not: { $in: [`deletedFor:${me}`, "deletedForEveryone"] },
+      },
       "metadata.deleted": { $ne: true },
     };
 
@@ -1606,7 +1681,8 @@ exports.searchMessages = async (req, res) => {
 
     // Optional date filtering
     const createdAt = {};
-    if (dateFrom && !isNaN(Date.parse(dateFrom))) createdAt.$gte = new Date(dateFrom);
+    if (dateFrom && !isNaN(Date.parse(dateFrom)))
+      createdAt.$gte = new Date(dateFrom);
     if (dateTo && !isNaN(Date.parse(dateTo))) createdAt.$lte = new Date(dateTo);
     if (Object.keys(createdAt).length > 0) searchQuery.createdAt = createdAt;
 
@@ -1698,9 +1774,10 @@ exports.block = async (req, res) => {
       });
       if (!thread) thread = await Thread.create({ participants });
 
-      const text = action === "block"
-        ? `You blocked this contact on ${new Date().toLocaleString()}`
-        : `You unblocked this contact on ${new Date().toLocaleString()}`;
+      const text =
+        action === "block"
+          ? `You blocked this contact on ${new Date().toLocaleString()}`
+          : `You unblocked this contact on ${new Date().toLocaleString()}`;
 
       const sys = await Message.create({
         from: me,
@@ -2065,21 +2142,21 @@ exports.report = async (req, res) => {
 
     // Create report
     const report = await MessageReport.create({
-      targetType: messageId ? 'message' : 'user',
+      targetType: messageId ? "message" : "user",
       targetId: messageId || null,
       reportedUser: userId,
       reporter: req.user._id,
       reason: reason,
-      description: description || '',
-      messageContent: message ? message.content : '',
+      description: description || "",
+      messageContent: message ? message.content : "",
       conversationId: message ? message.threadId : null,
-      source: 'messages' // Add source field to identify where report came from
+      source: "messages", // Add source field to identify where report came from
     });
 
     return res.json({
       message: "Report submitted successfully",
       success: true,
-      reportId: report._id
+      reportId: report._id,
     });
   } catch (error) {
     console.error("Error submitting report:", error);
@@ -2093,42 +2170,46 @@ exports.report = async (req, res) => {
 // Repair broken encrypted messages
 exports.repairBrokenMessages = async (req, res) => {
   try {
-    console.log('🔧 Repairing broken encrypted messages...');
-    
+    console.log("🔧 Repairing broken encrypted messages...");
+
     // Find all encrypted messages with empty or missing content
-    const encryptedMessages = await Message.find({ 
+    const encryptedMessages = await Message.find({
       encrypted: true,
       $or: [
-        { content: '' },
+        { content: "" },
         { content: { $exists: false } },
-        { content: null }
-      ]
+        { content: null },
+      ],
     });
-    console.log(`📊 Found ${encryptedMessages.length} encrypted messages with empty content`);
-    
+    console.log(
+      `📊 Found ${encryptedMessages.length} encrypted messages with empty content`
+    );
+
     if (encryptedMessages.length === 0) {
       return res.json({
-        message: 'No encrypted messages need repair',
+        message: "No encrypted messages need repair",
         success: true,
         fixed: 0,
-        total: 0
+        total: 0,
       });
     }
-    
+
     let fixedCount = 0;
     let notFoundCount = 0;
-    
+
     for (const msg of encryptedMessages) {
       try {
         // Try to find backup content
-        const backup = await MessageBackup.findOne({ 
-          originalMessageId: msg._id 
-        }).select('content').lean();
-        
-        if (backup && backup.content && backup.content.trim() !== '') {
+        const backup = await MessageBackup.findOne({
+          originalMessageId: msg._id,
+        })
+          .select("content")
+          .lean();
+
+        if (backup && backup.content && backup.content.trim() !== "") {
           // Restore content from backup
           await Message.findByIdAndUpdate(msg._id, {
-            $set: { content: backup.content }
+            $set: { content: backup.content },
           });
           console.log(`✅ Restored content for message ${msg._id}`);
           fixedCount++;
@@ -2141,23 +2222,23 @@ exports.repairBrokenMessages = async (req, res) => {
         notFoundCount++;
       }
     }
-    
+
     console.log(`✅ Repaired ${fixedCount} messages`);
     console.log(`⚠️ ${notFoundCount} messages had no backup`);
-    
+
     return res.json({
-      message: 'Messages repaired successfully',
+      message: "Messages repaired successfully",
       success: true,
       fixed: fixedCount,
       notFound: notFoundCount,
-      total: encryptedMessages.length
+      total: encryptedMessages.length,
     });
   } catch (error) {
-    console.error('❌ Error repairing messages:', error);
+    console.error("❌ Error repairing messages:", error);
     return res.status(500).json({
-      message: 'Error repairing messages',
+      message: "Error repairing messages",
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 };
