@@ -1,0 +1,276 @@
+/* ========================================
+   ENHANCED ALUMNI PROFILE STYLES
+   Desktop unchanged, Mobile optimized
+   ======================================== */
+
+/* ============ BASE STYLES (Desktop) ============ */
+
+.profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.profile-header {
+  margin-bottom: 2rem;
+}
+
+.profile-image-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.profile-picture {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.remove-photo-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-weight: 500;
+}
+
+.remove-photo-btn:hover {
+  background-color: #c82333;
+}
+
+.remove-photo-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.info-box {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+}
+
+.info-box h3 {
+  color: #2d3748;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.read-only-field {
+  margin-bottom: 1rem;
+}
+
+.read-only-field label {
+  display: block;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 0.5rem;
+}
+
+.read-only-field .field-value {
+  padding: 0.75rem;
+  background-color: #f7fafc;
+  border-radius: 0.375rem;
+  color: #2d3748;
+  font-size: 1rem;
+}
+
+.field-readonly {
+  margin-bottom: 1rem;
+}
+
+.field-readonly label {
+  display: block;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.value-display {
+  padding: 0.75rem;
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  color: #1f2937;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+}
+
+.education-fields {
+  pointer-events: none;
+}
+
+/* Remove any select styling */
+.education-fields select,
+.education-fields input {
+  display: none;
+}
+
+/* Ensure no hover effects */
+.value-display:hover {
+  background-color: #f3f4f6;
+  border-color: #e5e7eb;
+}
+
+/* ============ MOBILE OPTIMIZATIONS ============ */
+
+/* Tablets and below */
+@media (max-width: 768px) {
+  /* Container - Full Width with Padding */
+  .profile-container {
+    max-width: 100%;
+    padding: 1rem 12px;
+    margin: 0;
+  }
+
+  /* Header - Compact */
+  .profile-header {
+    margin-bottom: 1.5rem;
+    padding: 0;
+  }
+
+  /* Profile Image Section - Stack Nicely */
+  .profile-image-section {
+    gap: 0.875rem;
+    padding: 1rem 0;
+  }
+
+  /* Profile Picture - Smaller on Mobile */
+  .profile-picture {
+    width: 120px;
+    height: 120px;
+    border: 2px solid #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Remove Photo Button - Touch Friendly */
+  .remove-photo-btn {
+    padding: 0.625rem 1.25rem;
+    font-size: 0.9375rem;
+    border-radius: 8px;
+    min-height: 44px;
+    width: auto;
+    max-width: 280px;
+  }
+
+  /* Info Box - Rounded and Compact */
+  .info-box {
+    padding: 1rem;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .info-box h3 {
+    font-size: 1.125rem;
+    margin-bottom: 0.875rem;
+    font-weight: 600;
+  }
+
+  /* Read-Only Field - Compact */
+  .read-only-field {
+    margin-bottom: 0.875rem;
+  }
+
+  .read-only-field label {
+    font-size: 0.875rem;
+    margin-bottom: 0.375rem;
+    font-weight: 600;
+  }
+
+  .read-only-field .field-value {
+    padding: 0.625rem;
+    font-size: 0.9375rem;
+    border-radius: 8px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+
+  /* Field Readonly - Touch Friendly */
+  .field-readonly {
+    margin-bottom: 0.875rem;
+  }
+
+  .field-readonly label {
+    font-size: 0.875rem;
+    margin-bottom: 0.375rem;
+  }
+
+  /* Value Display - Better Spacing */
+  .value-display {
+    padding: 0.625rem;
+    font-size: 0.9375rem;
+    border-radius: 8px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+}
+
+/* Mobile Phones Only */
+@media (max-width: 480px) {
+  /* Extra compact spacing */
+  .profile-container {
+    padding: 0.75rem 8px;
+  }
+
+  .profile-header {
+    margin-bottom: 1rem;
+  }
+
+  /* Profile Picture - Even Smaller */
+  .profile-picture {
+    width: 100px;
+    height: 100px;
+  }
+
+  /* Button - Full Width */
+  .remove-photo-btn {
+    width: 100%;
+    max-width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  /* Info Box - Tighter */
+  .info-box {
+    padding: 0.875rem;
+    border-radius: 10px;
+    margin-bottom: 0.875rem;
+  }
+
+  .info-box h3 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Fields - Compact */
+  .read-only-field label,
+  .field-readonly label {
+    font-size: 0.8125rem;
+  }
+
+  .read-only-field .field-value,
+  .value-display {
+    padding: 0.5rem;
+    font-size: 0.875rem;
+  }
+
+  /* Prevent overflow */
+  * {
+    max-width: 100%;
+  }
+}

@@ -1,0 +1,79 @@
+.message-badge,
+.unread-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 24px;
+  height: 24px;
+  line-height: 24px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+  border-radius: 9999px;
+  text-align: center;
+  z-index: 10;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 211, 102, 0.5), 0 0 0 2px rgba(255, 255, 255, 0.9);
+  animation: badge-pulse 0.6s ease-out;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .navbar-icon-btn {
+    transition: background-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
+  }
+  .navbar-icon-btn:hover,
+  .navbar-icon-btn:active {
+    transform: none;
+  }
+}
+
+/* Optional: when navbar is in glass mode, keep icon color consistent */
+.navbar-root.navbar-glass .navbar-icon-btn {
+  color: #4f46e5;
+}
+
+.message-icon {
+  position: relative;
+  display: inline-flex;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.message-icon:hover {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 8px rgba(37, 211, 102, 0.3));
+}
+
+.message-icon:active {
+  transform: scale(0.95);
+}
+
+.badge-new {
+  animation: badge-pulse-continuous 1s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes badge-pulse-continuous {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
