@@ -1,20 +1,21 @@
-const User = require('../models/User');
-const Student = require('../models/Student');
-const Alumni = require('../models/Alumni');
+const mongoose = require("mongoose");
+const User = require("../models/User");
+const Student = require("../models/Student");
+const Alumni = require("../models/Alumni");
 
 // Get user profile by username
 async function getUserByUsername(req, res) {
   try {
     const user = await User.findOne({ username: req.params.username })
-      .select('-password -connectionRequests')
-      .populate('connections', 'name username avatarUrl role');
+      .select("-password -connectionRequests")
+      .populate("connections", "name username avatarUrl role");
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
     let additionalData = {};
-    if (user.role === 'student') {
+    if (user.role === "student") {
       // Student profile now primarily uses fields on the User model for consistency
       additionalData = {
         department: user.department,
@@ -24,9 +25,9 @@ async function getUserByUsername(req, res) {
         socials: user.socials,
         careerInterests: user.careerInterests,
         activities: user.activities,
-        mentorshipOpen: user.mentorshipOpen
+        mentorshipOpen: user.mentorshipOpen,
       };
-    } else if (user.role === 'alumni') {
+    } else if (user.role === "alumni") {
       additionalData = {
         department: user.department,
         graduationYear: user.graduationYear,
@@ -37,15 +38,15 @@ async function getUserByUsername(req, res) {
         skills: user.skills,
         socials: user.socials,
         mentorshipAvailable: user.mentorshipAvailable,
-        guidanceAreas: user.guidanceAreas
+        guidanceAreas: user.guidanceAreas,
       };
     }
 
     const fullProfile = { ...user.toObject(), ...additionalData };
     res.json({ data: fullProfile });
   } catch (error) {
-    console.error('Error fetching user profile:', error);
-    res.status(500).json({ message: 'Error fetching user profile' });
+    console.error("Error fetching user profile:", error);
+    res.status(500).json({ message: "Error fetching user profile" });
   }
 }
 
@@ -53,22 +54,32 @@ async function getUserByUsername(req, res) {
 async function getFollowing(req, res) {
   try {
     const user = await User.findById(req.params.userId)
-      .select('following connections')
-      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio')
-      .populate('connections', 'name username avatarUrl role email department year industry current_job_title bio');
+      .select("following connections")
+      .populate(
+        "following",
+        "name username avatarUrl role email department year industry current_job_title bio"
+      )
+      .populate(
+        "connections",
+        "name username avatarUrl role email department year industry current_job_title bio"
+      );
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
     let following = Array.isArray(user.following) ? user.following : [];
-    if ((!following || following.length === 0) && Array.isArray(user.connections) && user.connections.length > 0) {
+    if (
+      (!following || following.length === 0) &&
+      Array.isArray(user.connections) &&
+      user.connections.length > 0
+    ) {
       following = user.connections;
     }
     res.json({ data: following });
   } catch (error) {
-    console.error('Error fetching following:', error);
-    res.status(500).json({ message: 'Error fetching following' });
+    console.error("Error fetching following:", error);
+    res.status(500).json({ message: "Error fetching following" });
   }
 }
 
@@ -78,24 +89,29 @@ async function getMutualConnections(req, res) {
     const currentUserId = req.user._id;
     const targetUserId = req.params.userId;
 
-    const currentUser = await User.findById(currentUserId).select('following');
-    const targetUser = await User.findById(targetUserId).select('following');
+    const currentUser = await User.findById(currentUserId).select("following");
+    const targetUser = await User.findById(targetUserId).select("following");
 
     if (!currentUser || !targetUser) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const mutualIds = (currentUser.following || []).filter(id =>
-      (targetUser.following || []).some(targetId => targetId.toString() === id.toString())
+    const mutualIds = (currentUser.following || []).filter((id) =>
+      (targetUser.following || []).some(
+        (targetId) => targetId.toString() === id.toString()
+      )
     );
 
-    const mutualConnections = await User.find({ _id: { $in: mutualIds } })
-      .select('name username avatarUrl role bio createdAt email department year industry current_job_title');
+    const mutualConnections = await User.find({
+      _id: { $in: mutualIds },
+    }).select(
+      "name username avatarUrl role bio createdAt email department year industry current_job_title"
+    );
 
     res.json({ data: mutualConnections });
   } catch (error) {
-    console.error('Error fetching mutual connections:', error);
-    res.status(500).json({ message: 'Error fetching mutual connections' });
+    console.error("Error fetching mutual connections:", error);
+    res.status(500).json({ message: "Error fetching mutual connections" });
   }
 }
 
@@ -106,39 +122,49 @@ async function followUser(req, res) {
     const targetUserId = req.params.userId;
 
     if (currentUserId.toString() === targetUserId.toString()) {
-      return res.status(400).json({ message: 'Cannot follow yourself' });
+      return res.status(400).json({ message: "Cannot follow yourself" });
     }
 
     const currentUser = await User.findById(currentUserId);
     const targetUser = await User.findById(targetUserId);
 
     if (!currentUser || !targetUser) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const isFollowing = (currentUser.following || []).some(id => id.toString() === targetUserId.toString());
+    const isFollowing = (currentUser.following || []).some(
+      (id) => id.toString() === targetUserId.toString()
+    );
 
     if (isFollowing) {
-      currentUser.following = (currentUser.following || []).filter(id => id.toString() !== targetUserId.toString());
-      targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
+      currentUser.following = (currentUser.following || []).filter(
+        (id) => id.toString() !== targetUserId.toString()
+      );
+      targetUser.followers = (targetUser.followers || []).filter(
+        (id) => id.toString() !== currentUserId.toString()
+      );
       await currentUser.save();
       await targetUser.save();
       // Also remove from connections if present to ensure permanent removal across UIs
-      currentUser.connections = (currentUser.connections || []).filter(id => id.toString() !== targetUserId.toString());
-      targetUser.connections = (targetUser.connections || []).filter(id => id.toString() !== currentUserId.toString());
+      currentUser.connections = (currentUser.connections || []).filter(
+        (id) => id.toString() !== targetUserId.toString()
+      );
+      targetUser.connections = (targetUser.connections || []).filter(
+        (id) => id.toString() !== currentUserId.toString()
+      );
       await currentUser.save();
       await targetUser.save();
-      res.json({ message: 'Unfollowed successfully', isFollowing: false });
+      res.json({ message: "Unfollowed successfully", isFollowing: false });
     } else {
       currentUser.following = [...(currentUser.following || []), targetUserId];
       targetUser.followers = [...(targetUser.followers || []), currentUserId];
       await currentUser.save();
       await targetUser.save();
-      res.json({ message: 'Followed successfully', isFollowing: true });
+      res.json({ message: "Followed successfully", isFollowing: true });
     }
   } catch (error) {
-    console.error('Error following/unfollowing user:', error);
-    res.status(500).json({ message: 'Error following/unfollowing user' });
+    console.error("Error following/unfollowing user:", error);
+    res.status(500).json({ message: "Error following/unfollowing user" });
   }
 }
 
@@ -150,23 +176,35 @@ async function unfollowUser(req, res) {
 
     const currentUser = await User.findById(currentUserId);
     const targetUser = await User.findById(targetUserId);
-    if (!currentUser || !targetUser) return res.status(404).json({ message: 'User not found' });
+    if (!currentUser || !targetUser)
+      return res.status(404).json({ message: "User not found" });
 
     // Remove from following/followers
-    currentUser.following = (currentUser.following || []).filter(id => id.toString() !== targetUserId.toString());
-    targetUser.followers = (targetUser.followers || []).filter(id => id.toString() !== currentUserId.toString());
-    
+    currentUser.following = (currentUser.following || []).filter(
+      (id) => id.toString() !== targetUserId.toString()
+    );
+    targetUser.followers = (targetUser.followers || []).filter(
+      (id) => id.toString() !== currentUserId.toString()
+    );
+
     // FORCE REMOVE from connections array to ensure complete removal
-    currentUser.connections = (currentUser.connections || []).filter(id => id.toString() !== targetUserId.toString());
-    targetUser.connections = (targetUser.connections || []).filter(id => id.toString() !== currentUserId.toString());
-    
+    currentUser.connections = (currentUser.connections || []).filter(
+      (id) => id.toString() !== targetUserId.toString()
+    );
+    targetUser.connections = (targetUser.connections || []).filter(
+      (id) => id.toString() !== currentUserId.toString()
+    );
+
     await currentUser.save();
     await targetUser.save();
-    
-    res.json({ message: 'Unfollowed and removed from connections successfully', isFollowing: false });
+
+    res.json({
+      message: "Unfollowed and removed from connections successfully",
+      isFollowing: false,
+    });
   } catch (error) {
-    console.error('Error unfollowing user:', error);
-    res.status(500).json({ message: 'Error unfollowing user' });
+    console.error("Error unfollowing user:", error);
+    res.status(500).json({ message: "Error unfollowing user" });
   }
 }
 
@@ -174,32 +212,48 @@ async function unfollowUser(req, res) {
 async function getMyMutualConnections(req, res) {
   try {
     const currentUserId = req.user._id?.toString();
-    const currentUser = await User.findById(currentUserId).select('following connections');
+    const currentUser = await User.findById(currentUserId).select(
+      "following connections"
+    );
 
     if (!currentUser) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const myFollowing = Array.isArray(currentUser.following) ? currentUser.following.map(id => id.toString()) : [];
-    const myConnections = Array.isArray(currentUser.connections) ? currentUser.connections.map(id => id.toString()) : [];
+    const myFollowing = Array.isArray(currentUser.following)
+      ? currentUser.following.map((id) => id.toString())
+      : [];
+    const myConnections = Array.isArray(currentUser.connections)
+      ? currentUser.connections.map((id) => id.toString())
+      : [];
 
-    const firstLevelIds = Array.from(new Set([...(myFollowing || []), ...(myConnections || [])]));
+    const firstLevelIds = Array.from(
+      new Set([...(myFollowing || []), ...(myConnections || [])])
+    );
     if (firstLevelIds.length === 0) {
       return res.json({ data: [] });
     }
 
     const neighbors = await User.find({ _id: { $in: firstLevelIds } })
-      .select('following connections')
-      .populate('following', 'name username avatarUrl role email department year industry current_job_title bio createdAt')
-      .populate('connections', 'name username avatarUrl role email department year industry current_job_title bio createdAt');
+      .select("following connections")
+      .populate(
+        "following",
+        "name username avatarUrl role email department year industry current_job_title bio createdAt"
+      )
+      .populate(
+        "connections",
+        "name username avatarUrl role email department year industry current_job_title bio createdAt"
+      );
 
     const mutualMap = new Map();
-    neighbors.forEach(neighbor => {
+    neighbors.forEach((neighbor) => {
       let outward = Array.isArray(neighbor.following) ? neighbor.following : [];
       if (!outward || outward.length === 0) {
-        outward = Array.isArray(neighbor.connections) ? neighbor.connections : [];
+        outward = Array.isArray(neighbor.connections)
+          ? neighbor.connections
+          : [];
       }
-      outward.forEach(candidate => {
+      outward.forEach((candidate) => {
         const candId = candidate?._id?.toString();
         if (!candId) return;
         if (
@@ -217,8 +271,8 @@ async function getMyMutualConnections(req, res) {
     const mutualConnections = Array.from(mutualMap.values());
     res.json({ data: mutualConnections });
   } catch (error) {
-    console.error('Error fetching mutual connections:', error);
-    res.status(500).json({ message: 'Error fetching mutual connections' });
+    console.error("Error fetching mutual connections:", error);
+    res.status(500).json({ message: "Error fetching mutual connections" });
   }
 }
 
@@ -226,19 +280,27 @@ async function getMyMutualConnections(req, res) {
 async function getSuggestedConnections(req, res) {
   try {
     const currentUserId = req.user._id;
-    const currentUser = await User.findById(currentUserId).select('following connections');
+    const currentUser = await User.findById(currentUserId).select(
+      "following connections"
+    );
 
-    const followingUsers = await User.find({ _id: { $in: currentUser.following || [] } })
-      .select('following')
-      .populate('following', 'name username avatarUrl role bio');
+    const followingUsers = await User.find({
+      _id: { $in: currentUser.following || [] },
+    })
+      .select("following")
+      .populate("following", "name username avatarUrl role bio");
 
     const suggestedUserIds = new Set();
-    followingUsers.forEach(user => {
-      (user.following || []).forEach(followedUser => {
+    followingUsers.forEach((user) => {
+      (user.following || []).forEach((followedUser) => {
         if (
           followedUser._id.toString() !== currentUserId.toString() &&
-          !(currentUser.following || []).some(id => id.toString() === followedUser._id.toString()) &&
-          !(currentUser.connections || []).some(id => id.toString() === followedUser._id.toString())
+          !(currentUser.following || []).some(
+            (id) => id.toString() === followedUser._id.toString()
+          ) &&
+          !(currentUser.connections || []).some(
+            (id) => id.toString() === followedUser._id.toString()
+          )
         ) {
           suggestedUserIds.add(followedUser._id.toString());
         }
@@ -246,13 +308,15 @@ async function getSuggestedConnections(req, res) {
     });
 
     const suggestedUsers = await User.find({
-      _id: { $in: Array.from(suggestedUserIds) }
-    }).select('name username avatarUrl role bio').limit(20);
+      _id: { $in: Array.from(suggestedUserIds) },
+    })
+      .select("name username avatarUrl role bio")
+      .limit(20);
 
     res.json({ data: suggestedUsers });
   } catch (error) {
-    console.error('Error fetching suggested connections:', error);
-    res.status(500).json({ message: 'Error fetching suggested connections' });
+    console.error("Error fetching suggested connections:", error);
+    res.status(500).json({ message: "Error fetching suggested connections" });
   }
 }
 
@@ -264,32 +328,32 @@ async function updatePresence(req, res) {
 
     await User.findByIdAndUpdate(userId, {
       isOnline: isOnline,
-      lastSeen: new Date()
+      lastSeen: new Date(),
     });
 
-    res.json({ message: 'Presence updated successfully' });
+    res.json({ message: "Presence updated successfully" });
   } catch (error) {
-    console.error('Error updating presence:', error);
-    res.status(500).json({ message: 'Error updating presence' });
+    console.error("Error updating presence:", error);
+    res.status(500).json({ message: "Error updating presence" });
   }
 }
 
 async function getPresence(req, res) {
   try {
     const userId = req.params.userId;
-    const user = await User.findById(userId).select('isOnline lastSeen');
+    const user = await User.findById(userId).select("isOnline lastSeen");
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
     res.json({
       isOnline: user.isOnline,
-      lastSeen: user.lastSeen
+      lastSeen: user.lastSeen,
     });
   } catch (error) {
-    console.error('Error fetching presence:', error);
-    res.status(500).json({ message: 'Error fetching presence' });
+    console.error("Error fetching presence:", error);
+    res.status(500).json({ message: "Error fetching presence" });
   }
 }
 
@@ -298,13 +362,13 @@ const removeUserAvatar = async (req, res) => {
   try {
     // Get user from auth middleware
     const userId = req.user._id;
-    console.log('Removing avatar for user:', userId);
+    console.log("Removing avatar for user:", userId);
 
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
@@ -314,14 +378,162 @@ const removeUserAvatar = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Profile picture removed successfully'
+      message: "Profile picture removed successfully",
     });
-
   } catch (error) {
-    console.error('removeUserAvatar error:', error);
+    console.error("removeUserAvatar error:", error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to remove profile picture'
+      message: "Failed to remove profile picture",
+    });
+  }
+};
+
+// Permanently delete user account and all related data
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    console.log("Permanently deleting account for user:", userId);
+
+    // Verify user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const Post = require("../models/Post");
+    const Message = require("../models/Message");
+    const Notification = require("../models/Notification");
+    const Block = require("../models/Block");
+    const Connection = require("../models/Connection");
+    const ConnectionRequest = require("../models/ConnectionRequest");
+    const Event = require("../models/Event");
+    const EventRegistration = require("../models/EventRegistration");
+    const ForumPost = require("../models/ForumPost");
+    const ForumComment = require("../models/ForumComment");
+    const ForumReport = require("../models/ForumReport");
+    const MessageReport = require("../models/MessageReport");
+    const PostReport = require("../models/PostReport");
+
+    try {
+      // Execute all deletions sequentially
+      // This is safer for standalone MongoDB instances
+
+      // 1. Delete all posts created by user
+      await Post.deleteMany({ userId });
+      console.log("✓ Deleted user posts");
+
+      // 2. Delete all messages sent/received by user
+      await Message.deleteMany({
+        $or: [{ from: userId }, { to: userId }],
+      });
+      console.log("✓ Deleted user messages");
+
+      // 3. Delete all notifications related to user
+      await Notification.deleteMany({
+        $or: [{ recipient: userId }, { sender: userId }],
+      });
+      console.log("✓ Deleted user notifications");
+
+      // 4. Delete all blocks created by/to user
+      await Block.deleteMany({
+        $or: [{ blocker: userId }, { blocked: userId }],
+      });
+      console.log("✓ Deleted user blocks");
+
+      // 5. Delete all connections with user
+      await Connection.deleteMany({
+        $or: [{ user1: userId }, { user2: userId }],
+      });
+      console.log("✓ Deleted user connections");
+
+      // 6. Delete all connection requests from/to user
+      await ConnectionRequest.deleteMany({
+        $or: [{ from: userId }, { to: userId }],
+      });
+      console.log("✓ Deleted user connection requests");
+
+      // 7. Delete events organized by user and registrations
+      await Event.deleteMany({ organizer: userId });
+      await EventRegistration.deleteMany({ userId });
+      console.log("✓ Deleted user events and registrations");
+
+      // 8. Delete forum posts created by user
+      await ForumPost.deleteMany({ user: userId });
+      console.log("✓ Deleted user forum posts");
+
+      // 9. Delete forum comments created by user
+      await ForumComment.deleteMany({ user: userId });
+      console.log("✓ Deleted user forum comments");
+
+      // 10. Delete forum reports filed by user
+      await ForumReport.deleteMany({ reporter: userId });
+      console.log("✓ Deleted user forum reports");
+
+      // 11. Delete message reports filed by user
+      await MessageReport.deleteMany({ reporter: userId });
+      console.log("✓ Deleted user message reports");
+
+      // 12. Delete post reports filed by user
+      await PostReport.deleteMany({ reporter: userId });
+      console.log("✓ Deleted user post reports");
+
+      // 13. Remove user from all arrays in other users' documents
+      await User.updateMany(
+        { connections: userId },
+        { $pull: { connections: userId } }
+      );
+      await User.updateMany(
+        { connectionRequests: userId },
+        { $pull: { connectionRequests: userId } }
+      );
+      await User.updateMany(
+        { followers: userId },
+        { $pull: { followers: userId } }
+      );
+      await User.updateMany(
+        { following: userId },
+        { $pull: { following: userId } }
+      );
+
+      // Get all user's posts before deleting to clean up bookmarks
+      const userPosts = await Post.find({ userId }, "_id");
+      const userPostIds = userPosts.map((p) => p._id);
+
+      if (userPostIds.length > 0) {
+        await User.updateMany(
+          { bookmarkedPosts: { $in: userPostIds } },
+          { $pull: { bookmarkedPosts: { $in: userPostIds } } }
+        );
+      }
+
+      console.log(
+        "✓ Removed user from other user connections/following arrays"
+      );
+
+      // 14. Delete the user account
+      await User.findByIdAndDelete(userId);
+      console.log("✓ Deleted user account");
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Account permanently deleted successfully. All associated data has been removed.",
+      });
+    } catch (deletionError) {
+      // If deletion fails, provide detailed error
+      console.error("Error during data deletion:", deletionError);
+      throw deletionError;
+    }
+  } catch (error) {
+    console.error("Error deleting account:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete account. Please try again later.",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -336,5 +548,6 @@ module.exports = {
   getSuggestedConnections,
   updatePresence,
   getPresence,
-  removeUserAvatar
+  removeUserAvatar,
+  deleteAccount,
 };

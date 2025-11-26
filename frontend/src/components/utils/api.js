@@ -183,16 +183,20 @@ export const eventsAPI = {
   approveEvent: (id) => apiClient.put(`/api/events/${id}/approve`),
   rejectEvent: (id) => apiClient.put(`/api/events/${id}/reject`),
   // Registration endpoints
-  registerForEvent: (id, registrationData) => 
+  registerForEvent: (id, registrationData) =>
     apiClient.post(`/api/events/${id}/register`, registrationData),
-  checkRegistration: (id) => 
+  checkRegistration: (id) =>
     apiClient.get(`/api/events/${id}/check-registration`),
-  getEventRegistrations: (id) => 
+  getEventRegistrations: (id) =>
     apiClient.get(`/api/events/${id}/registrations`),
-  downloadRegistrationsCSV: (id) => 
-    apiClient.get(`/api/events/${id}/registrations/download`, { responseType: 'blob' }),
-  markAttendance: (registrationId, attended) => 
-    apiClient.put(`/api/events/registrations/${registrationId}/attendance`, { attended }),
+  downloadRegistrationsCSV: (id) =>
+    apiClient.get(`/api/events/${id}/registrations/download`, {
+      responseType: "blob",
+    }),
+  markAttendance: (registrationId, attended) =>
+    apiClient.put(`/api/events/registrations/${registrationId}/attendance`, {
+      attended,
+    }),
 };
 
 export const connectionAPI = {
@@ -221,7 +225,8 @@ export const userAPI = {
   getUserByUsername: (username) =>
     apiClient.get(`/api/users/username/${username}`),
   getUserById: (userId) => apiClient.get(`/api/users/${userId}`),
-  getUserConnections: (userId) => apiClient.get(`/api/users/${userId}/connections`),
+  getUserConnections: (userId) =>
+    apiClient.get(`/api/users/${userId}/connections`),
   updateProfile: (userData, avatar = null) => {
     if (
       avatar ||
@@ -270,6 +275,8 @@ export const userAPI = {
   updatePresence: (isOnline) =>
     apiClient.put("/api/users/presence", { isOnline }),
   getPresence: (userId) => apiClient.get(`/api/users/${userId}/presence`),
+  // Delete entire user account and all associated data
+  deleteAccount: () => apiClient.delete("/api/users/account"),
 };
 
 export const fetchMessages = async (userId) => {

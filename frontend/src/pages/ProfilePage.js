@@ -99,8 +99,8 @@ const ProfilePage = () => {
   const [loading, setLoading] = useState(false);
   const [skillInput, setSkillInput] = useState("");
   const [activeSection, setActiveSection] = useState(() => {
-    const tab = searchParams.get('tab');
-    return tab === 'settings' ? 'settings' : 'overview';
+    const tab = searchParams.get("tab");
+    return tab === "settings" ? "settings" : "overview";
   });
   const [connections, setConnections] = useState([]);
   const [allConnections, setAllConnections] = useState([]); // For total unique connections
@@ -312,7 +312,9 @@ const ProfilePage = () => {
       return;
     }
 
-    const activeRole = (user?.role || currentUser?.role || "").toLowerCase().trim();
+    const activeRole = (user?.role || currentUser?.role || "")
+      .toLowerCase()
+      .trim();
     if (!["alumni", "teacher", "admin"].includes(activeRole)) {
       setPosts([]);
       return;
@@ -527,8 +529,12 @@ const ProfilePage = () => {
     { id: "about", label: "About", icon: FiInfo },
     { id: "skills", label: "Skills", icon: FiAward },
     { id: "connections", label: "Connections", icon: FiUsers },
-    ...(canViewPosts ? [{ id: "posts", label: "Posts", icon: FiFileText }] : []),
-    ...(isOwnProfile ? [{ id: "settings", label: "Settings", icon: FiSettings }] : []),
+    ...(canViewPosts
+      ? [{ id: "posts", label: "Posts", icon: FiFileText }]
+      : []),
+    ...(isOwnProfile
+      ? [{ id: "settings", label: "Settings", icon: FiSettings }]
+      : []),
   ];
 
   if (loading) {
@@ -622,7 +628,10 @@ const ProfilePage = () => {
                   key={item.id}
                   onClick={() => {
                     setActiveSection(item.id);
-                    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    if (
+                      typeof window !== "undefined" &&
+                      window.innerWidth < 1024
+                    ) {
                       setIsSidebarOpen(false);
                     }
                   }}
@@ -645,7 +654,11 @@ const ProfilePage = () => {
                     <motion.span
                       layoutId="profile-menu-active-glow"
                       className="absolute inset-0 bg-gradient-to-r from-white/15 via-white/10 to-transparent"
-                      transition={{ type: "spring", stiffness: 200, damping: 28 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 200,
+                        damping: 28,
+                      }}
                     />
                   )}
                   <div className="flex items-center gap-3">
@@ -736,7 +749,10 @@ const ProfilePage = () => {
                       onError={(e) => {
                         e.target.onerror = null;
                         e.target.src = DEFAULT_PROFILE_IMAGE;
-                        e.target.setAttribute("data-avatar-src", DEFAULT_PROFILE_IMAGE);
+                        e.target.setAttribute(
+                          "data-avatar-src",
+                          DEFAULT_PROFILE_IMAGE
+                        );
                       }}
                     />
                   );
@@ -815,7 +831,9 @@ const ProfilePage = () => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                {activeSection === "overview" && <OverviewSection user={user} />}
+                {activeSection === "overview" && (
+                  <OverviewSection user={user} />
+                )}
                 {activeSection === "about" && (
                   <AboutSection
                     user={user}
@@ -858,18 +876,20 @@ const ProfilePage = () => {
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-6">
                       <h2 className="text-2xl font-bold text-gray-900">
-                        {isOwnProfile ? 'My Posts' : `${user?.name}'s Posts`}
+                        {isOwnProfile ? "My Posts" : `${user?.name}'s Posts`}
                       </h2>
                       <span className="text-sm text-gray-600">
-                        {posts.length} {posts.length === 1 ? 'Post' : 'Posts'}
+                        {posts.length} {posts.length === 1 ? "Post" : "Posts"}
                       </span>
                     </div>
-                    
+
                     {posts.length === 0 ? (
                       <div className="text-center py-12 bg-white rounded-lg shadow">
                         <FiFileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-600 text-lg mb-2">
-                          {isOwnProfile ? 'You haven\'t created any posts yet' : 'No posts yet'}
+                          {isOwnProfile
+                            ? "You haven't created any posts yet"
+                            : "No posts yet"}
                         </p>
                         {isOwnProfile && (
                           <p className="text-gray-500 text-sm">
@@ -879,7 +899,7 @@ const ProfilePage = () => {
                       </div>
                     ) : (
                       <div className="space-y-6">
-                        {posts.map(post => (
+                        {posts.map((post) => (
                           <PostCard
                             key={post._id}
                             post={post}
@@ -888,7 +908,9 @@ const ProfilePage = () => {
                               setShareTarget(selected);
                               setShowShareModal(true);
                             }}
-                            onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
+                            onDelete={() =>
+                              setPosts(posts.filter((p) => p._id !== post._id))
+                            }
                           />
                         ))}
                       </div>
@@ -907,6 +929,7 @@ const ProfilePage = () => {
                     setAvatarFile={setAvatarFile}
                     handleDeleteAvatar={handleDeleteAvatar}
                     handleSubmit={handleSubmit}
+                    navigate={navigate}
                   />
                 )}
               </motion.div>
@@ -945,10 +968,10 @@ const ProfilePage = () => {
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-bold text-gray-900">Posts</h2>
                     <span className="text-sm text-gray-600">
-                      {posts.length} {posts.length === 1 ? 'Post' : 'Posts'}
+                      {posts.length} {posts.length === 1 ? "Post" : "Posts"}
                     </span>
                   </div>
-                  
+
                   {posts.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-lg shadow">
                       <FiFileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -956,7 +979,7 @@ const ProfilePage = () => {
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {posts.map(post => (
+                      {posts.map((post) => (
                         <PostCard
                           key={post._id}
                           post={post}
@@ -965,7 +988,9 @@ const ProfilePage = () => {
                             setShareTarget(selected);
                             setShowShareModal(true);
                           }}
-                          onDelete={() => setPosts(posts.filter(p => p._id !== post._id))}
+                          onDelete={() =>
+                            setPosts(posts.filter((p) => p._id !== post._id))
+                          }
                         />
                       ))}
                     </div>
@@ -1023,12 +1048,12 @@ const OverviewSection = ({ user }) => (
               ) : user.role === "student" ? (
                 <>
                   🏫 Department : {user.department || "Not specified"} Year :{" "}
-                  {user.year || ":"}  🎓Graduation {user.graduationYear || ":"}
+                  {user.year || ":"} 🎓Graduation {user.graduationYear || ":"}
                 </>
               ) : (
                 // Teacher
                 <>
-                  🏫 Department: {user.department || "Not specified"} 
+                  🏫 Department: {user.department || "Not specified"}
                   🎓 Graduation {user.graduationYear || ":"}
                 </>
               )}
@@ -1956,157 +1981,161 @@ const ConnectionsSection = ({
   navigate,
 }) => {
   // Get current user's connection IDs for checking
-  const myConnectionIds = currentUser?.connections?.map((c) => c?._id || c).filter(Boolean) || [];
+  const myConnectionIds =
+    currentUser?.connections?.map((c) => c?._id || c).filter(Boolean) || [];
   const connectionList = (allConnections ?? connections ?? []).filter(Boolean);
-  
+
   return (
-  <div className="space-y-6">
-    <div className="flex justify-between items-center">
-      <h2 className="text-2xl font-bold text-slate-800">My Connections</h2>
-      <div className="flex items-center gap-4">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-indigo-600">
-            {connectionList.length}
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">My Connections</h2>
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-indigo-600">
+              {connectionList.length}
+            </div>
+            <div className="text-sm text-slate-500">Total Connections</div>
           </div>
-          <div className="text-sm text-slate-500">Total Connections</div>
         </div>
       </div>
-    </div>
 
-    <motion.div
-      className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.1 }}
-    >
-      {connectionList.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {connectionList.map((connection, index) => {
-            if (!connection) return null;
-            const profileUrl = connection.username
-              ? `/profile/${connection.username}`
-              : connection._id
-              ? `/profile/id/${connection._id}`
-              : '#';
-            return (
-              <motion.div
-                key={connection._id || `connection-${index}`}
-                className="bg-white/80 rounded-xl p-4 border border-slate-200 hover:shadow-lg transition-all duration-300"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 * index }}
-                whileHover={{ y: -5 }}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <a href={profileUrl} className="focus:outline-none">
-                    {(() => {
-                      const avatarSrc = connection.avatarUrl
-                        ? getAvatarUrl(connection.avatarUrl)
-                        : DEFAULT_PROFILE_IMAGE;
-                      return (
-                        <img
-                          className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition cursor-zoom-in"
-                          src={avatarSrc}
-                          alt={connection.name || 'Connection'}
-                          data-avatar-src={avatarSrc}
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = DEFAULT_PROFILE_IMAGE;
-                            e.target.setAttribute("data-avatar-src", DEFAULT_PROFILE_IMAGE);
-                          }}
-                        />
-                      );
-                    })()}
-                  </a>
-                  <div className="flex-1">
-                    <a
-                      href={profileUrl}
-                      className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block"
-                    >
-                      {connection.name || connection.username || 'Connection'}
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        {connectionList.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {connectionList.map((connection, index) => {
+              if (!connection) return null;
+              const profileUrl = connection.username
+                ? `/profile/${connection.username}`
+                : connection._id
+                ? `/profile/id/${connection._id}`
+                : "#";
+              return (
+                <motion.div
+                  key={connection._id || `connection-${index}`}
+                  className="bg-white/80 rounded-xl p-4 border border-slate-200 hover:shadow-lg transition-all duration-300"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 * index }}
+                  whileHover={{ y: -5 }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <a href={profileUrl} className="focus:outline-none">
+                      {(() => {
+                        const avatarSrc = connection.avatarUrl
+                          ? getAvatarUrl(connection.avatarUrl)
+                          : DEFAULT_PROFILE_IMAGE;
+                        return (
+                          <img
+                            className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200 hover:ring-2 hover:ring-indigo-400 transition cursor-zoom-in"
+                            src={avatarSrc}
+                            alt={connection.name || "Connection"}
+                            data-avatar-src={avatarSrc}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = DEFAULT_PROFILE_IMAGE;
+                              e.target.setAttribute(
+                                "data-avatar-src",
+                                DEFAULT_PROFILE_IMAGE
+                              );
+                            }}
+                          />
+                        );
+                      })()}
                     </a>
-                    <p className="text-sm text-slate-500 capitalize">
-                      {connection.role || 'user'}
-                    </p>
+                    <div className="flex-1">
+                      <a
+                        href={profileUrl}
+                        className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors block"
+                      >
+                        {connection.name || connection.username || "Connection"}
+                      </a>
+                      <p className="text-sm text-slate-500 capitalize">
+                        {connection.role || "user"}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  {isOwnProfile ? (
-                    // Own profile - show Message and Unfollow
-                    <>
-                      <motion.button
-                        onClick={() => handleMessageUser(connection._id)}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 hover:shadow-lg transition-all duration-300"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        <FiMessageCircle size={14} />
-                        Message
-                      </motion.button>
-                      <motion.button
-                        onClick={() =>
-                          handleConnectionAction("remove", connection._id)
-                        }
-                        className="px-3 py-2 border-2 border-red-500 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-all duration-300"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        <FiUserX size={14} /> Unfollow
-                      </motion.button>
-                    </>
-                  ) : myConnectionIds.includes(connection._id) ? (
-                    // Visitor view - connection is also in YOUR connections
-                    <>
-                      <motion.button
-                        onClick={() => handleMessageUser(connection._id)}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 hover:shadow-lg transition-all duration-300"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        <FiMessageCircle size={14} />
-                        Message
-                      </motion.button>
-                      <motion.button
-                        className="px-3 py-2 bg-green-50 border-2 border-green-500 text-green-600 rounded-lg text-sm font-medium cursor-default"
-                      >
-                        <FiUserCheck size={14} /> Connected
-                      </motion.button>
-                    </>
-                  ) : (
-                    // Visitor view - connection is NOT in YOUR connections
-                    <>
-                      <motion.button
-                        onClick={() => navigate(`/profile/id/${connection._id}`)}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all duration-300"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        <FiUser size={14} />
-                        View Profile
-                      </motion.button>
-                      <ConnectionButton userId={connection._id} />
-                    </>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
-            <FiUsers className="w-8 h-8 text-slate-400" />
+                  <div className="flex gap-2">
+                    {isOwnProfile ? (
+                      // Own profile - show Message and Unfollow
+                      <>
+                        <motion.button
+                          onClick={() => handleMessageUser(connection._id)}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 hover:shadow-lg transition-all duration-300"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <FiMessageCircle size={14} />
+                          Message
+                        </motion.button>
+                        <motion.button
+                          onClick={() =>
+                            handleConnectionAction("remove", connection._id)
+                          }
+                          className="px-3 py-2 border-2 border-red-500 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-all duration-300"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <FiUserX size={14} /> Unfollow
+                        </motion.button>
+                      </>
+                    ) : myConnectionIds.includes(connection._id) ? (
+                      // Visitor view - connection is also in YOUR connections
+                      <>
+                        <motion.button
+                          onClick={() => handleMessageUser(connection._id)}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 hover:shadow-lg transition-all duration-300"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <FiMessageCircle size={14} />
+                          Message
+                        </motion.button>
+                        <motion.button className="px-3 py-2 bg-green-50 border-2 border-green-500 text-green-600 rounded-lg text-sm font-medium cursor-default">
+                          <FiUserCheck size={14} /> Connected
+                        </motion.button>
+                      </>
+                    ) : (
+                      // Visitor view - connection is NOT in YOUR connections
+                      <>
+                        <motion.button
+                          onClick={() =>
+                            navigate(`/profile/id/${connection._id}`)
+                          }
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all duration-300"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <FiUser size={14} />
+                          View Profile
+                        </motion.button>
+                        <ConnectionButton userId={connection._id} />
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
-          <h3 className="text-lg font-semibold text-slate-800 mb-2">
-            No connections yet
-          </h3>
-          <p className="text-slate-500">
-            Start connecting with your alumni, teachers, and peers!
-          </p>
-        </div>
-      )}
-    </motion.div>
-  </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
+              <FiUsers className="w-8 h-8 text-slate-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">
+              No connections yet
+            </h3>
+            <p className="text-slate-500">
+              Start connecting with your alumni, teachers, and peers!
+            </p>
+          </div>
+        )}
+      </motion.div>
+    </div>
   );
 };
 
@@ -2122,154 +2151,188 @@ const SettingsSection = ({
   setAvatarFile,
   handleDeleteAvatar,
   handleSubmit,
+  navigate,
 }) => {
-  const isAdmin = user?.role?.toLowerCase() === 'admin';
-  
+  const isAdmin = user?.role?.toLowerCase() === "admin";
+
   return (
-  <div className="space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
-      {!isEditing ? (
-        <motion.button
-          onClick={() => setIsEditing(true)}
-          className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <FiEdit size={18} />
-          Edit Settings
-        </motion.button>
-      ) : (
-        <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-bold text-slate-800">Account Settings</h2>
+        {!isEditing ? (
           <motion.button
-            onClick={handleSubmit}
-            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
+            onClick={() => setIsEditing(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-slate-700 to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-slate-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <FiSave size={18} />
-            Save Changes
+            <FiEdit size={18} />
+            Edit Settings
           </motion.button>
-          <motion.button
-            onClick={() => {
-              setIsEditing(false);
-              setAvatarFile(null);
-            }}
-            className="flex items-center gap-2 px-5 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300 w-full sm:w-auto justify-center"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <FiX size={18} />
-            Cancel
-          </motion.button>
-          <motion.button
-            onClick={handleDeleteAvatar}
-            className="flex items-center gap-2 px-5 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300 w-full sm:w-auto justify-center"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <FiTrash2 size={18} />
-            Delete Profile Picture
-          </motion.button>
-        </div>
-      )}
-    </div>
-
-    <motion.div
-      className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.1 }}
-    >
-      {isEditing ? (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Profile Picture
-            </label>
-            <FileInput accept="image/*" onChange={setAvatarFile} />
-            {avatarFile && (
-              <p className="text-sm text-green-600 mt-2">
-                ✓ New image selected
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Name
-            </label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Email
-            </label>
-            <input
-              type="email"
-              value={user.email}
-              disabled
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-50 text-slate-500"
-            />
-          </div>
-
-          <div className="pt-2">
+        ) : (
+          <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
             <motion.button
-              type="button"
+              onClick={handleSubmit}
+              className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 w-full sm:w-auto justify-center"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FiSave size={18} />
+              Save Changes
+            </motion.button>
+            <motion.button
               onClick={() => {
-                if (
-                  window.confirm(
-                    "Are you sure you want to delete your profile? This cannot be undone."
-                  )
-                ) {
-                  // placeholder; backend route to be added
-                  alert("Use admin to delete or add endpoint.");
-                }
+                setIsEditing(false);
+                setAvatarFile(null);
               }}
-              className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
+              className="flex items-center gap-2 px-5 py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all duration-300 w-full sm:w-auto justify-center"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FiX size={18} />
+              Cancel
+            </motion.button>
+            <motion.button
+              onClick={handleDeleteAvatar}
+              className="flex items-center gap-2 px-5 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300 w-full sm:w-auto justify-center"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               <FiTrash2 size={18} />
-              Delete Profile
+              Delete Profile Picture
             </motion.button>
           </div>
-        </form>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <span className="text-sm font-semibold text-slate-500">Name:</span>
-            <p className="text-slate-800">{user.name}</p>
-          </div>
-          <div>
-            <span className="text-sm font-semibold text-slate-500">Email:</span>
-            <p className="text-slate-800">{user.email}</p>
-          </div>
-          <div>
-            <span className="text-sm font-semibold text-slate-500">Role:</span>
-            <p className="text-slate-800 capitalize">{user.role}</p>
-          </div>
-          <div>
-            <span className="text-sm font-semibold text-slate-500">
-              Member Since:
-            </span>
-            <p className="text-slate-800">
-              {new Date(user.createdAt).toLocaleDateString()}
-            </p>
-          </div>
-        </div>
-      )}
-    </motion.div>
+        )}
+      </div>
 
-  </div>
+      <motion.div
+        className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-white/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        {isEditing ? (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Profile Picture
+              </label>
+              <FileInput accept="image/*" onChange={setAvatarFile} />
+              {avatarFile && (
+                <p className="text-sm text-green-600 mt-2">
+                  ✓ New image selected
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Name
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                value={user.email}
+                disabled
+                className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-slate-50 text-slate-500"
+              />
+            </div>
+
+            <div className="pt-2">
+              <motion.button
+                type="button"
+                onClick={async () => {
+                  if (
+                    window.confirm(
+                      "Are you sure you want to delete your profile? This cannot be undone. All your posts, messages, connections, and data will be permanently removed."
+                    )
+                  ) {
+                    try {
+                      // Call the delete account endpoint
+                      const response = await userAPI.deleteAccount();
+
+                      if (response.data.success) {
+                        toast.success(
+                          "Account deleted successfully. Redirecting..."
+                        );
+
+                        // Clear authentication
+                        localStorage.removeItem("token");
+                        localStorage.removeItem("userId");
+
+                        // Redirect to login/home page after a short delay
+                        setTimeout(() => {
+                          navigate("/");
+                        }, 1500);
+                      } else {
+                        toast.error(
+                          response.data.message || "Failed to delete account"
+                        );
+                      }
+                    } catch (error) {
+                      console.error("Delete account error:", error);
+                      toast.error(
+                        error.response?.data?.message ||
+                          error.message ||
+                          "Failed to delete account. Please try again."
+                      );
+                    }
+                  }
+                }}
+                className="flex items-center gap-2 px-6 py-3 border-2 border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all duration-300"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <FiTrash2 size={18} />
+                Delete Profile
+              </motion.button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <span className="text-sm font-semibold text-slate-500">
+                Name:
+              </span>
+              <p className="text-slate-800">{user.name}</p>
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-slate-500">
+                Email:
+              </span>
+              <p className="text-slate-800">{user.email}</p>
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-slate-500">
+                Role:
+              </span>
+              <p className="text-slate-800 capitalize">{user.role}</p>
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-slate-500">
+                Member Since:
+              </span>
+              <p className="text-slate-800">
+                {new Date(user.createdAt).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </div>
   );
 };
 
