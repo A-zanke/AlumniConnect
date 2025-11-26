@@ -1,17 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import {
-  Trash2,
-  Ban,
-  Flag,
-  X as LucideX,
-  Check,
-  CheckCheck,
-  Clock,
-  Eye,
-  EyeOff,
-} from "lucide-react";
-import { createPortal } from "react-dom";
+import { Check, CheckCheck, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useEncryption } from "../hooks/useEncryption";
 import { Link, useNavigate } from "react-router-dom";
 import Spinner from "../components/ui/Spinner";
 import { toast } from "react-toastify";
@@ -21,61 +11,43 @@ import axios from "axios";
 import { getAvatarUrl } from "../components/utils/helpers";
 import {
   FiSend,
-  FiImage,
-  FiSmile,
   FiMoreVertical,
   FiSearch,
   FiArrowLeft,
   FiCornerUpLeft,
   FiTrash2,
-  FiFlag,
   FiX,
   FiChevronDown,
   FiStar,
   FiInfo,
   FiCopy,
-  FiShare2,
-  FiCheckSquare,
-  FiCheck,
-  FiPhone,
-  FiVideo,
   FiPaperclip,
-  FiCamera,
-  FiMic,
-  FiEdit3,
-  FiArchive,
-  FiVolume2,
-  FiVolumeX,
   FiShield,
   FiUserX,
-  FiAlertTriangle,
   FiExternalLink,
-  FiClock,
-  FiEye,
   FiUsers,
-  FiSettings,
   FiDownload,
+  FiCheckSquare,
+  FiFlag,
 } from "react-icons/fi";
-import { BiCheckDouble } from "react-icons/bi";
 import {
   BsEmojiSmile,
   BsThreeDotsVertical,
   BsReply,
   BsForward,
-  BsStar,
-  BsStarFill,
 } from "react-icons/bs";
-import { MdOutlineEmojiEmotions } from "react-icons/md";
 import { HiOutlineEmojiHappy } from "react-icons/hi";
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
-import MediaDownloadOverlay from "../components/ui/MediaDownloadOverlay";
-import { useEncryption } from "../hooks/useEncryption";
+// import { useEncryption } from "../hooks/useEncryption";
 
 const MessagesPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [hasLoadedInitialMessages, setHasLoadedInitialMessages] =
+    useState(false);
+  const failedDecryptionCache = useRef(new Set()); // Use useRef for persistence across re-renders
   const [connections, setConnections] = useState([]);
   const [unreadByConversationId, setUnreadByConversationId] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
@@ -103,6 +75,7 @@ const MessagesPage = () => {
       );
     }
   }, [user, hasKey]);
+
   // Attachment selection (WhatsApp-like)
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -520,7 +493,7 @@ const MessagesPage = () => {
 
     const fetchConversations = async () => {
       try {
-        setLoading(true);
+        // setLoading(true); // Removed - no longer needed
         const token = localStorage.getItem("token");
         const [convResp, connResp] = await Promise.all([
           axios.get(`${baseURL}/api/messages`, {
@@ -604,9 +577,10 @@ const MessagesPage = () => {
       } catch (error) {
         console.error("Error fetching conversations:", error);
         toast.error("Failed to load conversations");
-      } finally {
-        setLoading(false);
       }
+      // finally {
+      //   setLoading(false); // Removed - no longer needed
+      // }
     };
 
     fetchConversations();
@@ -634,7 +608,30 @@ const MessagesPage = () => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
 
-  // Removed duplicate effect - fetchMessagesData is already called in a separate useEffect
+  // Persist selected user to localStorage and restore on mount
+  useEffect(() => {
+    if (selectedUser) {
+      localStorage.setItem("lastSelectedUserId", selectedUser._id);
+    }
+  }, [selectedUser]);
+
+  // Restore selected user from localStorage on mount
+  useEffect(() => {
+    const lastUserId = localStorage.getItem("lastSelectedUserId");
+    if (lastUserId && connections.length > 0 && !selectedUser) {
+      // Find the user in connections
+      const userToSelect = connections.find(
+        (c) => String(c.user?._id) === String(lastUserId)
+      );
+      if (userToSelect) {
+        console.log(
+          "🔄 Restoring selected user from localStorage:",
+          lastUserId
+        );
+        setSelectedUser(userToSelect.user);
+      }
+    }
+  }, [connections, selectedUser]);
 
   // Socket.IO connection
   useEffect(() => {
@@ -681,43 +678,11 @@ const MessagesPage = () => {
             currentSelected && String(senderId) === String(currentSelected._id);
           const tabFocused = document.visibilityState === "visible";
 
-          // Decrypt message if encrypted, but ALWAYS fallback to plaintext if decryption fails
-          let messageContent = fallbackContent || body || "";
-          let isDecrypted = false;
-
-          if (encrypted && encryptionData) {
-            console.log("🔓 Attempting to decrypt incoming message...");
-            try {
-              const decrypted = await decryptReceivedMessage({
-                encrypted,
-                encryptionData,
-                content: messageContent,
-                fallbackContent: messageContent,
-              });
-              if (
-                decrypted &&
-                decrypted.trim() !== "" &&
-                !decrypted.includes("[Unable to decrypt")
-              ) {
-                messageContent = decrypted;
-                isDecrypted = true;
-                console.log("✅ Incoming message decrypted successfully");
-              } else {
-                console.log(
-                  "📝 Decryption returned empty, using plaintext fallback"
-                );
-                messageContent = fallbackContent || body || "";
-              }
-            } catch (error) {
-              console.warn(
-                "⚠️ Decryption failed, using plaintext fallback:",
-                error.message
-              );
-              messageContent = fallbackContent || body || "";
-            }
-          } else {
-            console.log("📨 Received plaintext message");
-          }
+          // Always use fallback content for encrypted messages
+          const messageContent = fallbackContent || body || "";
+          console.log(
+            `📨 New message ${messageId}: "${messageContent}" (encrypted: ${encrypted})`
+          );
 
           if (isCurrent && tabFocused) {
             setMessages((prev) => [
@@ -732,8 +697,8 @@ const MessagesPage = () => {
                 status: "delivered",
                 isForwarded,
                 forwardedFrom,
-                encrypted,
-                _originalEncrypted: encrypted,
+                encrypted: false, // Mark as not encrypted for rendering
+                _originalEncrypted: encrypted, // Keep original flag for reference
               },
             ]);
             if (s && conversationId)
@@ -957,15 +922,53 @@ const MessagesPage = () => {
     const onScroll = () => {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
       setShowJumpToBottom(!nearBottom);
+
+      // Check if user scrolled to top and we have messages - load historical messages
+      if (
+        el.scrollTop < 100 &&
+        messages.length > 0 &&
+        !loadingHistory &&
+        hasLoadedInitialMessages
+      ) {
+        console.log("📜 User scrolled to top, loading historical messages...");
+        // TODO: Implement historical message loading here
+        // setLoadingHistory(true);
+        // fetchHistoricalMessages();
+      }
     };
     el.addEventListener("scroll", onScroll);
     onScroll();
     return () => el.removeEventListener("scroll", onScroll);
-  }, [messageContainerRef.current]);
+  }, [
+    messageContainerRef.current,
+    messages.length,
+    loadingHistory,
+    hasLoadedInitialMessages,
+  ]);
 
   // Fetch messages for selected user
   const fetchMessagesData = useCallback(async () => {
-    if (!selectedUser || !selectedUser._id) {
+    console.log(
+      "🚀 fetchMessagesData START - selectedUser:",
+      selectedUser?._id
+    );
+
+    // CHANGED: Don't block on encryption - fetch messages regardless
+    // Messages will display fallback content until encryption is ready
+    if (!selectedUser || !user) {
+      console.log("⏳ Waiting for user selection...");
+      return;
+    }
+
+    console.log(
+      "✅ Proceeding with message fetch (encryption may or may not be ready)..."
+    );
+
+    // Clear existing messages to force reprocessing with new logic
+    console.log("🗑️ Clearing existing messages for fresh processing");
+    setMessages([]);
+
+    if (!selectedUser._id) {
       console.warn(
         "Cannot fetch messages: selectedUser or selectedUser._id is missing"
       );
@@ -981,125 +984,126 @@ const MessagesPage = () => {
     }
 
     try {
-      setLoading(true);
+      // Don't set loading state for initial fetch - make it instant
+      console.log("🌐 Calling fetchMessages API for user:", userId);
       const data = await fetchMessages(userId);
+      console.log("📬 Raw API response:", data);
+
       const normalized = (Array.isArray(data) ? data : []).map((m) => ({
         ...m,
         status: m.status || "sent",
       }));
 
+      console.log("📋 Normalized messages:", normalized.length);
+
+      // Log the structure of the first message to understand the data format
+      if (normalized.length > 0) {
+        console.log(
+          "🔍 First message structure:",
+          JSON.stringify(normalized[0], null, 2)
+        );
+        console.log(
+          "🔍 All message structures:",
+          normalized.map((m) => ({
+            id: m.id,
+            encrypted: m.encrypted,
+            content: m.content,
+            body: m.body,
+            fallbackContent: m.fallbackContent,
+            encryptionData: m.encryptionData,
+          }))
+        );
+
+        // Log each message field individually
+        normalized.forEach((msg, index) => {
+          console.log(`📄 Message ${index + 1} details:`, {
+            id: msg.id,
+            encrypted: msg.encrypted,
+            content: msg.content,
+            body: msg.body,
+            fallbackContent: msg.fallbackContent,
+            encryptionData: msg.encryptionData,
+            senderId: msg.senderId,
+            recipientId: msg.recipientId,
+          });
+        });
+      }
+
       // Decrypt messages if they're encrypted
       console.log("📥 Processing messages:", normalized.length, "messages");
+      console.log("📥 Message data sample:", normalized.slice(0, 2));
 
-      // Helper function to process a single message with retry logic
+      // Log encryption status of messages
+      const encryptedCount = normalized.filter((m) => m.encrypted).length;
+      console.log(
+        `📊 Encrypted messages: ${encryptedCount}/${normalized.length}`
+      );
+
+      // Log detailed info for first few messages
+      normalized.slice(0, 3).forEach((msg, idx) => {
+        console.log(`📝 Message ${idx + 1}:`, {
+          id: msg.id,
+          encrypted: msg.encrypted,
+          hasEncryptionData: !!msg.encryptionData,
+          hasFallbackContent: !!msg.fallbackContent,
+          content: msg.content || "[No content]",
+          body: msg.body || "[No body]",
+        });
+      });
+
+      // Helper function to process a single message - simple WhatsApp-like display
       const processMessage = async (msg) => {
-        // For encrypted messages, try to decrypt with retry
-        if (msg.encrypted && msg.encryptionData) {
-          let decryptedContent = null;
-          let attemptCount = 0;
-          const maxAttempts = 2;
-
-          // Retry decryption up to 2 times (initial + 1 retry)
-          while (attemptCount < maxAttempts && !decryptedContent) {
-            try {
-              const result = await decryptReceivedMessage(msg);
-              if (
-                result &&
-                result.trim() !== "" &&
-                !result.includes("[Unable to decrypt")
-              ) {
-                decryptedContent = result;
-                console.log("✅ Successfully decrypted message:", msg.id);
-                return {
-                  ...msg,
-                  content: decryptedContent,
-                  _decrypted: true,
-                };
-              }
-            } catch (error) {
-              attemptCount++;
-              if (attemptCount < maxAttempts) {
-                console.warn(
-                  `⚠️ Decryption attempt ${attemptCount} failed, retrying...`
-                );
-                // Small delay before retry
-                await new Promise((r) => setTimeout(r, 100));
-              } else {
-                console.warn(
-                  "⚠️ Decryption failed after retries, using fallback:",
-                  error.message
-                );
-              }
-            }
-          }
-
-          // If decryption succeeded, return it (handled above)
-          if (decryptedContent) {
-            return {
-              ...msg,
-              content: decryptedContent,
-              _decrypted: true,
-            };
-          }
-
-          // Decryption failed - ALWAYS use fallback content (plaintext)
-          // IMPORTANT: Never return null for encrypted messages - always show fallback!
-          const fallbackContent = msg.fallbackContent || msg.content || "";
-
-          if (fallbackContent && fallbackContent.trim() !== "") {
-            console.log(
-              "📝 Using plaintext fallback for encrypted message:",
-              msg.id
-            );
-            return {
-              ...msg,
-              content: fallbackContent,
-              encrypted: false, // Mark as not encrypted since we're showing plaintext
-            };
-          }
-
-          // No fallback content - check if it has attachments
-          if (msg.attachments && msg.attachments.length > 0) {
-            console.log("📎 Encrypted message has attachments only:", msg.id);
-            return {
-              ...msg,
-              content: "",
-              encrypted: false,
-            };
-          }
-
-          // Last resort: if absolutely no content, still return the message with empty content
-          // Don't filter out messages - they might have reactions or be important context
-          console.warn(
-            "⚠️ Encrypted message with no decrypted content and no attachments:",
-            msg.id
-          );
-          return {
-            ...msg,
-            content: "[Message could not be decrypted]",
-            encrypted: false,
-            _decryptionFailed: true,
-          };
-        }
-
-        // For non-encrypted messages, use content as-is
-        if (msg.content && msg.content.trim() !== "") {
-          return msg;
-        }
-
-        // No plaintext content - check if it has attachments
-        if (msg.attachments && msg.attachments.length > 0) {
-          console.log("📎 Message has attachments only:", msg.id);
-          return msg;
-        }
-
-        // No content and no attachments - STILL return the message
-        // It might have historical value or reactions
         console.log(
-          "� Empty message returned (may have attachments or historical value):",
-          msg.id
+          `🔍 Processing message ${msg.id}: encrypted=${msg.encrypted}, content="${msg.content}", fallback="${msg.fallbackContent}"`
         );
-        return msg;
+
+        let displayContent = "";
+
+        // CRITICAL: For encrypted messages, ALWAYS prioritize fallback content first
+        if (msg.encrypted) {
+          // Check fallbackContent first (it has the plaintext)
+          if (msg.fallbackContent && msg.fallbackContent.trim() !== "") {
+            displayContent = msg.fallbackContent;
+            console.log(
+              `✅ Using fallbackContent for encrypted message: "${displayContent}"`
+            );
+          } else if (msg.body && msg.body.trim() !== "") {
+            displayContent = msg.body;
+            console.log(
+              `✅ Using body for encrypted message: "${displayContent}"`
+            );
+          } else if (msg.content && msg.content.trim() !== "") {
+            displayContent = msg.content;
+            console.log(
+              `✅ Using content for encrypted message: "${displayContent}"`
+            );
+          } else {
+            displayContent = "[Message content unavailable]";
+            console.warn(`⚠️ No content found for encrypted message`);
+          }
+        } else {
+          // For unencrypted messages, try content first
+          if (msg.content && msg.content.trim() !== "") {
+            displayContent = msg.content;
+          } else if (msg.body && msg.body.trim() !== "") {
+            displayContent = msg.body;
+          } else if (msg.fallbackContent && msg.fallbackContent.trim() !== "") {
+            displayContent = msg.fallbackContent;
+          } else {
+            displayContent = "";
+          }
+        }
+
+        console.log(
+          `📱 Message ${msg.id} will display: "${displayContent}" (encrypted: ${msg.encrypted})`
+        );
+
+        // Always return the message with the content we found
+        return {
+          ...msg,
+          content: displayContent,
+          encrypted: false, // Mark as not encrypted for rendering
+        };
       };
 
       // Process messages in batches to avoid UI blocking
@@ -1124,6 +1128,16 @@ const MessagesPage = () => {
         normalized.length
       );
 
+      // Log final message content for debugging
+      validMessages.slice(0, 3).forEach((msg, idx) => {
+        console.log(`🎯 Final message ${idx + 1}:`, {
+          id: msg.id,
+          content: msg.content || "[No content]",
+          encrypted: msg.encrypted,
+          _decrypted: msg._decrypted,
+        });
+      });
+
       // Load block/unblock history from localStorage
       const blockHistoryKey = `blockHistory_${user._id}_${userId}`;
       const blockHistory = JSON.parse(
@@ -1135,7 +1149,9 @@ const MessagesPage = () => {
         (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
       );
 
+      console.log("📦 Setting messages state:", allMessages.length, "messages");
       setMessages(allMessages);
+      setHasLoadedInitialMessages(true);
 
       try {
         const token = localStorage.getItem("token");
@@ -1164,14 +1180,39 @@ const MessagesPage = () => {
         setError("Failed to fetch messages");
         toast.error("Failed to load messages. Please try again.");
       }
-    } finally {
-      setLoading(false);
     }
-  }, [selectedUser]);
+    // No finally block - we don't want to set loading to false since we're not using it
+  }, [selectedUser?._id, user]); // Removed encryptionReady from dependencies
 
   useEffect(() => {
-    fetchMessagesData();
-  }, [fetchMessagesData]);
+    console.log(
+      "🔄 useEffect triggered - selectedUser:",
+      selectedUser?._id,
+      "- encryption ready:",
+      encryptionReady
+    );
+
+    // CHANGED: Don't wait for encryption - fetch messages immediately
+    // Fallback content will be displayed until encryption is ready
+
+    // Clear failed decryption cache when switching users
+    failedDecryptionCache.current.clear();
+
+    // Add visual alert for debugging
+    if (selectedUser) {
+      console.log(
+        "👤 Selected user changed to:",
+        selectedUser.name || selectedUser.username
+      );
+      // You can uncomment this for debugging:
+      // alert(`Switching to chat with: ${selectedUser.name || selectedUser.username}`);
+    }
+
+    if (selectedUser) {
+      console.log("📞 Calling fetchMessagesData...");
+      fetchMessagesData();
+    }
+  }, [selectedUser?._id, fetchMessagesData]); // Removed encryptionReady from dependencies
 
   // Message handlers
   const handleSendMessage = async (e) => {
@@ -1273,7 +1314,7 @@ const MessagesPage = () => {
         }
       }
 
-      // Handle text-only message
+      // Handle text-only message - use HTTP API for consistency
       if (textContent && !hasAnyMedia) {
         const clientKey = generateClientKey();
 
@@ -1289,18 +1330,30 @@ const MessagesPage = () => {
         };
         setMessages((prev) => [...prev, optimistic]);
 
-        if (socket) {
-          const socketAttachments = [];
-          if (savedReplyTo?.id)
-            socketAttachments.push(`reply:${savedReplyTo.id}`);
+        // Use HTTP API for all messages to avoid duplicates
+        const token = localStorage.getItem("token");
+        const formData = new FormData();
+        formData.append("content", textContent);
+        formData.append("clientKey", clientKey);
 
-          // Send plain text - server will encrypt
-          socket.emit("chat:send", {
-            to: selectedUser._id,
-            content: textContent,
-            clientKey,
-            attachments: socketAttachments,
-          });
+        if (savedReplyTo?.id) {
+          formData.append("replyToId", savedReplyTo.id);
+        }
+
+        try {
+          await axios.post(
+            `${baseURL}/api/messages/${selectedUser._id}`,
+            formData,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "multipart/form-data",
+              },
+            }
+          );
+        } catch (error) {
+          console.error("Failed to send text message via HTTP:", error);
+          toast.error("Failed to send message. Please try again.");
         }
       }
 
@@ -1870,10 +1923,16 @@ ${reasonList}`);
 
     const text = message.content || "";
 
-    // Don't return null for empty text - it might be a media-only message
-    // Only return null if there's truly no content AND no attachments
+    console.log(`🎨 Rendering message content for ${message.id}: "${text}"`);
+
+    // Don't return null for empty text - always render something like WhatsApp
+    // WhatsApp shows empty bubbles for media-only messages, text for text messages
     if (!text && (!message.attachments || message.attachments.length === 0)) {
-      return null;
+      console.log(
+        `🚫 Message ${message.id} has no content or attachments, showing empty bubble`
+      );
+      // Return empty div for completely empty messages (rare case)
+      return <div className="text-sm text-gray-400">[Empty message]</div>;
     }
 
     // Fallback: Check if message contains a forum link and render as clickable card
@@ -2206,13 +2265,8 @@ ${reasonList}`);
     }
   }, [showUnblockSuccess]);
 
-  if (loading && connections.length === 0) {
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-gray-100">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
+  // Loading check removed - page displays instantly
+  // Messages will decrypt as encryption becomes ready
 
   return (
     <div className="h-screen flex bg-gray-100">
@@ -2476,8 +2530,16 @@ ${reasonList}`);
           <>
             {/* Chat Header */}
             <div className="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
-              <button
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setShowRightPanel(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setShowRightPanel(true);
+                  }
+                }}
                 className="flex items-center gap-3 flex-1 hover:bg-gray-50 p-2 -m-2 rounded-lg transition-colors cursor-pointer"
                 title="Click to view chat details"
               >
@@ -2516,7 +2578,7 @@ ${reasonList}`);
                   </p>
                   {/* E2EE Indicator */}
                   <div className="flex items-center gap-1 text-xs mt-0.5">
-                    {encryptionReady ? (
+                    {selectedUser ? (
                       <>
                         <FiShield size={12} className="text-green-600" />
                         <span className="text-green-600">
@@ -2526,14 +2588,12 @@ ${reasonList}`);
                     ) : (
                       <>
                         <FiShield size={12} className="text-gray-400" />
-                        <span className="text-gray-500">
-                          Encryption initializing...
-                        </span>
+                        <span className="text-gray-500">Select a chat</span>
                       </>
                     )}
                   </div>
                 </div>
-              </button>
+              </div>
 
               <div className="flex items-center gap-2">
                 {/* Header search toggler */}
@@ -2805,7 +2865,20 @@ ${reasonList}`);
               ref={messageContainerRef}
               className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-br from-indigo-50 via-sky-50 to-blue-50"
             >
-              {messages.length === 0 ? (
+              {/* Historical messages loader - shows only when scrolling to top */}
+              {loadingHistory && (
+                <div className="flex justify-center py-4">
+                  <div className="flex items-center space-x-2 text-gray-500">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>
+                    <span className="text-sm">Loading older messages...</span>
+                  </div>
+                </div>
+              )}
+
+              {console.log(
+                `🔍 Rendering messages section - messages.length: ${messages.length}`
+              ) ||
+              (messages.length === 0 && !loadingHistory) ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-500">
                   <div className="text-6xl mb-4">💬</div>
                   <p className="text-lg">No messages yet</p>
@@ -2821,6 +2894,16 @@ ${reasonList}`);
                       index === 0 ||
                       new Date(messages[index - 1].timestamp).toDateString() !==
                         new Date(message.timestamp).toDateString();
+
+                    console.log(
+                      `📋 Rendering message ${index + 1}/${messages.length}:`,
+                      {
+                        id: message.id,
+                        content: message.content || "[No content]",
+                        isMine,
+                        encrypted: message.encrypted,
+                      }
+                    );
 
                     return (
                       <div key={message.id}>
@@ -2975,7 +3058,19 @@ ${reasonList}`);
                                     )}
 
                                   {/* Message content */}
-                                  {renderMessageContent(message)}
+                                  {(() => {
+                                    const content =
+                                      renderMessageContent(message);
+                                    console.log(
+                                      `🎯 Rendered content for message ${message.id}:`,
+                                      content
+                                    );
+                                    return content;
+                                  })() || (
+                                    <div className="text-sm">
+                                      {message.content || "[No content]"}
+                                    </div>
+                                  )}
 
                                   {/* Attachments */}
                                   {/* Attachments + implicit media URL in text (only for true media URLs) */}

@@ -6,6 +6,9 @@ const bcrypt = require("bcryptjs");
 const { sendOtpEmail, sendWelcomeEmail } = require("../services/emailService");
 const { generateRSAKeyPair, pemToCompact } = require("../services/encryptionService");
 
+// Global Map for deduplication of regeneration requests
+const regenerationRequests = new Map();
+
 // Generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -27,6 +30,34 @@ async function ensureEncryptionKeys(userId, options = {}) {
     // If user already has a public key and regeneration not requested, skip
     if (!forceRegenerate && user.publicKey) {
       return null;
+    }
+
+    // Deduplication for forced regeneration: 500ms window per user
+    if (forceRegenerate) {
+      const now = Date.now();
+      const userIdStr = String(userId);
+
+      // Clean up old entries (>5s ago)
+      for (const [key, value] of regenerationRequests.entries()) {
+        if (now - value.timestamp > 5000) {
+          regenerationRequests.delete(key);
+        }
+      }
+
+      // Check if recent request (<500ms ago)
+      const existing = regenerationRequests.get(userIdStr);
+      if (existing && now - existing.timestamp < 500) {
+        console.log(`⏭️ Skipping duplicate regeneration for user ${userId} (within 500ms)`);
+        // Return existing keys to avoid frontend retries
+        return {
+          publicKey: user.publicKey,
+          publicKeyVersion: user.publicKeyVersion,
+          privateKey: null // No private key to return for duplicates
+        };
+      }
+
+      // Record this request
+      regenerationRequests.set(userIdStr, { timestamp: now, count: 1 });
     }
 
     // Calculate new version number
@@ -225,7 +256,7 @@ const loginUser = async (req, res) => {
     if (user && (await user.matchPassword(password))) {
       // Ensure user has encryption keys and get them if newly generated
       const keys = await ensureEncryptionKeys(user._id);
-      
+
       // Set JWT as cookie
       const token = generateToken(user._id);
       res.cookie("jwt", token, {
@@ -235,19 +266,12 @@ const loginUser = async (req, res) => {
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
-      const response = {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        username: user.username,
-        role: user.role,
-        avatarUrl: user.avatarUrl,
-        department: user.department,
-        year: user.year,
-        graduationYear: user.graduationYear,
-        token,
-      };
-      
+      // Return full user profile like getUserProfile does (excluding password)
+      const response = user.toObject();
+
+      // Add token
+      response.token = token;
+
       // Include private key in response if newly generated
       if (keys && keys.privateKey) {
         response.encryptionKeys = {
@@ -486,11 +510,17 @@ const logoutUser = (req, res) => {
 // @access Private
 const getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select("-password");
+    // Ensure req.user is set by auth middleware
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    // Use the user object already fetched by auth middleware (avoids redundant DB query)
+    const user = req.user;
 
     if (user) {
       const response = user.toObject();
-      
+
       const forceRegenerate = String(req.query?.regenerateKeys || '').toLowerCase() === 'true';
       // Ensure user has encryption keys and include private key if newly generated/regenerated
       const keys = await ensureEncryptionKeys(user._id, { forceRegenerate });
@@ -500,13 +530,13 @@ const getUserProfile = async (req, res) => {
           privateKey: keys.privateKey
         };
       }
-      
+
       res.json(response);
     } else {
       res.status(404).json({ message: "User not found" });
     }
   } catch (error) {
-    console.error(error);
+    console.error("Profile fetch error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };

@@ -14,6 +14,8 @@ const NotificationService = require("../services/NotificationService");
 const {
   encryptMessage,
   compactToPem,
+  encryptFallbackContent,
+  decryptFallbackContent,
 } = require("../services/encryptionService");
 
 // Helper functions
@@ -179,8 +181,92 @@ async function parseMessageWithBackup(doc, viewerId) {
     // Determine content to show
     let contentToShow = doc.content || "";
 
-    // For encrypted messages with empty content, try to get backup content
-    if (doc.encrypted && (!contentToShow || contentToShow.trim() === "")) {
+    // Decrypt fallbackContent and body if they are encrypted objects
+    let decryptedFallback = doc.fallbackContent;
+    let decryptedBody = doc.body;
+
+    // Check if fallbackContent is encrypted object and decrypt it
+    if (
+      doc.fallbackContent &&
+      typeof doc.fallbackContent === "object" &&
+      doc.fallbackContent.encrypted
+    ) {
+      const decrypted = decryptFallbackContent(doc.fallbackContent);
+      if (decrypted) {
+        decryptedFallback = decrypted;
+        console.log(`🔓 Decrypted fallback content for message ${doc._id}`);
+      } else {
+        console.warn(`⚠️ Failed to decrypt fallback for message ${doc._id}`);
+        decryptedFallback = null;
+      }
+    } else if (typeof doc.fallbackContent === "string") {
+      // Already plaintext
+      decryptedFallback = doc.fallbackContent;
+    }
+
+    // Check if body is encrypted object and decrypt it
+    if (doc.body && typeof doc.body === "object" && doc.body.encrypted) {
+      const decrypted = decryptFallbackContent(doc.body);
+      if (decrypted) {
+        decryptedBody = decrypted;
+      } else {
+        console.warn(`⚠️ Failed to decrypt body for message ${doc._id}`);
+        decryptedBody = null;
+      }
+    } else if (typeof doc.body === "string") {
+      // Already plaintext
+      decryptedBody = doc.body;
+    }
+
+    // For encrypted messages, use decrypted fallback/body first
+    if (doc.encrypted) {
+      contentToShow =
+        (decryptedFallback &&
+        typeof decryptedFallback === "string" &&
+        decryptedFallback.trim()
+          ? decryptedFallback
+          : null) ||
+        (decryptedBody &&
+        typeof decryptedBody === "string" &&
+        decryptedBody.trim()
+          ? decryptedBody
+          : null) ||
+        doc.content ||
+        "";
+      if (
+        contentToShow &&
+        typeof contentToShow === "string" &&
+        contentToShow.trim()
+      ) {
+        console.log(
+          `📝 Encrypted message ${doc._id}: using decrypted fallback`
+        );
+      } else {
+        console.warn(
+          `⚠️ No content available for encrypted message ${doc._id}`
+        );
+      }
+    } else if (
+      decryptedFallback &&
+      typeof decryptedFallback === "string" &&
+      decryptedFallback.trim()
+    ) {
+      // For non-encrypted messages, also use decryptedFallback if available
+      contentToShow = decryptedFallback;
+    } else if (
+      !contentToShow &&
+      decryptedBody &&
+      typeof decryptedBody === "string" &&
+      decryptedBody.trim()
+    ) {
+      contentToShow = decryptedBody;
+    }
+
+    // If still no content, try to get backup content
+    if (
+      !contentToShow ||
+      (typeof contentToShow === "string" && contentToShow.trim() === "")
+    ) {
       try {
         // Look for backup content in MessageBackup collection
         const backupQuery = {
@@ -216,7 +302,7 @@ async function parseMessageWithBackup(doc, viewerId) {
       senderId: doc.from?._id || doc.from,
       recipientId: doc.to?._id || doc.to,
       content: contentToShow,
-      fallbackContent: contentToShow, // Always provide plaintext fallback for resilience
+      fallbackContent: contentToShow, // Send decrypted plaintext to frontend
       attachments: getAttachmentUrls(doc.attachments),
       messageType: doc.messageType,
       timestamp: doc.createdAt,
@@ -393,6 +479,8 @@ exports.getMessages = async (req, res) => {
         .json({ message: "You can only message connected users" });
 
     // Get messages with populated reply references
+    // Debug: Check if messages exist for this conversation
+    console.log(`🔍 Fetching messages between ${me} and ${other}`);
     const messages = await Message.find({
       $or: [
         { from: me, to: other },
@@ -402,6 +490,8 @@ exports.getMessages = async (req, res) => {
       .populate("from to", "name username avatarUrl")
       .sort({ createdAt: 1 })
       .lean();
+
+    console.log(`📊 Found ${messages.length} messages for conversation`);
 
     // Use enhanced parser with backup support
     const parsedMessages = [];
@@ -588,6 +678,30 @@ exports.sendMessage = async (req, res) => {
           User.findById(me).select("publicKey").lean(),
         ]);
 
+        // Debug: Log key availability
+        console.log(`🔑 Checking encryption keys:`);
+        console.log(
+          `  - Recipient (${to}):`,
+          recipientUser?.publicKey ? "HAS KEY" : "NO KEY"
+        );
+        console.log(
+          `  - Sender (${me}):`,
+          senderUser?.publicKey ? "HAS KEY" : "NO KEY"
+        );
+
+        if (recipientUser?.publicKey) {
+          console.log(
+            `  - Recipient key preview:`,
+            recipientUser.publicKey.substring(0, 50) + "..."
+          );
+        }
+        if (senderUser?.publicKey) {
+          console.log(
+            `  - Sender key preview:`,
+            senderUser.publicKey.substring(0, 50) + "..."
+          );
+        }
+
         // Validate both users have public keys
         if (!recipientUser?.publicKey || !senderUser?.publicKey) {
           console.warn(
@@ -595,53 +709,60 @@ exports.sendMessage = async (req, res) => {
           );
           console.log("📝 Storing message as plaintext (keys not available)");
         } else {
-          // Validate keys are valid PEM format
-          const recipientKeyValid =
-            recipientUser.publicKey.includes("BEGIN PUBLIC KEY");
-          const senderKeyValid =
-            senderUser.publicKey.includes("BEGIN PUBLIC KEY");
+          // Convert compact keys to PEM format for encryption
+          const recipientPublicKeyPem = compactToPem(
+            recipientUser.publicKey,
+            "public"
+          );
+          const senderPublicKeyPem = compactToPem(
+            senderUser.publicKey,
+            "public"
+          );
 
-          if (!recipientKeyValid || !senderKeyValid) {
-            console.warn(
-              `⚠️ Invalid key format - Recipient: ${recipientKeyValid}, Sender: ${senderKeyValid}`
-            );
-            console.log("📝 Storing message as plaintext (invalid keys)");
-          } else {
-            // For media-only messages (no text), encrypt a placeholder metadata
-            const textToEncrypt =
-              content && content.trim()
-                ? content
-                : `📎 Media message with ${attachments.length} attachment(s)`;
+          console.log(`🔍 Converted keys to PEM format:`);
+          console.log(
+            `  - Recipient PEM preview:`,
+            recipientPublicKeyPem.substring(0, 50) + "..."
+          );
+          console.log(
+            `  - Sender PEM preview:`,
+            senderPublicKeyPem.substring(0, 50) + "..."
+          );
 
-            // Encrypt for recipient (so they can read it)
-            const recipientEncrypted = encryptMessage(
-              textToEncrypt,
-              recipientUser.publicKey
-            );
+          // For media-only messages (no text), encrypt a placeholder metadata
+          const textToEncrypt =
+            content && content.trim()
+              ? content
+              : `📎 Media message with ${attachments.length} attachment(s)`;
 
-            // Encrypt for sender (so they can see their own sent messages)
-            const senderEncrypted = encryptMessage(
-              textToEncrypt,
-              senderUser.publicKey
-            );
+          // Encrypt for recipient (so they can read it)
+          const recipientEncrypted = encryptMessage(
+            textToEncrypt,
+            recipientPublicKeyPem
+          );
 
-            // Verify encryption succeeded
-            if (recipientEncrypted && senderEncrypted) {
-              encryptionDataObj = recipientEncrypted;
-              senderEncryptionDataObj = senderEncrypted;
-              isEncrypted = true;
-              if (attachments.length > 0 && !content.trim()) {
-                console.log(
-                  `🔐 Media message encrypted successfully (${attachments.length} attachment(s))`
-                );
-              } else {
-                console.log(
-                  "🔐 Message encrypted successfully for both sender and recipient"
-                );
-              }
+          // Encrypt for sender (so they can see their own sent messages)
+          const senderEncrypted = encryptMessage(
+            textToEncrypt,
+            senderPublicKeyPem
+          );
+
+          // Verify encryption succeeded
+          if (recipientEncrypted && senderEncrypted) {
+            encryptionDataObj = recipientEncrypted;
+            senderEncryptionDataObj = senderEncrypted;
+            isEncrypted = true;
+            if (attachments.length > 0 && !content.trim()) {
+              console.log(
+                `🔐 Media message encrypted successfully (${attachments.length} attachment(s))`
+              );
             } else {
-              console.warn("⚠️ Encryption returned null, storing as plaintext");
+              console.log(
+                "🔐 Message encrypted successfully for both sender and recipient"
+              );
             }
+          } else {
+            console.warn("⚠️ Encryption returned null, storing as plaintext");
           }
         }
       } catch (encErr) {
@@ -670,10 +791,19 @@ exports.sendMessage = async (req, res) => {
     }
 
     // Create message with encryption data if encrypted
+    const shouldEncryptFallback =
+      process.env.ENABLE_FALLBACK_ENCRYPTION === "true";
+
     const messageData = {
       from: me,
       to,
-      content: content, // Always store plaintext as fallback
+      content: isEncrypted
+        ? encryptionDataObj?.encryptedContent || content
+        : content, // Store encrypted content if encrypted
+      fallbackContent: shouldEncryptFallback
+        ? encryptFallbackContent(content)
+        : content, // Encrypt if enabled, else plaintext
+      body: shouldEncryptFallback ? encryptFallbackContent(content) : content, // Encrypt if enabled, else plaintext
       attachments,
       messageType,
       clientKey,
@@ -712,6 +842,9 @@ exports.sendMessage = async (req, res) => {
     }
 
     const message = await Message.create(messageData);
+    console.log(
+      `💾 Message stored with ID: ${message._id}, encrypted: ${isEncrypted}`
+    );
 
     const populatedMessage = await Message.findById(message._id).populate(
       "from to",
@@ -736,7 +869,7 @@ exports.sendMessage = async (req, res) => {
         conversationId: String(thread?._id || `${me}_${to}`),
         messageId: String(dto.id),
         senderId: String(me),
-        body: dto.content, // Send content (may be encrypted or plaintext)
+        body: isEncrypted ? null : dto.content, // Send null for encrypted messages
         fallbackContent: content, // Always send plaintext fallback for reliability
         attachments: dto.attachments || [],
         createdAt: dto.timestamp,

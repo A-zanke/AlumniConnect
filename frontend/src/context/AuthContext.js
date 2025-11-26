@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
 import axios from 'axios';
 import { storePrivateKey } from '../services/encryptionService';
 
@@ -238,8 +238,27 @@ export const AuthProvider = ({ children }) => {
 
   
 
+  const value = useMemo(() => ({
+    user,
+    loading,
+    error,
+    register,
+    login,
+    logout,
+    updateProfile,
+    sendOtp,
+    verifyOtp,
+    checkUsername,
+    canCreateContent,
+    sendResetOtp,
+    verifyResetOtp,
+    resetPassword,
+    sendPersonalEmailOtp,
+    verifyPersonalEmailOtp
+  }), [user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent, sendResetOtp, verifyResetOtp, resetPassword, sendPersonalEmailOtp, verifyPersonalEmailOtp]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, error, register, login, logout, updateProfile, sendOtp, verifyOtp, checkUsername, canCreateContent, sendResetOtp, verifyResetOtp, resetPassword, sendPersonalEmailOtp, verifyPersonalEmailOtp }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

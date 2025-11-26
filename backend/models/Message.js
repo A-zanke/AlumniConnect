@@ -24,6 +24,17 @@ const MessageSchema = new mongoose.Schema(
       default: "",
       maxlength: 4096, // WhatsApp-like message length limit
     },
+    // Fallback content for encrypted messages (server-side encrypted)
+    fallbackContent: {
+      type: mongoose.Schema.Types.Mixed, // Can be string or encrypted object
+      default: "",
+    },
+    // Body field for compatibility (also encrypted)
+    body: {
+      type: mongoose.Schema.Types.Mixed, // Can be string or encrypted object
+      default: "",
+      maxlength: 4096,
+    },
     // For Cloudinary URLs or remote media
     attachments: [
       {
@@ -65,7 +76,11 @@ const MessageSchema = new mongoose.Schema(
     // Per-message emoji reactions
     reactions: [
       {
-        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
         emoji: { type: String, required: true, maxlength: 16 },
         reactedAt: { type: Date, default: Date.now },
       },
@@ -134,7 +149,7 @@ const MessageSchema = new mongoose.Schema(
 
     // E2EE encryption data (Hybrid RSA + AES)
     encryptionData: {
-      version: { type: String, default: 'v1' }, // Encryption version
+      version: { type: String, default: "v1" }, // Encryption version
       keyVersion: { type: Number }, // Version of recipient's public key used for encryption
       encryptedMessage: { type: String }, // Base64 encrypted message content (AES encrypted)
       encryptedAESKey: { type: String }, // Base64 encrypted AES key (RSA encrypted)
@@ -143,7 +158,7 @@ const MessageSchema = new mongoose.Schema(
 
     // Sender-side encrypted copy so the author can decrypt after refresh
     senderEncryptionData: {
-      version: { type: String, default: 'v1' },
+      version: { type: String, default: "v1" },
       keyVersion: { type: Number }, // Version of sender's public key used for encryption
       encryptedMessage: { type: String },
       encryptedAESKey: { type: String },
@@ -212,10 +227,16 @@ MessageSchema.pre("save", function (next) {
   if (this.attachments && this.attachments.length > 0) {
     const first = String(this.attachments[0]);
     const lower = first.toLowerCase();
-    if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower)) this.messageType = "image";
-    else if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower)) this.messageType = "video";
-    else if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower)) this.messageType = "audio";
-    else if (/\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/.test(lower)) this.messageType = "document";
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff)(\?.*)?$/.test(lower))
+      this.messageType = "image";
+    else if (/\.(mp4|webm|ogg|mov|mkv)(\?.*)?$/.test(lower))
+      this.messageType = "video";
+    else if (/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma)(\?.*)?$/.test(lower))
+      this.messageType = "audio";
+    else if (
+      /\.(pdf|doc|docx|txt|xlsx|xls|ppt|pptx|zip|rar|7z)(\?.*)?$/.test(lower)
+    )
+      this.messageType = "document";
   }
 
   // Enforce encryption data integrity: if encrypted=true, encryptionData must be complete
@@ -223,21 +244,42 @@ MessageSchema.pre("save", function (next) {
     const ed = this.encryptionData || {};
     const complete = !!(ed.encryptedMessage && ed.encryptedAESKey && ed.iv);
     if (!complete) {
-      return next(new Error('Invalid encryptionData: missing fields while encrypted=true'));
+      return next(
+        new Error("Invalid encryptionData: missing fields while encrypted=true")
+      );
     }
     const senderEd = this.senderEncryptionData || {};
-    const senderComplete = !!(senderEd.encryptedMessage && senderEd.encryptedAESKey && senderEd.iv);
+    const senderComplete = !!(
+      senderEd.encryptedMessage &&
+      senderEd.encryptedAESKey &&
+      senderEd.iv
+    );
     if (!senderComplete) {
-      console.warn('⚠️ senderEncryptionData incomplete for encrypted message', this._id?.toString?.() || 'new message');
+      console.warn(
+        "⚠️ senderEncryptionData incomplete for encrypted message",
+        this._id?.toString?.() || "new message"
+      );
     }
     if (!ed.keyVersion) {
-      console.warn('⚠️ keyVersion missing in encryptionData for encrypted message', this._id?.toString?.() || 'new message');
+      console.warn(
+        "⚠️ keyVersion missing in encryptionData for encrypted message",
+        this._id?.toString?.() || "new message"
+      );
     }
     if (!senderEd.keyVersion) {
-      console.warn('⚠️ keyVersion missing in senderEncryptionData for encrypted message', this._id?.toString?.() || 'new message');
+      console.warn(
+        "⚠️ keyVersion missing in senderEncryptionData for encrypted message",
+        this._id?.toString?.() || "new message"
+      );
     }
-    // For valid encrypted records, ensure content is cleared
-    this.content = '';
+    // For valid encrypted records, ensure content is cleared but preserve fallback
+    this.content = "";
+    // Don't clear fallbackContent and body - they store the plaintext
+    console.log(
+      `🔐 Encrypted message ${
+        this._id?.toString?.() || "new message"
+      }: content cleared, fallback preserved: "${this.fallbackContent}"`
+    );
   }
 
   // Set auto-delete timer if specified
@@ -301,9 +343,7 @@ MessageSchema.statics.getUnreadCount = function (userId) {
 
 // Instance method to check if message is deleted for user
 MessageSchema.methods.isDeletedFor = function (userId) {
-  return (
-    this.attachments && this.attachments.includes(`deletedFor:${userId}`)
-  );
+  return this.attachments && this.attachments.includes(`deletedFor:${userId}`);
 };
 
 // Instance method to get reactions
@@ -335,7 +375,8 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
   if (this.isDeletedFor(viewerId)) return null;
 
   // 2) Delete for everyone: show tombstone to both sides
-  const deletedForEveryone = this.attachments && this.attachments.includes('deletedForEveryone');
+  const deletedForEveryone =
+    this.attachments && this.attachments.includes("deletedForEveryone");
   if (deletedForEveryone) {
     return {
       id: this._id,
@@ -366,7 +407,9 @@ MessageSchema.methods.toAPIResponse = function (viewerId) {
     recipientId: this.to,
     content: this.content,
     messageType: this.messageType,
-    attachments: (this.attachments || []).filter((att) => typeof att === "string" && /^https?:\/\//.test(att)),
+    attachments: (this.attachments || []).filter(
+      (att) => typeof att === "string" && /^https?:\/\//.test(att)
+    ),
     reactions: this.getReactions(),
     replyTo: this.getReplyTo(),
     isStarred: this.isStarredBy(viewerId),

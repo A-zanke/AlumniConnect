@@ -1,10 +1,10 @@
-const forge = require('node-forge');
-const crypto = require('crypto');
+const forge = require("node-forge");
+const crypto = require("crypto");
 
 /**
  * Hybrid Encryption Service (RSA + AES)
  * Similar to WhatsApp's end-to-end encryption
- * 
+ *
  * Flow:
  * 1. Generate RSA key pairs for each user
  * 2. For each message: Generate random AES key + IV
@@ -26,16 +26,16 @@ function getPublicKey(publicKeyPem) {
   if (!publicKeyCache.has(publicKeyPem)) {
     // Parse and cache the key
     const publicKey = forge.pki.publicKeyFromPem(publicKeyPem);
-    
+
     // Limit cache size (FIFO)
     if (publicKeyCache.size >= CACHE_MAX_SIZE) {
       const firstKey = publicKeyCache.keys().next().value;
       publicKeyCache.delete(firstKey);
     }
-    
+
     publicKeyCache.set(publicKeyPem, publicKey);
   }
-  
+
   return publicKeyCache.get(publicKeyPem);
 }
 
@@ -45,10 +45,10 @@ function getPublicKey(publicKeyPem) {
  */
 function generateRSAKeyPair() {
   const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, e: 0x10001 });
-  
+
   return {
     publicKey: forge.pki.publicKeyToPem(keypair.publicKey),
-    privateKey: forge.pki.privateKeyToPem(keypair.privateKey)
+    privateKey: forge.pki.privateKeyToPem(keypair.privateKey),
   };
 }
 
@@ -61,78 +61,86 @@ function generateRSAKeyPair() {
 function encryptMessage(plainText, recipientPublicKeyPem) {
   try {
     // Validate inputs
-    if (!plainText || typeof plainText !== 'string' || plainText.trim() === '') {
-      console.error('❌ Invalid plainText provided to encryptMessage');
+    if (
+      !plainText ||
+      typeof plainText !== "string" ||
+      plainText.trim() === ""
+    ) {
+      console.error("❌ Invalid plainText provided to encryptMessage");
       return null;
     }
-    
-    if (!recipientPublicKeyPem || typeof recipientPublicKeyPem !== 'string') {
-      console.error('❌ No recipient public key provided');
+
+    if (!recipientPublicKeyPem || typeof recipientPublicKeyPem !== "string") {
+      console.error("❌ No recipient public key provided");
       return null;
     }
-    
+
     // Validate PEM format
-    if (!recipientPublicKeyPem.includes('BEGIN PUBLIC KEY')) {
-      console.error('❌ Invalid PEM format - missing BEGIN PUBLIC KEY header');
+    if (!recipientPublicKeyPem.includes("BEGIN PUBLIC KEY")) {
+      console.error("❌ Invalid PEM format - missing BEGIN PUBLIC KEY header");
       return null;
     }
-    
+
     // Step 1: Generate random AES key (256 bits) and IV (128 bits for AES-CBC)
     const aesKey = crypto.randomBytes(32); // 256 bits
     const iv = crypto.randomBytes(16); // 128 bits
-    
+
     // Step 2: Encrypt the message using AES-256-CBC (fast)
-    const cipher = crypto.createCipheriv('aes-256-cbc', aesKey, iv);
-    let encryptedMessage = cipher.update(plainText, 'utf8', 'base64');
-    encryptedMessage += cipher.final('base64');
-    
+    const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
+    let encryptedMessage = cipher.update(plainText, "utf8", "base64");
+    encryptedMessage += cipher.final("base64");
+
     // Verify encryption produced output
     if (!encryptedMessage || encryptedMessage.length === 0) {
-      console.error('❌ AES encryption produced empty result');
+      console.error("❌ AES encryption produced empty result");
       return null;
     }
-    
+
     // Step 3: Parse public key (with error handling)
     let publicKey;
     try {
       publicKey = getPublicKey(recipientPublicKeyPem);
     } catch (keyError) {
-      console.error('❌ Failed to parse public key:', keyError.message);
+      console.error("❌ Failed to parse public key:", keyError.message);
       return null;
     }
-    
+
     // Step 4: Encrypt the AES key using recipient's RSA public key
-    const encryptedAESKey = publicKey.encrypt(aesKey.toString('binary'), 'RSA-OAEP', {
-      md: forge.md.sha256.create(),
-      mgf1: {
-        md: forge.md.sha256.create()
+    const encryptedAESKey = publicKey.encrypt(
+      aesKey.toString("binary"),
+      "RSA-OAEP",
+      {
+        md: forge.md.sha256.create(),
+        mgf1: {
+          md: forge.md.sha256.create(),
+        },
       }
-    });
-    
+    );
+
     // Verify RSA encryption produced output
     if (!encryptedAESKey || encryptedAESKey.length === 0) {
-      console.error('❌ RSA encryption produced empty result');
+      console.error("❌ RSA encryption produced empty result");
       return null;
     }
-    
+
     // Step 5: Return result (all operations completed successfully)
     const result = {
       encryptedMessage: encryptedMessage,
       encryptedAESKey: forge.util.encode64(encryptedAESKey),
-      iv: iv.toString('base64'),
-      version: 'v1'
+      iv: iv.toString("base64"),
+      version: "v1",
     };
-    
+
     // Final validation
     if (!result.encryptedMessage || !result.encryptedAESKey || !result.iv) {
-      console.error('❌ Encryption result missing required fields');
+      console.error("❌ Encryption result missing required fields");
       return null;
     }
-    
+
     return result;
   } catch (error) {
-    console.error('❌ Encryption error:', error.message);
-    console.error('Stack:', error.stack);
+    console.error("❌ Encryption error:", error.message);
+    console.error("Stack:", error.stack);
     return null; // Return null instead of throwing
   }
 }
@@ -146,31 +154,34 @@ function encryptMessage(plainText, recipientPublicKeyPem) {
 function decryptMessage(encryptedData, recipientPrivateKeyPem) {
   try {
     // Defensive validation to avoid throwing on missing fields
-    if (!encryptedData || typeof encryptedData !== 'object') {
-      throw new Error('Missing encryption data object');
+    if (!encryptedData || typeof encryptedData !== "object") {
+      throw new Error("Missing encryption data object");
     }
 
     const { encryptedMessage, encryptedAESKey, iv } = encryptedData;
 
     // Validate all required fields are present
-    if (!encryptedMessage || typeof encryptedMessage !== 'string') {
-      throw new Error('Missing or invalid encryptedMessage');
+    if (!encryptedMessage || typeof encryptedMessage !== "string") {
+      throw new Error("Missing or invalid encryptedMessage");
     }
-    if (!encryptedAESKey || typeof encryptedAESKey !== 'string') {
-      throw new Error('Missing or invalid encryptedAESKey');
+    if (!encryptedAESKey || typeof encryptedAESKey !== "string") {
+      throw new Error("Missing or invalid encryptedAESKey");
     }
-    if (!iv || typeof iv !== 'string') {
-      throw new Error('Missing or invalid IV');
+    if (!iv || typeof iv !== "string") {
+      throw new Error("Missing or invalid IV");
     }
-    if (!recipientPrivateKeyPem || typeof recipientPrivateKeyPem !== 'string') {
-      throw new Error('Missing or invalid recipient private key');
+    if (!recipientPrivateKeyPem || typeof recipientPrivateKeyPem !== "string") {
+      throw new Error("Missing or invalid recipient private key");
     }
-    
+
     // Validate private key format
-    if (!recipientPrivateKeyPem.includes('BEGIN') || !recipientPrivateKeyPem.includes('PRIVATE KEY')) {
-      throw new Error('Invalid private key PEM format');
+    if (
+      !recipientPrivateKeyPem.includes("BEGIN") ||
+      !recipientPrivateKeyPem.includes("PRIVATE KEY")
+    ) {
+      throw new Error("Invalid private key PEM format");
     }
-    
+
     // Step 1: Parse private key
     let privateKey;
     try {
@@ -178,45 +189,45 @@ function decryptMessage(encryptedData, recipientPrivateKeyPem) {
     } catch (keyError) {
       throw new Error(`Failed to parse private key: ${keyError.message}`);
     }
-    
+
     // Step 2: Decrypt the AES key using RSA private key
     let aesKeyBinary;
     try {
       const encryptedKeyBinary = forge.util.decode64(encryptedAESKey);
-      aesKeyBinary = privateKey.decrypt(encryptedKeyBinary, 'RSA-OAEP', {
+      aesKeyBinary = privateKey.decrypt(encryptedKeyBinary, "RSA-OAEP", {
         md: forge.md.sha256.create(),
         mgf1: {
-          md: forge.md.sha256.create()
-        }
+          md: forge.md.sha256.create(),
+        },
       });
     } catch (rsaError) {
       throw new Error(`RSA decryption failed: ${rsaError.message}`);
     }
-    
+
     if (!aesKeyBinary || aesKeyBinary.length !== 32) {
-      throw new Error('Decrypted AES key has invalid length');
+      throw new Error("Decrypted AES key has invalid length");
     }
-    
+
     // Step 3: Convert AES key from binary to Buffer
-    const aesKey = Buffer.from(aesKeyBinary, 'binary');
-    const ivBuffer = Buffer.from(iv, 'base64');
-    
+    const aesKey = Buffer.from(aesKeyBinary, "binary");
+    const ivBuffer = Buffer.from(iv, "base64");
+
     // Step 4: Decrypt the message using AES-256-CBC
     let decrypted;
     try {
-      const decipher = crypto.createDecipheriv('aes-256-cbc', aesKey, ivBuffer);
-      decrypted = decipher.update(encryptedMessage, 'base64', 'utf8');
-      decrypted += decipher.final('utf8');
+      const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, ivBuffer);
+      decrypted = decipher.update(encryptedMessage, "base64", "utf8");
+      decrypted += decipher.final("utf8");
     } catch (aesError) {
       throw new Error(`AES decryption failed: ${aesError.message}`);
     }
-    
+
     return decrypted;
   } catch (error) {
     // Log detailed error for debugging
-    console.error('❌ Decryption error:', error.message);
+    console.error("❌ Decryption error:", error.message);
     // Return user-friendly error
-    throw new Error('Failed to decrypt message: ' + error.message);
+    throw new Error("Failed to decrypt message: " + error.message);
   }
 }
 
@@ -231,32 +242,36 @@ function encryptGroupMessage(plainText, recipientPublicKeys) {
     // Step 1: Generate one AES key for all recipients
     const aesKey = crypto.randomBytes(32);
     const iv = crypto.randomBytes(16);
-    
+
     // Step 2: Encrypt message once with AES
-    const cipher = crypto.createCipheriv('aes-256-cbc', aesKey, iv);
-    let encryptedMessage = cipher.update(plainText, 'utf8', 'base64');
-    encryptedMessage += cipher.final('base64');
-    
+    const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
+    let encryptedMessage = cipher.update(plainText, "utf8", "base64");
+    encryptedMessage += cipher.final("base64");
+
     // Step 3: Encrypt AES key for each recipient
     const encryptedKeysMap = {};
     recipientPublicKeys.forEach(({ userId, publicKey }) => {
       const pubKey = forge.pki.publicKeyFromPem(publicKey);
-      const encryptedKey = pubKey.encrypt(aesKey.toString('binary'), 'RSA-OAEP', {
-        md: forge.md.sha256.create(),
-        mgf1: { md: forge.md.sha256.create() }
-      });
+      const encryptedKey = pubKey.encrypt(
+        aesKey.toString("binary"),
+        "RSA-OAEP",
+        {
+          md: forge.md.sha256.create(),
+          mgf1: { md: forge.md.sha256.create() },
+        }
+      );
       encryptedKeysMap[userId] = forge.util.encode64(encryptedKey);
     });
-    
+
     return {
       encryptedMessage,
-      iv: iv.toString('base64'),
+      iv: iv.toString("base64"),
       encryptedKeysMap,
-      version: 'v1'
+      version: "v1",
     };
   } catch (error) {
-    console.error('Group encryption error:', error);
-    throw new Error('Failed to encrypt group message: ' + error.message);
+    console.error("Group encryption error:", error);
+    throw new Error("Failed to encrypt group message: " + error.message);
   }
 }
 
@@ -266,9 +281,9 @@ function encryptGroupMessage(plainText, recipientPublicKeys) {
  * @param {string} type - 'public' or 'private'
  * @returns {boolean}
  */
-function validateRSAKey(keyPem, type = 'public') {
+function validateRSAKey(keyPem, type = "public") {
   try {
-    if (type === 'public') {
+    if (type === "public") {
       forge.pki.publicKeyFromPem(keyPem);
     } else {
       forge.pki.privateKeyFromPem(keyPem);
@@ -287,9 +302,9 @@ function validateRSAKey(keyPem, type = 'public') {
  */
 function pemToCompact(pemKey) {
   return pemKey
-    .replace(/-----BEGIN.*?-----/g, '')
-    .replace(/-----END.*?-----/g, '')
-    .replace(/\s/g, '');
+    .replace(/-----BEGIN.*?-----/g, "")
+    .replace(/-----END.*?-----/g, "")
+    .replace(/\s/g, "");
 }
 
 /**
@@ -297,18 +312,87 @@ function pemToCompact(pemKey) {
  * @param {string} compactKey - Compact key
  * @param {string} type - 'public' or 'private'
  * @returns {string} PEM formatted key
+/**
+ * Encrypt fallback content using a master server-side key
+ * This keeps the plaintext hidden in the database while still accessible for decryption
+ * @param {string} plainText - The plaintext message
+ * @returns {Object} { encrypted: base64_string, iv: base64_string }
  */
-function compactToPem(compactKey, type = 'public') {
-  const header = type === 'public' 
-    ? '-----BEGIN PUBLIC KEY-----\n'
-    : '-----BEGIN RSA PRIVATE KEY-----\n';
-  const footer = type === 'public'
-    ? '\n-----END PUBLIC KEY-----'
-    : '\n-----END RSA PRIVATE KEY-----';
-  
+function encryptFallbackContent(plainText) {
+  try {
+    if (!plainText || typeof plainText !== "string") {
+      return null;
+    }
+
+    // Use the FALLBACK_ENCRYPTION_KEY from environment (generate one if not exists)
+    const masterKey =
+      process.env.FALLBACK_ENCRYPTION_KEY ||
+      crypto.randomBytes(32).toString("hex");
+    const key = crypto.scryptSync(masterKey, "salt", 32);
+
+    // Generate random IV
+    const iv = crypto.randomBytes(16);
+
+    // Create cipher and encrypt
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    let encrypted = cipher.update(plainText, "utf8", "base64");
+    encrypted += cipher.final("base64");
+
+    return {
+      encrypted,
+      iv: iv.toString("base64"),
+    };
+  } catch (error) {
+    console.error("❌ Failed to encrypt fallback content:", error.message);
+    return null;
+  }
+}
+
+/**
+ * Decrypt fallback content using the master server-side key
+ * @param {Object} encryptedData - { encrypted: base64_string, iv: base64_string }
+ * @returns {string} Decrypted plaintext
+ */
+function decryptFallbackContent(encryptedData) {
+  try {
+    if (!encryptedData || !encryptedData.encrypted || !encryptedData.iv) {
+      return null;
+    }
+
+    // Use the same master key
+    const masterKey =
+      process.env.FALLBACK_ENCRYPTION_KEY ||
+      crypto.randomBytes(32).toString("hex");
+    const key = crypto.scryptSync(masterKey, "salt", 32);
+
+    // Recreate IV from base64
+    const iv = Buffer.from(encryptedData.iv, "base64");
+
+    // Create decipher and decrypt
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    let decrypted = decipher.update(encryptedData.encrypted, "base64", "utf8");
+    decrypted += decipher.final("utf8");
+
+    return decrypted;
+  } catch (error) {
+    console.error("❌ Failed to decrypt fallback content:", error.message);
+    return null;
+  }
+}
+
+function compactToPem(compactKey, type = "public") {
+  const header =
+    type === "public"
+      ? "-----BEGIN PUBLIC KEY-----\n"
+      : "-----BEGIN RSA PRIVATE KEY-----\n";
+  const footer =
+    type === "public"
+      ? "\n-----END PUBLIC KEY-----"
+      : "\n-----END RSA PRIVATE KEY-----";
+
   // Split into 64-character lines
   const lines = compactKey.match(/.{1,64}/g) || [];
-  return header + lines.join('\n') + footer;
+  return header + lines.join("\n") + footer;
 }
 
 module.exports = {
@@ -319,6 +403,8 @@ module.exports = {
   validateRSAKey,
   pemToCompact,
   compactToPem,
+  encryptFallbackContent,
+  decryptFallbackContent,
   // Utility to clear cache if needed (e.g., for testing)
-  clearKeyCache: () => publicKeyCache.clear()
+  clearKeyCache: () => publicKeyCache.clear(),
 };

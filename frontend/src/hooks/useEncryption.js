@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   storePrivateKey,
   getPrivateKey,
@@ -8,13 +8,13 @@ import {
   isValidEncryptionData,
   validatePrivateKey,
   clearPrivateKey,
-  restorePrivateKeyFromIndexedDB
-} from '../services/encryptionService';
-import { toast } from 'react-toastify';
+  restorePrivateKeyFromIndexedDB,
+} from "../services/encryptionService";
+import { toast } from "react-toastify";
 
 /**
  * Custom hook for managing end-to-end encryption
- * 
+ *
  * NOTE: Encryption is now handled SERVER-SIDE
  * This hook only handles:
  * 1. Storing the private key received during registration
@@ -28,10 +28,20 @@ export function useEncryption(user) {
   const refreshPromiseRef = useRef(null);
   const refreshInfoShownRef = useRef(false);
   const fallbackErrorShownRef = useRef(false);
+  const initialRefreshAttemptedRef = useRef(false);
+  const currentUserIdRef = useRef(null);
+  const lastRefreshTimeRef = useRef(0);
 
   const refreshPrivateKeyFromServer = useCallback(
-    async ({ forceRegenerate = true, silent = false } = {}) => {
+    async ({ forceRegenerate = false, silent = false } = {}) => {
       if (!user?._id) return null;
+
+      // Throttle requests to prevent infinite loops
+      const now = Date.now();
+      if (now - lastRefreshTimeRef.current < 5000) {
+        return null;
+      }
+      lastRefreshTimeRef.current = now;
 
       if (refreshInFlightRef.current && refreshPromiseRef.current) {
         try {
@@ -41,10 +51,12 @@ export function useEncryption(user) {
         }
       }
 
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem("token");
       if (!token) {
         if (!silent) {
-          toast.error('Cannot refresh encryption keys: missing authentication.');
+          toast.error(
+            "Cannot refresh encryption keys: missing authentication."
+          );
         }
         return null;
       }
@@ -52,7 +64,7 @@ export function useEncryption(user) {
       const runRefresh = (async () => {
         try {
           if (!silent && !refreshInfoShownRef.current) {
-            toast.info('Refreshing encryption keys…');
+            toast.info("Refreshing encryption keys…");
             refreshInfoShownRef.current = true;
           }
 
@@ -60,13 +72,17 @@ export function useEncryption(user) {
           const previousKey = getPrivateKey(user._id);
           clearPrivateKey(user._id);
 
-          const axiosModule = await import('axios');
+          const axiosModule = await import("axios");
           const axiosInstance = axiosModule.default || axiosModule;
-          const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-          const response = await axiosInstance.get(`${baseURL}/api/auth/profile`, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: forceRegenerate ? { regenerateKeys: true } : {}
-          });
+          const baseURL =
+            process.env.REACT_APP_API_URL || "http://localhost:5000";
+          const response = await axiosInstance.get(
+            `${baseURL}/api/auth/profile`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              params: forceRegenerate ? { regenerateKeys: true } : {},
+            }
+          );
 
           const serverKey = response?.data?.encryptionKeys?.privateKey;
           if (serverKey) {
@@ -75,7 +91,7 @@ export function useEncryption(user) {
             setHasKey(true);
             setIsReady(true);
             if (!silent) {
-              toast.success('Encryption keys refreshed');
+              toast.success("Encryption keys refreshed");
               refreshInfoShownRef.current = false;
             }
             return serverKey;
@@ -86,13 +102,16 @@ export function useEncryption(user) {
             storePrivateKey(user._id, previousKey);
           }
           if (!silent) {
-            toast.warn('Server did not issue a new encryption key.');
+            toast.warn("Server did not issue a new encryption key.");
           }
           return null;
         } catch (error) {
-          console.warn('Failed to refresh encryption keys:', error?.message || error);
+          console.warn(
+            "Failed to refresh encryption keys:",
+            error?.message || error
+          );
           if (!silent) {
-            toast.error('Failed to refresh encryption keys. Please try again.');
+            toast.error("Failed to refresh encryption keys. Please try again.");
             refreshInfoShownRef.current = false;
           }
           return null;
@@ -119,8 +138,23 @@ export function useEncryption(user) {
           setIsReady(false);
           setHasKey(false);
         }
+        initialRefreshAttemptedRef.current = false;
+        currentUserIdRef.current = null;
         return;
       }
+
+      // Prevent re-running for the same user
+      if (currentUserIdRef.current === user._id) {
+        console.log(
+          "✅ useEncryption: Skipping - already processed user",
+          user._id
+        );
+        return;
+      }
+
+      console.log("🔐 useEncryption: Processing user", user._id);
+      currentUserIdRef.current = user._id;
+      initialRefreshAttemptedRef.current = false;
 
       let keyExists = hasPrivateKey(user._id);
       let privateKey = keyExists ? getPrivateKey(user._id) : null;
@@ -128,7 +162,7 @@ export function useEncryption(user) {
       if (keyExists) {
         const validation = validatePrivateKey(privateKey);
         if (!validation.valid) {
-          console.warn('⚠️ Stored private key invalid, regenerating…');
+          console.warn("⚠️ Stored private key invalid, clearing…");
           clearPrivateKey(user._id);
           keyExists = false;
           privateKey = null;
@@ -148,17 +182,18 @@ export function useEncryption(user) {
             setHasKey(true);
             setIsReady(true);
           }
-          console.log('✅ Private key restored from secure storage');
+          console.log("✅ Private key restored from secure storage");
           return;
         }
       }
 
+      // No key found - set ready but flag that key is not available
+      // Messages will display with fallback content (plaintext)
+      // User can request key refresh if needed later
       if (!cancelled) {
         setHasKey(false);
-        setIsReady(false);
+        setIsReady(true); // CHANGED: Set to true so messages display immediately
       }
-
-      await refreshPrivateKeyFromServer({ forceRegenerate: true, silent: true });
     };
 
     ensurePrivateKey();
@@ -166,107 +201,146 @@ export function useEncryption(user) {
     return () => {
       cancelled = true;
     };
-  }, [user, refreshPrivateKeyFromServer]);
+  }, [user]);
 
   /**
    * Store private key (called after registration or when keys are received)
    * @param {string} privateKeyPem - Private key in PEM format
    */
-  const savePrivateKey = useCallback((privateKeyPem) => {
-    if (!user?._id) return;
-    
-    storePrivateKey(user._id, privateKeyPem);
-    setHasKey(true);
-    setIsReady(true);
-    console.log('✅ Private key saved successfully');
-  }, [user]);
+  const savePrivateKey = useCallback(
+    (privateKeyPem) => {
+      if (!user?._id) return;
+
+      storePrivateKey(user._id, privateKeyPem);
+      setHasKey(true);
+      setIsReady(true);
+      console.log("✅ Private key saved successfully");
+    },
+    [user]
+  );
 
   /**
    * Decrypt a received message
    * @param {Object} message - Message object with encryptionData
    * @returns {string} Decrypted message or original content
    */
-  const decryptReceivedMessage = useCallback(async (message) => {
-    // If not encrypted, just return original content
-    if (!isEncrypted(message)) {
-      return message.content || '';
-    }
+  const decryptReceivedMessage = useCallback(
+    async (message) => {
+      // If not encrypted, just return original content
+      if (!isEncrypted(message)) {
+        return message.content || "";
+      }
 
-    // Choose the best encryption payload: sender copy when available
-    const encryptionPayload = isValidEncryptionData(message.encryptionData)
-      ? message.encryptionData
-      : isValidEncryptionData(message.senderEncryptionData)
-      ? message.senderEncryptionData
-      : null;
+      // Choose the best encryption payload: sender copy when available
+      const encryptionPayload = isValidEncryptionData(message.encryptionData)
+        ? message.encryptionData
+        : isValidEncryptionData(message.senderEncryptionData)
+        ? message.senderEncryptionData
+        : null;
 
-    if (!encryptionPayload) {
-      console.warn('⚠️ Encrypted flag set but encryption data incomplete. Falling back to plaintext.');
-      return message.content || message.body || message.fallbackContent || '';
-    }
+      if (!encryptionPayload) {
+        console.warn(
+          "⚠️ Encrypted flag set but encryption data incomplete. Falling back to plaintext."
+        );
+        // CRITICAL: Return fallbackContent first if available
+        if (message.fallbackContent && message.fallbackContent.trim() !== "") {
+          return message.fallbackContent;
+        }
+        if (message.content && message.content.trim() !== "") {
+          return message.content;
+        }
+        if (message.body && message.body.trim() !== "") {
+          return message.body;
+        }
+        return "[Decryption Key Unavailable]";
+      }
 
-    if (!user?._id) {
-      console.warn('⚠️ Cannot decrypt - no user ID');
-      return message.content || message.body || message.fallbackContent || '';
-    }
+      if (!user?._id) {
+        console.warn("⚠️ Cannot decrypt - no user ID");
+        // CRITICAL: Return fallbackContent first if available
+        if (message.fallbackContent && message.fallbackContent.trim() !== "") {
+          return message.fallbackContent;
+        }
+        if (message.content && message.content.trim() !== "") {
+          return message.content;
+        }
+        if (message.body && message.body.trim() !== "") {
+          return message.body;
+        }
+        return "[Decryption Key Unavailable]";
+      }
 
-    // Get private key, auto-fetch from server if missing
-    let privateKey = getPrivateKey(user._id);
+      // Get private key from local storage/IndexedDB ONLY (no automatic server refresh)
+      let privateKey = getPrivateKey(user._id);
 
-    if (!privateKey) {
-      privateKey = await restorePrivateKeyFromIndexedDB(user._id);
       if (!privateKey) {
-        privateKey = await refreshPrivateKeyFromServer({ forceRegenerate: true, silent: false });
-      } else {
-        setHasKey(true);
-        setIsReady(true);
-      }
-    }
-
-    // If still no key, show plaintext instead of blocking UI with error banners
-    if (!privateKey) {
-      return message.content || message.body || message.fallbackContent || '';
-    }
-
-    // Attempt decryption (frontend service returns null on failure)
-    const decrypted = decryptMessage(encryptionPayload, privateKey);
-    if (decrypted === null) {
-      // Decryption failed - silently use fallback content (backend keeps plaintext)
-      const fallback = message.content || message.body || message.fallbackContent;
-      if (fallback && fallback.trim() !== '') {
-        // Successfully using fallback - no need to show errors
-        console.log('📝 Using plaintext fallback for message');
-        failureCountRef.current = 0;
-        return fallback;
-      }
-      
-      // Only try key refresh if we have no fallback content
-      failureCountRef.current += 1;
-      if (failureCountRef.current === 1 && !refreshInfoShownRef.current) {
-        console.warn('⚠️ Decryption failed and no fallback available, refreshing keys...');
-        refreshInfoShownRef.current = true;
-      }
-
-      const refreshedKey = await refreshPrivateKeyFromServer({ forceRegenerate: true, silent: true });
-      if (refreshedKey) {
-        const retry = decryptMessage(encryptionPayload, refreshedKey);
-        if (retry !== null) {
-          failureCountRef.current = 0;
-          return retry;
+        privateKey = await restorePrivateKeyFromIndexedDB(user._id);
+        if (privateKey) {
+          setHasKey(true);
+          setIsReady(true);
         }
       }
 
-      // Still failed - return whatever fallback we have
-      return fallback || '[Unable to decrypt message]';
-    }
-    failureCountRef.current = 0;
-    fallbackErrorShownRef.current = false;
-    return decrypted;
-  }, [user, refreshPrivateKeyFromServer]);
+      // If still no key, fall back to plaintext instead of hitting the server
+      if (!privateKey) {
+        console.warn(
+          "⚠️ Private key not available for decryption. Using fallback content."
+        );
+        // CRITICAL: Return fallbackContent first if available
+        if (message.fallbackContent && message.fallbackContent.trim() !== "") {
+          return message.fallbackContent;
+        }
+        if (message.content && message.content.trim() !== "") {
+          return message.content;
+        }
+        if (message.body && message.body.trim() !== "") {
+          return message.body;
+        }
+        return "[Decryption Key Unavailable]";
+      }
+
+      // Attempt decryption (frontend service returns null on failure)
+      const decrypted = decryptMessage(encryptionPayload, privateKey);
+      if (decrypted === null) {
+        // Decryption failed - CRITICALLY prioritize fallback content (backend keeps plaintext)
+        console.warn(
+          "⚠️ Decryption failed. Attempting to use fallback content."
+        );
+
+        if (message.fallbackContent && message.fallbackContent.trim() !== "") {
+          // Successfully using fallback - no need to show errors
+          console.log("📝 Using plaintext fallback for message");
+          failureCountRef.current = 0;
+          return message.fallbackContent;
+        }
+
+        if (message.content && message.content.trim() !== "") {
+          console.log("📝 Using content field as fallback");
+          failureCountRef.current = 0;
+          return message.content;
+        }
+
+        if (message.body && message.body.trim() !== "") {
+          console.log("📝 Using body field as fallback");
+          failureCountRef.current = 0;
+          return message.body;
+        }
+
+        // Still failed - return visible error message instead of empty string
+        console.error("❌ No fallback content available for encrypted message");
+        return "[Decryption Key Unavailable]";
+      }
+      failureCountRef.current = 0;
+      fallbackErrorShownRef.current = false;
+      return decrypted;
+    },
+    [user]
+  );
 
   return {
     isReady,
     hasKey,
     savePrivateKey,
-    decryptReceivedMessage
+    decryptReceivedMessage,
   };
 }
